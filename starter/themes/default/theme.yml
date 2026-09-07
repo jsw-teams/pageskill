@@ -1,6 +1,8 @@
 name: default
 module: theme.js
 style: style.css
+scripts:
+  - scripts/language-picker.js
 patterns:
   - landing
   - document

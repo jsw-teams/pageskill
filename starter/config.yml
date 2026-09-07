@@ -1,15 +1,25 @@
 siteUrl: https://example.com
 defaultLocale: en
 activeLocales:
+  - zh-sg
+  - zh-tw
   - en
 siteName:
-  en: New Pageskill Site
+  zh-sg: 我的 Pageskill 网站
+  zh-tw: 我的 Pageskill 網站
+  en: My Pageskill Site
 description:
-  en: A neutral Pageskill starter.
+  zh-sg: 用 Markdown 编写页面和文章，发布一个小网站。
+  zh-tw: 用 Markdown 編寫頁面和文章，發佈一個小網站。
+  en: Write pages and articles in Markdown and publish a small site.
 theme:
   name: default
   nav:
-    links: []
+    links:
+      - key: home
+        href: /:locale/
+      - key: posts
+        href: /:locale/posts/
 content:
   collections:
     pages:

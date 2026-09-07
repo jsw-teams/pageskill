@@ -165,7 +165,7 @@ function benchmarkDetails(count, documentsCold) {
       pagesPerLocale: 2,
       documentsCold,
       documentFormula: `${count} translated post file(s) × ${locales.length} locale(s) + home + guide per locale`,
-      contentShapes: ['landing home with hero and latest-product-note Block', 'docs page with a pipeline Block and GFM table', 'dated product note with a <more> excerpt boundary', 'optional Sharp image variant'],
+      contentShapes: ['landing home with hero and latest-post Block', 'docs page with a pipeline Block and GFM table', 'dated article with a <more> excerpt boundary', 'optional Sharp image variant'],
       generatedContract: ['HTML routes', 'post archive', 'RSS feed', 'sitemap with hreflang', 'local search index', 'llms index', 'catalog', '404', 'deployment files'],
       images: withImage ? { enabled: true, source: 'content/assets/source.png', variant: 'assets/benchmark.webp, 64×64 WebP' } : { enabled: false },
       temporaryRoot: true,
@@ -176,7 +176,7 @@ function benchmarkDetails(count, documentsCold) {
       noChangePreview: 'reuse the completed BuildContext with no input change; models an unchanged dev refresh',
       previewLiveUpdate: 'start pageskill s, edit one page, wait for its SSE reload event, and verify the served route contains the new content',
       editOnePost: 'edit one translated post, refresh that path, and rebuild dependent outputs',
-      publishOnePost: 'add one new translated post, update archive/feed/search/home outputs, and rebuild',
+      publishOnePost: 'add one new translated article, update archive/feed/search/home outputs, and rebuild',
       deleteOnePost: 'remove one complete translated post and clean stale route/output files',
       editTheme: 'change the theme CSS and rebuild the theme-owned output surface',
       editSiteSetting: 'change one localized site setting and rebuild the affected site surface'
@@ -197,8 +197,8 @@ function benchmarkDetails(count, documentsCold) {
       noChangePreviewMs: 'time for a no-op preview rebuild',
       previewLiveUpdate: 'server startup time and edit-to-served-content time for a real dev preview process',
       editOnePostMs: 'time and output count for one real content edit',
-      publishOnePostMs: 'time for adding one product note in every active locale',
-      deleteOnePostMs: 'time for deleting one product note and cleaning its route',
+      publishOnePostMs: 'time for adding one article in every active locale',
+      deleteOnePostMs: 'time for deleting one article and cleaning its route',
       editThemeMs: 'cost of changing the theme surface',
       editSiteSettingMs: 'cost of changing a site-level setting'
     },
@@ -334,7 +334,7 @@ Write a post and build.
 function post(index, locale, label = 'Benchmark') {
   return `---
 title: ${label} post ${index}
-description: A content-scale product note for ${locale}.
+description: A content-scale article for ${locale}.
 date: 2026-08-08
 pattern: blog
 tags: [benchmark, content]
@@ -342,13 +342,13 @@ tags: [benchmark, content]
 
 # ${label} post ${index}
 
-This paragraph is the product-note card excerpt shown before the more marker.
+This paragraph is the article card excerpt shown before the more marker.
 
 <more>
 
 ## Published content
 
-This section represents the full product-note body that is rendered on the note route.
+This section represents the full article body that is rendered on the post route.
 
 | Field | Value |
 | --- | --- |

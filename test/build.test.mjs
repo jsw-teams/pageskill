@@ -79,6 +79,24 @@ test('landing compiler blocks render an explicit product comparison', async () =
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('collection defaults choose landing for home and blog for posts', async () => {
+  const root = await fixture();
+  try {
+    const configFile = path.join(root, 'config.yml');
+    const config = (await readFile(configFile, 'utf8'))
+      .replace('    pages:\n      route: /:locale/:id/', '    pages:\n      contentType: page\n      route: /:locale/:id/')
+      .replace('    posts:\n      route: /:locale/posts/:id/', '    posts:\n      contentType: post\n      route: /:locale/posts/:id/');
+    await writeFile(configFile, config);
+    await writeFile(path.join(root, 'content/pages/home/en.md'), '---\ntitle: Home\n---\n\n# Home\n');
+    const ctx = await build(await createContext(root));
+    assert.equal(ctx.docs.find(doc => doc.collection === 'pages' && doc.id === 'home' && doc.locale === 'en')?.pattern, 'landing');
+    assert.equal(ctx.docs.find(doc => doc.collection === 'pages' && doc.id === 'docs' && doc.locale === 'zh-CN')?.pattern, 'document');
+    assert.equal(ctx.docs.find(doc => doc.collection === 'posts' && doc.id === 'note' && doc.locale === 'en')?.pattern, 'blog');
+    assert.match(await readFile(path.join(root, 'dist/en/index.html'), 'utf8'), /data-pattern="landing"/);
+    assert.match(await readFile(path.join(root, 'dist/en/posts/note/index.html'), 'utf8'), /data-pattern="blog"/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('language navigation renders once in the article title area', async () => {
   const root = await fixture();
   try {
@@ -200,6 +218,7 @@ test('deleted documents remove their generated route', async () => {
     await rm(file);
     await build(await createContext(root));
     await assert.rejects(stat(path.join(root, 'dist/en/posts/note/index.html')));
+    await assert.rejects(stat(path.join(root, 'dist/public/en/posts/note/index.html')));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

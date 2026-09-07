@@ -1,44 +1,81 @@
 #!/usr/bin/env node
 
-import { createContext, refreshContext, build, check, inspect, getCatalog } from '../runtime/compiler.js';
+import { createContext, refreshContext, build, check } from '../runtime/compiler.js';
 import { promises as fs } from 'node:fs';
 import { watch } from 'node:fs';
 import { createServer } from 'node:http';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { deploy, deployHelp } from '../deploy.mjs';
 import { classifyPublicUrl, publicPathFromUrl } from '../runtime/lib/static-security.js';
 
 const args = process.argv.slice(2);
-const requestedCommand = args[0] || 'g';
-const command = ({ g: 'build', s: 'serve', d: 'deploy' })[requestedCommand] || requestedCommand;
+const requestedCommand = args[0] || '';
 const commandArgs = args.slice(1);
 const root = process.env.PAGESKILL_SITE_ROOT || process.cwd();
-const publicCommands = new Set(['g', 's', 'd', 'build', 'check', 'catalog', 'inspect', 'init', 'help', '--help', '-h', '--version', '-v']);
+const publicCommands = new Set(['g', 's', 'd']);
+const helpFlags = new Set(['--help', '-h']);
 
-const starterRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../starter');
-
-async function writeNew(file, value) {
-  try {
-    await fs.access(file);
-  } catch {
-    await fs.writeFile(file, value);
-  }
+async function packageVersion() {
+  const packageManifest = JSON.parse(await fs.readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+  return String(packageManifest.version);
 }
 
-async function copyStarter(source, destination) {
-  await fs.mkdir(destination, { recursive: true });
-  for (const entry of await fs.readdir(source, { withFileTypes: true })) {
-    const from = path.join(source, entry.name);
-    const to = path.join(destination, entry.name);
-    if (entry.isDirectory()) await copyStarter(from, to);
-    else await writeNew(to, await fs.readFile(from));
-  }
+async function printHelp({ deployment = false } = {}) {
+  console.log(`Pageskill ${await packageVersion()}
+
+Usage: pageskill <g|s|d> [options]
+
+  g [--profile]    Generate dist/ and validate source contracts
+  s [port]          Serve a local incremental preview (default: 4173)
+  d [--dry-run]     Validate, generate, and deploy from config.yml
+  --help, -h        Show this help
+
+${deployment ? `\n${deployHelp()}` : ''}`);
 }
 
-async function initialize() {
-  await copyStarter(starterRoot, root);
-  console.log('Initialized neutral Pageskill site.');
+function rejectUnexpectedArgs(command, values, allowed) {
+  for (const value of values) if (!allowed.has(value)) throw new Error(`Unknown ${command} option or argument: ${value}`);
+}
+
+function parseGenerateArgs(values) {
+  rejectUnexpectedArgs('g', values, new Set(['--profile']));
+  return { profile: values.includes('--profile') };
+}
+
+function parseServeArgs(values) {
+  let portValue = '4173';
+  let positionalPort = false;
+  let optionPort = false;
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    if (value === '--port') {
+      if (optionPort || positionalPort || index + 1 >= values.length) throw new Error('Preview port must be provided once as --port <number> or a positional number.');
+      portValue = values[++index];
+      optionPort = true;
+      continue;
+    }
+    if (value.startsWith('--port=')) {
+      if (optionPort || positionalPort) throw new Error('Preview port must be provided once as --port <number> or a positional number.');
+      portValue = value.slice('--port='.length);
+      optionPort = true;
+      continue;
+    }
+    if (/^\d+$/.test(value)) {
+      if (optionPort || positionalPort) throw new Error('Preview port must be provided once as --port <number> or a positional number.');
+      portValue = value;
+      positionalPort = true;
+      continue;
+    }
+    throw new Error(`Unknown s option or argument: ${value}`);
+  }
+  const port = Number(portValue);
+  if (!/^\d+$/.test(String(portValue)) || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`Invalid preview port: ${portValue}`);
+  return { port };
+}
+
+function parseDeployArgs(values) {
+  rejectUnexpectedArgs('d', values, new Set(['--dry-run']));
+  return { dryRun: values.includes('--dry-run') };
 }
 
 function contentType(file) {
@@ -147,7 +184,7 @@ async function readPublicOutput(ctx, relative) {
   }
 }
 
-async function develop() {
+async function develop(port) {
   let ctx = await createContext(root);
   await build(ctx);
   let timer;
@@ -237,54 +274,54 @@ async function develop() {
     }
   });
   server.on('close', () => { watcher.close(); for (const client of liveClients) client.end(); liveClients.clear(); });
-  const inlinePort = commandArgs.find(value => value.startsWith('--port='));
-  const portValue = inlinePort?.slice('--port='.length) || (commandArgs.includes('--port') ? commandArgs[commandArgs.indexOf('--port') + 1] : commandArgs.find(value => /^\d+$/.test(value)) || '4173');
-  const port = Number(portValue);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`Invalid preview port: ${portValue}`);
   server.listen({ port, host: '127.0.0.1' }, () => console.log(`Pageskill preview server: http://127.0.0.1:${port}`));
 }
 
-if (!publicCommands.has(requestedCommand)) {
-  console.error(`Unknown command: ${requestedCommand}`);
-  console.error('Run pageskill --help for available commands.');
+async function generate(profile = false) {
+  const ctx = await createContext(root);
+  await build(ctx);
+  await check(ctx);
+  console.log(`Generated ${ctx.docs.length} documents in ${Math.round(ctx.profile.total)}ms`);
+  if (profile) console.log(JSON.stringify(ctx.profile, null, 2));
+}
+
+async function main() {
+  if (!requestedCommand) {
+    await printHelp();
+    return;
+  }
+  if (helpFlags.has(requestedCommand)) {
+    if (commandArgs.length) throw new Error(`Unknown option or argument: ${commandArgs[0]}`);
+    await printHelp();
+    return;
+  }
+  if (!publicCommands.has(requestedCommand)) throw new Error(`Unknown command: ${requestedCommand}. Run pageskill --help for available commands.`);
+  if (commandArgs.length === 1 && helpFlags.has(commandArgs[0])) {
+    await printHelp({ deployment: requestedCommand === 'd' });
+    return;
+  }
+  if (commandArgs.some(value => helpFlags.has(value))) throw new Error(`Help must be requested by itself for pageskill ${requestedCommand}.`);
+
+  if (requestedCommand === 'g') {
+    const options = parseGenerateArgs(commandArgs);
+    await generate(options.profile);
+    return;
+  }
+  if (requestedCommand === 's') {
+    const options = parseServeArgs(commandArgs);
+    await develop(options.port);
+    return;
+  }
+  const options = parseDeployArgs(commandArgs);
+  const ctx = await createContext(root);
+  await build(ctx);
+  await check(ctx);
+  await deploy(root, ctx, options.dryRun ? ['--dry-run'] : []);
+}
+
+try {
+  await main();
+} catch (error) {
+  console.error(`Error: ${error?.message || String(error)}`);
   process.exitCode = 1;
-} else if (command === 'help' || command === '--help' || command === '-h') {
-  console.log(`Usage: pageskill <g|s|d|build|check|catalog|inspect|init> [options]\n\n  g                 Generate dist/\n  s [port]          Serve a local incremental preview\n  d [--dry-run]     Build and deploy from config.yml\n  build             Generate dist/ explicitly\n  check             Validate source and generated contracts\n  catalog           Print the source-backed theme and extension catalog\n  inspect <query>   Inspect content or a block, pattern, collection, or plugin\n  init              Create a neutral starter site\n  --version, -v     Print the Pageskill package version\n\n${deployHelp()}`);
-} else if (requestedCommand === '--version' || requestedCommand === '-v') {
-  const packageManifest = JSON.parse(await fs.readFile(new URL('../../package.json', import.meta.url), 'utf8'));
-  console.log(String(packageManifest.version));
-} else if (command === 'catalog') {
-  const ctx = await createContext(root);
-  console.log(JSON.stringify(getCatalog(ctx), null, 2));
-} else if (command === 'inspect') {
-  try {
-    console.log(JSON.stringify(await inspect(await createContext(root), commandArgs[0]), null, 2));
-  } catch (error) {
-    const code = error?.code || 'INSPECT_ERROR';
-    console.error(JSON.stringify({ error: { code, message: error.message || String(error), query: commandArgs[0] || '', ...(error?.details || {}) } }, null, 2));
-    process.exitCode = 1;
-  }
-} else if (command === 'check') {
-  const ctx = await createContext(root);
-  await build(ctx);
-  const result = await check(ctx);
-  console.log(JSON.stringify(result, null, 2));
-  if (!result.ok) process.exitCode = 1;
-} else if (command === 'init') {
-  await initialize();
-} else if (command === 'serve') {
-  await develop();
-} else if (command === 'deploy') {
-  if (commandArgs.includes('--help') || commandArgs.includes('-h')) {
-    console.log(deployHelp());
-    process.exit(0);
-  }
-  const ctx = await createContext(root);
-  await build(ctx);
-  await deploy(root, ctx, commandArgs);
-} else if (command === 'build') {
-  const ctx = await createContext(root);
-  await build(ctx);
-  console.log(`Built ${ctx.docs.length} documents in ${Math.round(ctx.profile.total)}ms`);
-  if (commandArgs.includes('--profile')) console.log(JSON.stringify(ctx.profile, null, 2));
 }

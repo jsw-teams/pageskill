@@ -9,9 +9,9 @@ siteName:
   zh-tw: Pageskill
   en: Pageskill
 description:
-  zh-sg: 发现并复用 Pattern、Block 与 Schema，用 Markdown 和配置编译可检查的多语言网站，并按需连接同源 API。
-  zh-tw: 發現並重用 Pattern、Block 與 Schema，用 Markdown 和設定編譯可檢查的多語言網站，並按需連接同源 API。
-  en: Discover and reuse Patterns, Blocks, and schemas; compose inspectable localized sites from Markdown and configuration, with same-origin APIs when needed.
+  zh-sg: 给刚开始做网站的人：用 Markdown 和清晰的步骤，学习、编写并发布自己的 Pageskill 网站。
+  zh-tw: 給剛開始做網站的人：用 Markdown 和清楚的步驟，學習、編寫並發布自己的 Pageskill 網站。
+  en: A friendly starting point for building a small website with Markdown, clear steps, and Pageskill.
 author:
   zh-sg: Site Owner
   zh-tw: Site Owner
@@ -24,12 +24,12 @@ theme:
         href: /:locale/
       - key: about
         href: /:locale/about/
-      - key: guide
-        href: /:locale/guide/
-      - key: development
-        href: /:locale/development/
+      - key: start
+        href: /:locale/posts/start/
       - key: posts
         href: /:locale/posts/
+      - key: customize
+        href: /:locale/posts/customize/
     utilityLinks: []
 
 # Site configuration selects built-in capabilities; markup, CSS, and browser code stay in the theme.
@@ -59,20 +59,20 @@ branding:
     en: Pageskill by JSW Teams
 
 pwa:
-  backgroundColor: "#f3f0e8"
-  themeColor: "#155b68"
+  backgroundColor: "#faf8f3"
+  themeColor: "#244b3d"
 
 images:
   social: assets/og-default-product.webp
   variants:
-    - source: og-default-product-source.png
+    - source: og-default-bear-source.png
       output: assets/og-default-product.webp
       width: 1200
       height: 630
       fit: cover
       format: webp
       quality: 82
-    - source: product-note-cover-source.png
+    - source: product-note-cover-bear-source.png
       output: assets/product-note-cover.webp
       width: 1200
       height: 800
@@ -88,7 +88,7 @@ robots:
 
 llms:
   title: Pageskill
-  description: A reuse-first static website compiler where people can directly discover and compose localized sites from reusable Patterns, Blocks, schemas, Markdown, and configuration; Agents are optional and per-page HTML is not required.
+  description: A friendly static website compiler that helps beginners turn Markdown and a few clear steps into a localized site; reusable Patterns and Blocks are available when you need them.
   full:
     enabled: true
     shardSize: 250

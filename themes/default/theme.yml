@@ -2,6 +2,8 @@ name: default
 module: theme.ts
 style: style.css
 i18n: i18n.yml
+scripts:
+  - scripts/language-picker.js
 plugins:
   search:
     enabled: true

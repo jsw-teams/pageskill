@@ -20,16 +20,16 @@ messages:
       en: English
     navigation:
       home: 首页
-      about: 对比研究
-      guide: 使用文档
-      development: 二次开发
-      posts: 产品笔记
+      about: 关于
+      start: 开始使用
+      posts: 文章
+      customize: 自定义
     collections:
       pages: 页面
-      posts: 产品笔记
+      posts: 文章
     search:
       label: 站内搜索
-      placeholder: 搜索页面和产品笔记
+      placeholder: 搜索页面和文章
       submitLabel: 搜索
       noResultsLabel: 没有找到匹配内容
       resultLabel: 搜索结果
@@ -39,25 +39,25 @@ messages:
       hitContent: 正文命中
       hitPath: 路径命中
       queryHint: 至少输入两个字母或一个中文词
-    latestPosts: 最新产品笔记
-    allPosts: 查看全部产品笔记
+    latestPosts: 最新文章
+    allPosts: 查看全部文章
     siteMap: 站点地图
-    continue: 继续阅读
-    compilerBoard: Pageskill 编译模型
-    metrics: Pageskill 实测构建数据
-    research: 官方资料能力对比
-    comparison: 页面构建器与 Pageskill 对比
+    continue: 阅读文章
+    compilerBoard: Pageskill 如何工作
+    metrics: 构建统计
+    research: 功能介绍
+    comparison: 工具对比
     toolComparison:
-      label: 各项目官方写明的入口
-      note: 同类工具单元格只引用其官方资料出现的入口；Pageskill 一列来自本仓库。
+      label: 你可以怎样开始
+      note: 这张表把常见的开始方式放在一起，Pageskill 一列来自本网站。
     benchmarkChart:
-      label: Pageskill 本机实测：构建时间（秒）
-      note: 同一份自动生成 Markdown 夹具；数字保留原始测量结果，不是跨工具估算。
-    pipeline: 编译流程
-    noPosts: 暂无产品笔记
-    related: 相关产品笔记
-    previous: 更新的笔记
-    next: 更早的笔记
+      label: Pageskill 构建时间（秒）
+      note: 数字来自同一份示例内容，用来帮助理解构建规模。
+    pipeline: 从 Markdown 到网站
+    noPosts: 暂无文章
+    related: 相关文章
+    previous: 较新文章
+    next: 较早文章
     toc:
       title: 页面目录
       onThisPage: 本页内容
@@ -66,23 +66,23 @@ messages:
       description: 选择网站版本；语言名称保留该语言的自称。
     notFound:
       title: 这页没有找到
-      description: 地址可能已更新。返回首页，或从使用文档继续查找产品内容。
+      description: 地址可能已更新。返回首页，或从开始使用继续查找内容。
       home: 返回首页
-      guide: 打开使用文档
+      guide: 打开开始使用
     archive:
-      title: 产品笔记归档
-      description: 按日期记录已经发生的产品决定、实现变更与发布
-      continue: 继续阅读
+      title: 文章归档
+      description: 按日期整理 Pageskill 的学习内容与更新
+      continue: 阅读文章
       previousPage: 上一页
       nextPage: 下一页
     shell:
-      headerNote: 发现结构，组装页面
+      headerNote: 学习、编写、发布
       skipToContent: 跳至内容
       languages: 语言
       navigation: 主导航
-      footerNote: 用可复用结构持续交付内容。
-      footerKicker: 可复用内容编译器
-      postsFeed: 产品笔记订阅
+      footerNote: 用清晰步骤把 Markdown 变成网站。
+      footerKicker: Pageskill 学习站
+      postsFeed: 文章订阅
     cookieConsent:
       title: Cookie 偏好设置
       description: 选择哪些可选类别可以工作；必要功能不用于广告或追踪
@@ -117,16 +117,16 @@ messages:
       en: English
     navigation:
       home: 首頁
-      about: 對比研究
-      guide: 使用文件
-      development: 二次開發
-      posts: 產品筆記
+      about: 關於
+      start: 開始使用
+      posts: 文章
+      customize: 自訂
     collections:
       pages: 頁面
-      posts: 產品筆記
+      posts: 文章
     search:
       label: 站內搜尋
-      placeholder: 搜尋頁面和產品筆記
+      placeholder: 搜尋頁面和文章
       submitLabel: 搜尋
       noResultsLabel: 沒有找到符合內容
       resultLabel: 搜尋結果
@@ -136,25 +136,25 @@ messages:
       hitContent: 正文命中
       hitPath: 路徑命中
       queryHint: 至少輸入兩個英文字母或一個中文字詞
-    latestPosts: 最新產品筆記
-    allPosts: 查看全部產品筆記
+    latestPosts: 最新文章
+    allPosts: 查看全部文章
     siteMap: 網站地圖
-    continue: 繼續閱讀
-    compilerBoard: Pageskill 編譯模型
-    metrics: Pageskill 實測建置資料
-    research: 官方資料能力對比
-    comparison: 頁面建構器與 Pageskill 對比
+    continue: 閱讀文章
+    compilerBoard: Pageskill 如何運作
+    metrics: 建置統計
+    research: 功能介紹
+    comparison: 工具比較
     toolComparison:
-      label: 各專案官方文件列出的入口
-      note: 同類工具儲存格只引用其官方資料出現的入口；Pageskill 一欄來自本儲存庫。
+      label: 你可以怎樣開始
+      note: 這張表把常見的開始方式放在一起，Pageskill 一欄來自本網站。
     benchmarkChart:
-      label: Pageskill 本機實測：建置時間（秒）
-      note: 同一份自動產生的 Markdown 夾具；數字保留原始測量結果，不是跨工具估算。
-    pipeline: 編譯流程
-    noPosts: 暫無產品筆記
-    related: 相關產品筆記
-    previous: 較新的筆記
-    next: 較早的筆記
+      label: Pageskill 建置時間（秒）
+      note: 數字來自同一份示例內容，用來幫助理解建置規模。
+    pipeline: 從 Markdown 到網站
+    noPosts: 暫無文章
+    related: 相關文章
+    previous: 較新文章
+    next: 較早文章
     toc:
       title: 頁面目錄
       onThisPage: 本頁內容
@@ -163,23 +163,23 @@ messages:
       description: 選擇網站版本；語言名稱保留該語言的自稱。
     notFound:
       title: 找不到這個頁面
-      description: 網址可能已更新。返回首頁，或從使用文件繼續尋找產品內容。
+      description: 網址可能已更新。返回首頁，或從開始使用繼續尋找內容。
       home: 返回首頁
-      guide: 開啟使用文件
+      guide: 開啟開始使用
     archive:
-      title: 產品筆記彙整
-      description: 按日期記錄已經發生的產品決定、實作變更與發布
-      continue: 繼續閱讀
+      title: 文章彙整
+      description: 按日期整理 Pageskill 的學習內容與更新
+      continue: 閱讀文章
       previousPage: 上一頁
       nextPage: 下一頁
     shell:
-      headerNote: 發現結構，組合頁面
+      headerNote: 學習、編寫、發布
       skipToContent: 跳至內容
       languages: 語言
       navigation: 主導覽
-      footerNote: 用可重用結構持續交付內容。
-      footerKicker: 可重用內容編譯器
-      postsFeed: 產品筆記訂閱
+      footerNote: 用清楚步驟把 Markdown 變成網站。
+      footerKicker: Pageskill 學習站
+      postsFeed: 文章訂閱
     cookieConsent:
       title: Cookie 偏好設定
       description: 選擇哪些可選類別可以運作；必要功能不用於廣告或追蹤
@@ -214,16 +214,16 @@ messages:
       en: English
     navigation:
       home: Home
-      about: Research
-      guide: Guide
-      development: Development
-      posts: Product notes
+      about: About
+      start: Get started
+      posts: Articles
+      customize: Customize
     collections:
       pages: Pages
-      posts: Product notes
+      posts: Articles
     search:
       label: Search this site
-      placeholder: Search pages and product notes
+      placeholder: Search pages and articles
       submitLabel: Search
       noResultsLabel: No matching content.
       resultLabel: Search results
@@ -233,25 +233,25 @@ messages:
       hitContent: Content match
       hitPath: Path match
       queryHint: Enter at least two letters or a meaningful word
-    latestPosts: Latest product notes
-    allPosts: View all product notes
+    latestPosts: Latest articles
+    allPosts: View all articles
     siteMap: Site map
-    continue: Continue
-    compilerBoard: Pageskill compiler model
-    metrics: Measured Pageskill build data
-    research: Official-source capability comparison
-    comparison: Page builder versus Pageskill
+    continue: Read article
+    compilerBoard: How Pageskill works
+    metrics: Build stats
+    research: Feature guide
+    comparison: Tool comparison
     toolComparison:
-      label: Authoring paths documented by each project
-      note: Adjacent-tool cells name entries from their official docs; the Pageskill column comes from this repository.
+      label: Ways you can get started
+      note: This table puts common starting points side by side; the Pageskill column comes from this site.
     benchmarkChart:
-      label: "Pageskill local measurement: build time (seconds)"
-      note: One generated Markdown fixture; values are recorded measurements, not cross-tool estimates.
-    pipeline: Compiler pipeline
-    noPosts: No product notes yet.
-    related: Related product notes
-    previous: Newer note
-    next: Older note
+      label: "Pageskill build time (seconds)"
+      note: Values come from the same example content and help show how build size changes.
+    pipeline: From Markdown to site
+    noPosts: No articles yet.
+    related: Related articles
+    previous: Newer article
+    next: Older article
     toc:
       title: Table of contents
       onThisPage: On this page
@@ -260,23 +260,23 @@ messages:
       description: Choose a site version; each language name stays in its own language.
     notFound:
       title: This page is not here
-      description: The address may have changed. Return home or continue through the guide.
+      description: The address may have changed. Return home or continue through the getting-started articles.
       home: Back to home
-      guide: Open the guide
+      guide: Open getting started
     archive:
-      title: Product note archive
-      description: Dated records of product decisions, implementation changes, and releases
-      continue: Continue
+      title: Article archive
+      description: Dated Pageskill learning notes and updates
+      continue: Read article
       previousPage: Previous page
       nextPage: Next page
     shell:
-      headerNote: Discover structure, compose pages
+      headerNote: Learn, write, publish
       skipToContent: Skip to content
       languages: Languages
       navigation: Primary navigation
-      footerNote: Deliver content with reusable structure.
-      footerKicker: Reusable content compiler
-      postsFeed: Product note feed
+      footerNote: Turn Markdown into a site with clear steps.
+      footerKicker: Pageskill learning site
+      postsFeed: Article feed
     cookieConsent:
       title: Cookie preferences
       description: Choose which optional categories may run; essential functions are not used for advertising or tracking.

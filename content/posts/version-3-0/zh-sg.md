@@ -1,48 +1,46 @@
 ---
-title: "Pageskill 3.0.0：为 2.0 翻篇"
-description: "Pageskill 3.0.0 在归档的 2.0 阶段之后开启复用优先的产品线，带来 CLI 迁移、public 运行边界、更谨慎的浏览器处理和六个插画教程。"
+title: 3.0 更新：更简单的入口
+description: Pageskill 3.0 把日常入口收成 g、s、d，并把新手教程改成可直接阅读的文章。
 date: 2026-09-07
-pattern: blog
 ---
 
-# Pageskill 3.0.0：为 2.0 翻篇
+# 3.0 更新：更简单的入口
 
-Pageskill 3.0.0 标志着 2.0 阶段归档，并开启新的产品线。这篇笔记记录 2026-09-07 的仓库源码和内容状态。发布到 npm 与部署属于这份记录之外的独立操作。
+Pageskill 3.0 继续用 Markdown、设置和主题生成网站，但第一次使用只需要记住三个入口：生成 `g`、预览 `s`、发布 `d`。这是一次内容和工作流的整理，版本仍然是 3.0.0。
 
-## 2.0 现在是归档章节
+## 这次改了什么
 
-2.0 奠定的基础仍然支撑这次转换：Markdown 和配置可以与可复用的主题能力组合，编译器生成可检查的页面和交付产物。3.0 延续这套基础，把复用、运行边界和 Pageskill 名称放到产品的可见中心。
+- `pageskill g` 自动校验并生成公开快照。
+- `pageskill s` 启动持续预览；用 `Ctrl+C` 结束，编辑工作可以在另一个终端继续。
+- `pageskill d` 按 `config.yml` 的发布目标执行。
+- 新站从源码仓库复制 `starter`，不再依赖初始化向导。
+- 教程、博客和产品记录统一放在 `content/posts/`，每篇文章保留必填 `date`。
+- 当前有效的 `content/pages/` 保留三语首页、About 和隐私政策；旧 guide、development 等冗长说明目录已从当前内容树移除，历史留在 Git 和更新日志。
 
-## 改名与迁移
+## 从旧内容迁移
 
-公开名称从 Pagekiln 改为 Pageskill，范围包括 package 元数据、CLI、站点身份、主题文案、文档和仓库链接。旧的 `pagekiln` CLI 入口与 `src/bin/pagekiln.mjs` 已移除。请把 `pagekiln build` 这类命令改为 `pageskill build`，把 `PAGEKILN_SITE_ROOT` 改为 `PAGESKILL_SITE_ROOT`；旧环境变量不再作为后备值。
+1. 保留源码仓库和站点的备份，把教程入口改到 [十分钟开始你的站点](/zh-sg/posts/start/)。
+2. 把自己的教程或博客放进 `content/posts/<id>/`，为 `zh-sg`、`zh-tw`、`en` 准备同义文件和 `date`。
+3. 把 Cookie 政策入口改为 `/:locale/privacy/`，再按[隐私说明](/zh-sg/privacy/)补上真实联系人和服务。
+4. 在站点目录运行 `pageskill g`、`pageskill s` 和 `pageskill d --dry-run`，按目标环境检查生成、预览和发布计划；真正发布时才运行 `pageskill d`。
 
-迁移范围保持明确。生成的 `.pagekiln/` discovery 和 build-profile 路径、`_pagekiln/` 运行时路径，以及现有的 `pagekiln-consent` Cookie 存储键继续兼容。已有内容、多语言路由和默认主题的 `landing`、`document`、`docs`、`blog` Pattern 仍然属于契约。
+## 给高级作者的发现入口
 
-部署配置还有一项相关迁移：如果 `deployment.openaiSites.staticDirectory` 是 `dist`，请改为 `deployment.staticDirectory: public`。新的 `deployment.staticDirectory` 设置是可选的，旧 OpenAI Sites 设置中的安全自定义目录仍会作为后备值。
+生成后可以阅读 `dist/.pagekiln/catalog.json` 或 `dist/.well-known/agent.json`，了解主题和内容的可复用能力。Agent 集成可以调用内部 `getCatalog` 和 `inspect`，但新手只需先写文章和设置，不必把发现文件加入日常步骤。
 
-## 先复用，再扩展
+页面和同源 API 仍然分开：公开静态文件在 `dist/public`，动态业务、写入和秘密留在 `backend/handler.ts`。`config.yml` 只放数据和开关；可选 Cookie 脚本默认关闭，受信的 `gatedScripts` 只在 `theme.yml` 管理。
 
-正常的创作路径从 `pageskill catalog` 和 `pageskill inspect` 开始。这些命令公开源码中的 Pattern、Block、Schema、插件、上下文和资源依赖，供站点复用。作者继续使用 Markdown、Frontmatter 和 `config.yml` 组装页面；主题扩展用于补足缺少的共享能力，不需要为每个页面分别书写 HTML。
+本次还修复了 Cookie 提示和页脚布局；语言选择页优先采用访客手动选择，再回退到浏览器语言，语言 URL 保持不变。
 
-新的 Guide 也遵循这套方式。六个多语言步骤覆盖[开始使用](/zh-sg/guide/start/)、[站点设置](/zh-sg/guide/site-settings/)、[Markdown](/zh-sg/guide/markdown/)、[第一份内容](/zh-sg/guide/first-content/)、[Cookie 同意](/zh-sg/guide/cookies/)和[主题定制](/zh-sg/guide/customize/)。`learning-path` Block 将这段顺序作为可复用内容渲染，`content/assets/learning/` 中的六张独立 bear PNG 为每一步提供插画。
+## 新的学习入口
 
-## 静态页面与同源 API 共享边界
+首页用六只小熊带读者经过[开始](/zh-sg/posts/start/)、[站点设置](/zh-sg/posts/site-settings/)、[Markdown](/zh-sg/posts/markdown/)、[第一篇文章](/zh-sg/posts/first-post/)、[Cookie 选择](/zh-sg/posts/cookies/)和[换样式](/zh-sg/posts/customize/)。个人可以直接操作主题；需要共享能力时实现一次即可复用。
 
-页面仍然在请求之前预生成。统一构建会把公开页面和资源放入 `dist/public`。一个同源 Worker/Fetch 运行时可以位于这份输出之前，优先处理 `/api/*`，并加入明确配置的动态路由。`backend/handler.ts` 仍然是动态业务逻辑和运行时秘密的来源。
+## 发布前验证
 
-公开侧默认是 `dist/public`。`server/`、`_pagekiln/`、`.pagekiln/`、Worker 文件和部署清单留在 public 边界之外；不应把整个 `dist/` 当作 CDN 根目录暴露。这条边界限制静态文件暴露，但不会自动完成用户身份认证、受保护操作的授权或 CSRF 防护；这些仍然是应用业务逻辑。
+按下面的步骤检查自己的站点：
 
-## CSS 预算与浏览器边界
-
-只有同时满足以下条件时，Pattern 和 Block 样式表才会内联：每个原始 UTF-8 文件不超过 2,048 字节，每页合计内联 CSS 不超过 4,096 字节，并且源码没有不安全的相对资源或 style 元素风险。主主题 bundle 仍然是带指纹的外部资源，不安全或过大的样式会保持外部加载。
-
-本地搜索继续使用 DOM API 生成标签、高亮、摘要和链接。3.0 会先把结果 URL 校验为 HTTP(S)，再创建同源锚点。Cookie 同意会让可选类别在明确同意前保持关闭，检查配置的可选脚本来源是否为 HTTP(S)，并保留兼容的 `pagekiln-consent` 键。这些检查收紧了输入处理；提供商配置、隐私义务和后端授权仍由站点及其应用负责。
-
-## 验证
-
-这份源码状态的本地验证已通过：`npm run compile-runtime`、`npm run compile-theme`、`npm run compile-backend`、`npm run build -- --profile` 和 `npm run check` 在 39 份文档上完成；`npm test` 通过 66/66，并检查了 1,080 个内部链接和资源引用。100 条目夹具的增量构建与预览同步也通过；桌面和 390px 手机宽度下的学习入口没有横向溢出，六张图片都正常加载。VPS 验证使用生成的 handler 对接 mock Deno 接口，Pages 验证使用带 ASSETS 的 dry-run staging。没有执行真实云端或 Deno 部署，也没有发布 npm。
-
-## 兼容性与下一章
-
-这个版本改变公开的产品和 CLI 名称，同时保留现有站点需要的内容模型、多语言页面、主题契约、内部路径和同意存储。从现在开始，major、minor 和 patch 版本号都应当在 package 元数据、更新日志和带日期的内容记录之间保持同步。3.0.0 笔记记录的是源码状态，不表示已经发布 npm 包或部署站点。
+1. 运行 `pageskill g`，确认文章、语言链接和公开文件生成成功。
+2. 运行 `pageskill s`，打开本地首页、文章和 Cookie 设置；按 `Ctrl+C` 停止预览。
+3. 运行 `pageskill d --dry-run`，确认目标、公开目录和凭据来源；这个步骤不会真正上传。
+4. 只有准备好发布时才运行 `pageskill d`，再从目标 URL 检查页面和同源 API。

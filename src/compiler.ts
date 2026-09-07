@@ -34,7 +34,7 @@ type CachedDocument = { hash: string; outputs: string[]; dependencies?: string[]
 type CachedImage = { hash: string; output: string };
 type CacheManifest = { version: 2; rendererVersion?: string; configHash?: string; themeHash?: string; assetHash?: string; contentRoots?: Record<string, number>; routeCount?: number; documents: Record<string, CachedDocument>; images?: Record<string, CachedImage>; outputs: string[]; outputHashes?: Record<string, string> };
 export type BuildProfile = { discover: number; load: number; validate: number; parse: number; route: number; render: number; assets: number; write: number; total: number; documents: number; changedOutputs: number; imagesProcessed: number; imageCacheHits: number };
-const RENDERER_VERSION = '2.4.21';
+const RENDERER_VERSION = '2.4.22';
 const MAX_MARKDOWN_CACHE = 32;
 const MAX_SOURCE_PARSE_CACHE = 64;
 const LOAD_CONCURRENCY = 32;
@@ -335,6 +335,15 @@ function documentIdentity(root: string, file: string) {
   return { collection, id, locale };
 }
 
+function defaultPattern(config: Record<string, any>, collection: string, id = '', patterns?: Record<string, any>): string {
+  const settings = config.content?.collections?.[collection];
+  const configured = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings.pattern : undefined;
+  if (collection === 'pages' && id === 'home' && patterns?.landing) return 'landing';
+  if (configured) return String(configured);
+  if (collection === 'posts' || settings?.contentType === 'post') return 'blog';
+  return 'document';
+}
+
 function cloneMarkdownNodes(nodes: MarkdownNode[], file: string): MarkdownNode[] {
   return nodes.map(node => node.kind === 'directive'
     ? { ...node, attrs: { ...node.attrs }, children: cloneMarkdownNodes(node.children, file), position: { ...node.position, file } }
@@ -354,7 +363,7 @@ function parseDocumentNodes(ctx: BuildContext, doc: Document) {
   doc.directives = flattenDirectives(doc.nodes);
 }
 
-async function loadDocument(root: string, file: string, config: Record<string, any>, sourceCache?: Map<string, { data: Record<string, any>; body: string; excerpt: string; bodyLine: number }>): Promise<Document> {
+async function loadDocument(root: string, file: string, config: Record<string, any>, sourceCache?: Map<string, { data: Record<string, any>; body: string; excerpt: string; bodyLine: number }>, patterns?: Record<string, any>): Promise<Document> {
   const [source, stat] = await Promise.all([fs.readFile(file, 'utf8'), fs.stat(file)]);
   const identity = documentIdentity(root, file);
   const hash = shortHash(source);
@@ -372,7 +381,7 @@ async function loadDocument(root: string, file: string, config: Record<string, a
     source: file,
     title: String(data.title || identity.id),
     description: String(data.description || ''),
-    pattern: String(data.pattern || config.content?.collections?.[identity.collection]?.pattern || 'document'),
+    pattern: String(data.pattern || defaultPattern(config, identity.collection, identity.id, patterns)),
     date: data.date ? String(data.date) : undefined,
     data,
     markdown: frontmatter.body,
@@ -685,7 +694,7 @@ function localSearchData(ctx: BuildContext, doc: Document, themeBase: string, fi
     indexHref: `/assets/search-index.${doc.locale}.json`,
     scriptSrc: safeUrl(scriptHref),
     label: text('label', doc.locale.startsWith('zh') ? '站内搜索' : 'Search this site'),
-    placeholder: text('placeholder', doc.locale.startsWith('zh-tw') ? '搜尋頁面和產品筆記' : doc.locale.startsWith('zh') ? '搜索页面和产品笔记' : 'Search pages and product notes'),
+    placeholder: text('placeholder', doc.locale.startsWith('zh-tw') ? '搜尋頁面和文章' : doc.locale.startsWith('zh') ? '搜索页面和文章' : 'Search pages and articles'),
     submitLabel: text('submitLabel', doc.locale.startsWith('zh') ? '搜索' : 'Search'),
     noResultsLabel: text('noResultsLabel', doc.locale.startsWith('zh') ? '没有找到匹配内容。' : 'No matching content.'),
     resultLabel: text('resultLabel', doc.locale.startsWith('zh') ? '搜索结果' : 'Search results'),
@@ -728,16 +737,61 @@ function generatedDocument(id: string, locale: string, title: string, descriptio
   };
 }
 
-function languagePickerMarkup(ctx: BuildContext, locale: string): string {
+function languagePickerCopy(ctx: BuildContext, locale: string, themeBase: string, fingerprint: string) {
+  const generated = generatedDocument('home', locale, '', '', '/');
+  const privacy = privacyShellData(ctx, generated, themeBase, fingerprint).privacy;
+  return {
+    title: themeText(ctx, locale, 'languagePicker.title', 'Choose a site language'),
+    description: themeText(ctx, locale, 'languagePicker.description', 'Choose a language to open the matching site version.'),
+    recommended: themeText(ctx, locale, 'languagePicker.recommended', locale.startsWith('zh-tw') ? '建議語言' : locale.startsWith('zh') ? '建议语言' : 'Recommended'),
+    siteName: localizedValue(ctx.config.siteName, locale, 'Pageskill'),
+    siteDescription: localizedValue(ctx.config.description, locale, ''),
+    headerNote: themeText(ctx, locale, 'shell.headerNote', 'Markdown-native · static-first'),
+    siteMap: themeText(ctx, locale, 'siteMap', locale.startsWith('zh-tw') ? '網站地圖' : locale.startsWith('zh') ? '站点地图' : 'Site map'),
+    privacy: {
+      title: privacy.title,
+      description: privacy.description,
+      bannerLabel: privacy.bannerLabel,
+      settingsLabel: privacy.settingsLabel,
+      acceptLabel: privacy.acceptLabel,
+      rejectLabel: privacy.rejectLabel,
+      saveLabel: privacy.saveLabel,
+      closeLabel: privacy.closeLabel,
+      policyLabel: privacy.policyLabel,
+      policyHref: privacy.policyHref,
+      categories: privacy.categories.map(category => ({
+        id: category.id,
+        label: category.label,
+        description: category.description,
+        provider: category.provider,
+        required: category.required,
+        retentionDays: category.retentionDays
+      }))
+    }
+  };
+}
+
+function languagePickerMarkup(ctx: BuildContext, locale: string, scriptHref = ''): string {
+  const locales = ctx.config.activeLocales || [ctx.config.defaultLocale || locale];
+  const themeName = configuredThemeName(ctx.config);
+  const fingerprint = String(ctx.theme.__fingerprint || RENDERER_VERSION).slice(0, 12);
+  const themeBase = `/assets/theme/${themeName}`;
+  const copy = Object.fromEntries(locales.map((candidate: string) => [candidate, languagePickerCopy(ctx, candidate, themeBase, fingerprint)]));
+  const languageData = JSON.stringify({
+    defaultLocale: ctx.config.defaultLocale || locale,
+    locales,
+    storageKey: 'pagekiln-locale',
+    copy
+  });
   const title = themeText(ctx, locale, 'languagePicker.title', 'Choose a site language');
   const description = themeText(ctx, locale, 'languagePicker.description', 'Choose a language to open the matching site version.');
-  const locales = ctx.config.activeLocales || [ctx.config.defaultLocale || locale];
   const cards = locales.map((candidate: string) => {
     const href = safeUrl(`/${candidate}/`);
     const name = languageDisplayName(ctx, locale, candidate);
-    return `<li><a class="language-card" href="${href}" lang="${escapeHtml(candidate)}" data-locale="${escapeHtml(candidate)}"><span class="language-card-index" aria-hidden="true">${escapeHtml(String(locales.indexOf(candidate) + 1).padStart(2, '0'))}</span><strong>${escapeHtml(name)}</strong><span class="language-card-arrow" aria-hidden="true">↗</span></a></li>`;
+    return `<li><a class="language-card" href="${href}" lang="${escapeHtml(candidate)}" data-locale="${escapeHtml(candidate)}"><span class="language-card-index" aria-hidden="true">${escapeHtml(String(locales.indexOf(candidate) + 1).padStart(2, '0'))}</span><strong>${escapeHtml(name)}</strong><span class="language-card-recommendation" data-language-recommended hidden></span><span class="language-card-arrow" aria-hidden="true">↗</span></a></li>`;
   }).join('');
-  return `<section class="language-picker" aria-labelledby="language-picker-title"><h2 id="language-picker-title">${escapeHtml(title)}</h2><p class="language-picker-description">${escapeHtml(description)}</p><ul class="language-picker-list">${cards}</ul></section>`;
+  const script = scriptHref ? `<script type="module" src="${safeUrl(scriptHref)}"></script>` : '';
+  return `<section class="language-picker" data-language-picker data-language-copy="${escapeHtml(languageData)}" aria-labelledby="language-picker-title"><h2 id="language-picker-title">${escapeHtml(title)}</h2><p class="language-picker-description">${escapeHtml(description)}</p><ul class="language-picker-list">${cards}</ul></section>${script}`;
 }
 
 function notFoundMarkup(ctx: BuildContext, locale: string): string {
@@ -753,10 +807,17 @@ function notFoundMarkup(ctx: BuildContext, locale: string): string {
 
 async function writeGeneratedPages(ctx: BuildContext) {
   const locale = ctx.config.defaultLocale || 'en';
+  const themeName = configuredThemeName(ctx.config);
+  const themeBase = `/assets/theme/${themeName}`;
+  const fingerprint = String(ctx.theme.__fingerprint || RENDERER_VERSION).slice(0, 12);
+  const languageScript = Array.isArray(ctx.theme.scripts)
+    ? ctx.theme.scripts.map(String).find(script => script.endsWith('language-picker.js'))
+    : undefined;
+  const languageScriptHref = languageScript ? themeAssetHref(themeBase, languageScript, fingerprint) : '';
   const pickerTitle = themeText(ctx, locale, 'languagePicker.title', 'Choose a site language');
   const pickerDescription = themeText(ctx, locale, 'languagePicker.description', 'Choose a language to open the matching site version.');
   const picker = generatedDocument('home', locale, pickerTitle, pickerDescription, '/');
-  await writeIfChanged(ctx, 'index.html', pageShell(ctx, picker, languagePickerMarkup(ctx, locale)));
+  await writeIfChanged(ctx, 'index.html', pageShell(ctx, picker, languagePickerMarkup(ctx, locale, languageScriptHref)));
   const notFoundTitle = themeText(ctx, locale, 'notFound.title', 'This page is not here');
   const notFoundDescription = themeText(ctx, locale, 'notFound.description', 'The address may have changed. Return home or continue through the guide.');
   const notFound = generatedDocument('not-found', locale, notFoundTitle, notFoundDescription, '/404.html', 'document');
@@ -883,14 +944,14 @@ function discoveryBoundaries() {
 
 function agentFunctionMap() {
   return [
-    { id: 'write-page', purpose: 'Write current site content for a page, guide, reference, or directory', paths: ['content/pages/<id>/<locale>.md'], commands: ['pageskill check', 'pageskill g'] },
-    { id: 'write-post', purpose: 'Record a dated Product Note for the history, Feed, archive, and search', paths: ['content/posts/<id>/<locale>.md'], commands: ['pageskill check', 'pageskill g'] },
-    { id: 'change-layout', purpose: 'Change page structure or visual language', paths: ['themes/<name>/theme.yml', 'themes/<name>/theme.ts', 'themes/<name>/style.css'], commands: ['pageskill catalog', 'pageskill g --profile'] },
-    { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, search, or deployment settings', paths: ['config.yml'], commands: ['pageskill check', 'pageskill g --profile'] },
-    { id: 'discover-extension', purpose: 'Read active theme Patterns, Blocks, collections, plugin switches, contexts, and resource dependencies', paths: ['themes/<name>/theme.yml', 'themes/<name>/theme.ts', 'config.yml'], commands: ['pageskill catalog', 'pageskill inspect block:<id>', 'pageskill inspect pattern:<id>', 'pageskill inspect collection:<id>', 'pageskill inspect plugin:<id>'] },
+    { id: 'write-page', purpose: 'Write current site content for a page, guide, reference, or directory', paths: ['content/pages/<id>/<locale>.md'], commands: ['pageskill g'] },
+    { id: 'write-post', purpose: 'Record a dated article for the history, Feed, archive, and search', paths: ['content/posts/<id>/<locale>.md'], commands: ['pageskill g'] },
+    { id: 'change-layout', purpose: 'Change page structure or visual language', paths: ['themes/<name>/theme.yml', 'themes/<name>/theme.ts', 'themes/<name>/style.css'], commands: ['pageskill g --profile'] },
+    { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, search, or deployment settings', paths: ['config.yml'], commands: ['pageskill g --profile'] },
+    { id: 'discover-extension', purpose: 'Read active theme Patterns, Blocks, collections, plugin switches, contexts, and resource dependencies', paths: ['themes/<name>/theme.yml', 'themes/<name>/theme.ts', 'config.yml'], commands: ['import { getCatalog, inspect } from "pageskill"'] },
     { id: 'preview', purpose: 'Open the local development server with a persistent incremental context', paths: ['src/bin/pageskill.mjs', 'src/compiler.ts'], commands: ['pageskill s'] },
     { id: 'deploy', purpose: 'Build and publish dist/ using the hosting target in config.yml', paths: ['config.yml', 'dist/'], commands: ['pageskill d --dry-run', 'pageskill d'] },
-    { id: 'dynamic-backend', purpose: 'Add runtime business logic, secrets, writes, or webhooks', paths: ['backend/handler.ts'], commands: ['pageskill g', 'pageskill check'] },
+    { id: 'dynamic-backend', purpose: 'Add runtime business logic, secrets, writes, or webhooks', paths: ['backend/handler.ts'], commands: ['pageskill g'] },
     { id: 'measure-build', purpose: 'Measure a temporary content-scale fixture and preserve the local machine profile', paths: ['scripts/benchmark.mjs', 'scripts/benchmark-compare.mjs'], commands: ['npm run bench -- 100', 'npm run bench:compare -- --sizes=100 --scenario=cold'] }
   ];
 }
@@ -927,7 +988,7 @@ function catalog(ctx: BuildContext) {
         ...settings,
         contentType: String(settings.contentType || 'page'),
         route: String(settings.route || '/:locale/:id/'),
-        pattern: String(settings.pattern || 'document'),
+        pattern: String(settings.pattern || defaultPattern(ctx.config, name, '', ctx.themeDefinition.patterns)),
         schema: settings.schema && typeof settings.schema === 'object' ? settings.schema : {},
         feed: settings.feed === true,
         archive: settings.archive === true
@@ -1520,7 +1581,7 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
       return {
         ...cached,
         ...identity,
-    pattern: String(cached.data?.pattern || config.content?.collections?.[identity.collection]?.pattern || 'document'),
+        pattern: String(cached.data?.pattern || defaultPattern(config, identity.collection, identity.id, themeDefinition.patterns)),
         excerpt: typeof cached.excerpt === 'string' ? cached.excerpt : cached.markdown,
         source,
         bodyLine: cached.bodyLine || 1,
@@ -1531,7 +1592,7 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
         blockNames: cached.blocks || []
       } as Document;
     }
-    return loadDocument(root, source, config, sourceParseCache);
+    return loadDocument(root, source, config, sourceParseCache, themeDefinition.patterns);
   });
   const docs = loadedDocs.filter((doc): doc is Document => doc !== null);
   profile.load = duration(loadStart);
@@ -1570,7 +1631,7 @@ export async function refreshContext(ctx: BuildContext, changedFiles: string[] =
     if (file !== contentRoot && !file.startsWith(`${contentRoot}${path.sep}`)) continue;
     const existing = ctx.docs.findIndex(doc => path.resolve(doc.source) === file);
     try {
-      const loaded = await loadDocument(ctx.root, file, ctx.config, ctx.sourceParseCache);
+      const loaded = await loadDocument(ctx.root, file, ctx.config, ctx.sourceParseCache, ctx.themeDefinition.patterns);
       if (existing >= 0) ctx.docs[existing] = loaded;
       else ctx.docs.push(loaded);
     } catch (error: any) {
@@ -1911,7 +1972,7 @@ export async function inspect(ctx: BuildContext, query = '') {
         ...settings,
         contentType: String(settings.contentType || 'page'),
         route: String(settings.route || '/:locale/:id/'),
-        pattern: String(settings.pattern || 'document'),
+        pattern: String(settings.pattern || defaultPattern(ctx.config, id, '', ctx.themeDefinition.patterns)),
         schema: settings.schema && typeof settings.schema === 'object' ? settings.schema : {},
         feed: settings.feed === true,
         archive: settings.archive === true

@@ -14,7 +14,7 @@ function renderContext() {
   return { escapeHtml, safeUrl, renderNodes: nodes => nodes.map(node => node.html).join('') };
 }
 
-test('learning-path is discoverable and renders six safe illustrated cards', async () => {
+test('learning-path is discoverable and renders six safe illustrated cards in order', async () => {
   const context = await createContext(repoRoot);
   const discovery = await inspect(context, 'block:learning-path');
   assert.deepEqual(discovery.item.schema, {});
@@ -45,6 +45,9 @@ Tune it.
   const html = theme.blocks['learning-path'].render(node, renderContext());
 
   assert.equal((html.match(/<article class="learning-path-card /g) || []).length, 6);
+  assert.deepEqual([...html.matchAll(/<article class="learning-path-card learning-path-card-([^\"]+)/g)].map(match => match[1]), [
+    'start', 'settings', 'markdown', 'first-content', 'cookies', 'customize'
+  ]);
   assert.equal((html.match(/<img /g) || []).length, 6);
   assert.deepEqual([...html.matchAll(/src="(\/assets\/learning\/[^"]+\.png)"/g)].map(match => match[1]), [
     '/assets/learning/start.png',
@@ -64,6 +67,7 @@ Tune it.
   assert.doesNotMatch(css, /url\s*\(/i);
   assert.doesNotMatch(css, /(?:^|[;{}])(?:left|top):/);
   assert.match(css, /\.learning-path-art\{[^}]*background:#fff[^}]*height:112px[^}]*width:112px/);
+  assert.match(css, /\.learning-path-card\{[^}]*background:#fff[^}]*border:1px solid var\(--line\)[^}]*border-radius:18px/);
   assert.match(css, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
   assert.match(css, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(css, /grid-template-columns:minmax\(0,1fr\)/);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile as nodeExecFile } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -119,10 +119,10 @@ function postsContract(config) {
   };
 }
 
-test('check rejects a Product Note without the required date', async () => {
+test('g rejects an article without the required date', async () => {
   const root = await contractFixture({ missingDate: true });
   try {
-    await assert.rejects(() => runCli(root, 'check'), error => {
+    await assert.rejects(() => runCli(root, 'g'), error => {
       assert.equal(error.code, 1);
       assert.match(String(error.stderr), /frontmatter field "date" is required/);
       assert.match(String(error.stderr), /content[\\/]posts[\\/]note[\\/]en\.md/);
@@ -133,7 +133,7 @@ test('check rejects a Product Note without the required date', async () => {
   }
 });
 
-test('dated Product Notes enter the archive and Feed in descending date order while pages need no date', async () => {
+test('dated articles enter the archive and Feed in descending date order while pages need no date', async () => {
   const root = await contractFixture({
     posts: {
       older: { title: 'Older note', date: '2026-08-08' },
@@ -155,24 +155,31 @@ test('dated Product Notes enter the archive and Feed in descending date order wh
   }
 });
 
-test('Starter posts contract matches the formal example and the new Product Note is one translation group', async () => {
+test('starter article contract matches the formal example and the localized learning path is complete', async () => {
   const formal = await createContext(repoRoot);
   const starterRoot = await mkdtemp(path.join(os.tmpdir(), 'pagekiln-starter-contract-'));
   try {
-    await runCli(starterRoot, 'init');
+    await cp(path.join(repoRoot, 'starter'), starterRoot, { recursive: true });
     const starter = await createContext(starterRoot);
     assert.deepEqual(postsContract(starter.config), postsContract(formal.config));
 
     const inspected = await inspect(formal, 'collection:posts');
     assert.equal(inspected.item.schema.date.required, true);
 
-    const notes = formal.docs.filter(doc => doc.collection === 'posts' && doc.id === 'prompt-skill-after-models');
-    assert.deepEqual(notes.map(doc => doc.locale).sort(), ['en', 'zh-sg', 'zh-tw']);
-    assert.ok(notes.every(doc => doc.data.cover === '/assets/product-note-cover.webp'));
+    const expectedPostIds = ['cookies', 'customize', 'deploy', 'first-post', 'markdown', 'site-settings', 'start', 'version-3-0'];
+    const postIds = [...new Set(formal.docs.filter(doc => doc.collection === 'posts').map(doc => doc.id))].sort();
+    assert.deepEqual(postIds, expectedPostIds);
+    for (const id of expectedPostIds) {
+      const articles = formal.docs.filter(doc => doc.collection === 'posts' && doc.id === id);
+      assert.deepEqual(articles.map(doc => doc.locale).sort(), ['en', 'zh-sg', 'zh-tw']);
+      assert.ok(articles.every(doc => doc.date));
+    }
+    assert.deepEqual([...new Set(formal.docs.filter(doc => doc.collection === 'pages').map(doc => doc.id))], ['about', 'home', 'privacy']);
     await build(formal);
     const home = await readFile(path.join(repoRoot, 'dist/zh-sg/index.html'), 'utf8');
-    assert.match(home, /product-note-cover\.webp/);
-    assert.equal((home.match(/模型越来越强之后/g) || []).length, 1);
+    assert.match(home, /文章|article/i);
+    await readFile(path.join(repoRoot, 'dist/assets/product-note-cover.webp'));
+    await assert.rejects(readFile(path.join(repoRoot, 'dist/zh-sg/posts/prompt-skill-after-models/index.html')), error => error?.code === 'ENOENT');
   } finally {
     await rm(starterRoot, { recursive: true, force: true });
   }

@@ -1,56 +1,64 @@
 # Pageskill Agent Guide
 
-Use the repository's source files and generated discovery output as the contract. Keep this file about safe work habits and boundaries; do not copy the complete project reference into it.
+Use the repository source and its generated discovery output as the contract. Keep this file about safe work habits, content ownership, and the supported workflow.
 
 ## Boundaries
 
-- `config.yml` owns site metadata, locales, navigation, collections, routes, schemas, privacy, search, images, and deployment settings. It is not a CSS, HTML, browser-script, or `unsafeHtml` injection surface.
-- `content/pages/<id>/<locale>.md` owns current effective site content; `docs` is a Pattern within this collection, not another collection. `content/posts/<id>/<locale>.md` owns dated Product Notes and requires `date`; `content/assets/` owns user assets.
-- `themes/<name>/theme.yml`, `i18n.yml`, `theme.ts`, `style.css`, and theme resources own Patterns, Blocks, shell markup, visual behavior, localized UI copy, icons, search, and Cookie presentation. `theme.yml` registers exported capability names and resources; Pattern/Block definitions and their schemas live in `theme.ts`. Optional plugins live under `plugins.<name>` and support `enabled: true|false`.
-- `backend/handler.ts` is the only source for dynamic business logic, secrets, writes, and webhooks.
+- `config.yml` owns site metadata, locales, navigation, collections, routes, schemas, privacy, search, images, and deployment settings. It stores data and switches; it is not a CSS, HTML, browser-script, or `unsafeHtml` injection surface.
+- `content/pages/<id>/<locale>.md` owns stable pages such as the home page, About, and the privacy policy. These pages do not need `date`; the pages collection supplies the default page pattern. Tutorials, blogs, product records, and release notes belong in `content/posts/<id>/<locale>.md`; every post has a required `date`, while its collection supplies the default article pattern. `content/assets/` owns user assets.
+- `themes/<name>/theme.yml`, `i18n.yml`, theme modules, styles, and theme resources own reusable Patterns, Blocks, shell markup, visual behavior, localized UI copy, icons, search, and Cookie presentation. Keep declarations aligned with the exported theme capability.
+- `backend/handler.ts` is the source for dynamic business logic, secrets, writes, and webhooks.
 - `src/` owns the compiler, CLI, libraries, Fetch router, and theme contract. Never hand-edit `src/runtime/`, `.pagekiln/`, or `dist/`; they are generated.
 
-## Product and development standards
+## The supported author workflow
 
-- Reuse first: run `pageskill catalog` and `pageskill inspect` to discover the available Pattern, Block, schema, plugin, and resource dependencies. Human authors can reuse the built-in capabilities without Agent participation; authors should assemble pages with Markdown, Frontmatter, and `config.yml` without hand-writing per-page HTML. Add a theme extension only when discovery shows a missing capability, and implement that capability once for reuse.
-- Performance and speed: static HTML is the default and ordinary pages do not require hydration. Declare browser and other resources only when a feature needs them; preserve incremental dependency tracking and fingerprinted asset caching. The default CSS optimization may inline only small Pattern/Block stylesheet dependencies: each original UTF-8 file must be at most 2,048 bytes and each page's inlined CSS text, including separator bytes, at most 4,096 bytes. Merge only adjacent inlineable dependencies, deduplicated in main stylesheet → Pattern → Block order; `theme.style` and global/preset bundles remain external cached assets. Files containing `url()`, `src()`, `image()`, `image-set()`, `@import`, `@charset`, `@namespace`, backslashes, `<`, or a UTF-8 BOM stay external conservatively. External CSS is compressed; inline CSS keeps its original source text. Top-level `theme.yml` `inlineStyles: false` disables only this CSS optimization; it does not promise a site-wide CSP policy. All fingerprinted CSS assets are still emitted, and CSS changes invalidate their cache. When a change affects build or resources, reproduce it with `--profile` or the benchmark fixture before describing its cost or speed; do not invent performance promises.
-- Page security: escape text and attributes, use `safeUrl` for links, and keep untrusted content out of `unsafeHtml`. Search, form, and URL values are data: insert them with `textContent` or other safe DOM APIs, never `innerHTML`, and never `eval`. Theme TypeScript and browser JavaScript are trusted application code, not a sandbox for untrusted input. Keep configuration as a non-code entry point. New dynamic endpoints must validate input; protected operations must implement identity, authorization, and CSRF controls as business logic; secrets are read only at runtime in `backend/handler.ts`. The framework and Fetch router do not provide those guarantees automatically.
-- Internationalization: keep the `zh-sg`, `zh-tw`, and `en` pages semantically synchronized. Put UI copy in the theme `i18n.yml`; verify `lang`, `hreflang`, language links, and fallback behavior, and do not mix languages within a localized page.
-- Frontend and backend separation: content, `config.yml`, themes, and generated output have distinct roles; `backend/handler.ts` owns APIs, secrets, writes, and webhooks. Static generation is the default rendering method: ordinary content is pre-generated, while interactive features call same-origin APIs. The public snapshot lives under `dist/public`; one Worker/Fetch service can serve those pages and same-origin APIs while keeping server code private. The same Worker/service handles `/api/*` first by default; declare other dynamic paths in `deployment.dynamicRoutes`, and never import backend during the build to discover routes or read secrets. Publish only the public snapshot to GitHub Pages or a CDN; Fetch deployments can keep the API from the same package. Workers use `assets.directory: public`, with `.assetsignore` as an additional exclusion layer. Keep `server/`, `_pagekiln/`, `.pagekiln/`, Worker files, and `*.toml` private, load backend code only in the server/worker runtime, and never write runtime secrets to build output. Static page bodies should not depend on dynamic requests to render. Give new dynamic behavior its own failure handling.
-- Compatibility and migration: preserve existing content, configuration, and theme contracts. Prefer new capabilities to be optional and keep existing behavior unchanged; when a breaking change is necessary, document migration steps and verify compatibility. The current CLI entry point is `pageskill`; use `PAGESKILL_SITE_ROOT` for the site root. Keep `.pagekiln/` cache/catalog/build-profile paths, `_pagekiln` internal output, and the existing Cookie consent storage key compatible even though the old terminal/CLI entry is removed. Avoid maintaining duplicate mechanisms indefinitely.
-- Release versioning: for every future major, minor, or patch release, keep the SemVer in `package.json` and `package-lock.json` synchronized, add the change to `CHANGELOG.md`, and add a dated localized Product Note under `content/posts/<id>/{en,zh-sg,zh-tw}.md` with migration steps and verification. Do not backfill a release note for 1.0.
+The public CLI has three daily commands:
 
-## Discover before changing
+- `pageskill g` automatically validates source content and generates the public snapshot in `dist/public`.
+- `pageskill s` keeps a local preview running. Press `Ctrl+C` to stop it; another terminal can continue editing and run `pageskill g` again.
+- `pageskill d` publishes the targets declared in `config.yml`.
 
-Run `pageskill catalog` for the active source-backed capability catalog. Use `pageskill inspect home` for content and explicit queries for local facts:
+For the source repository, `npm run g` compiles the runtime, theme, and backend before generating the repository site; run `npm link` once to expose `pageskill` to a copied site. A new site starts by copying `starter`, not by asking the CLI to initialize a project. Keep the source repository and the site directory conceptually separate.
+
+Do not teach or reintroduce retired command entry points. The beginner path should link to the dated articles under `content/posts/` and use only `g`, `s`, and `d`.
+
+## Discovery and reuse
+
+The source of truth is `config.yml`, `content/`, and `themes/`. After generation, advanced authors and Agent integrations may read `dist/.pagekiln/catalog.json` or `dist/.well-known/agent.json`. Internal integrations may call `getCatalog` and `inspect` to query source-backed capabilities. Keep that discovery layer out of the beginner steps unless it directly solves an author’s request.
+
+Reuse existing Patterns, Blocks, schemas, plugins, and resources before adding code. A person can reuse the theme directly without an Agent. When a capability is missing, implement one theme extension with a clear schema and resource declaration so later articles can reuse it; do not hand-write per-article HTML.
+
+## Content and localization
+
+Keep `zh-sg`, `zh-tw`, and `en` pages and articles semantically synchronized. Use the same id for page translations and the same post id and `date` for article translations, link tutorial steps through `/:locale/posts/<id>/`, and keep UI copy in the theme `i18n.yml`. Verify language links, `lang`, `hreflang`, fallback behavior, and both page and article routes after content changes.
+
+Use Markdown, Frontmatter, and short Block attributes for content. A Frontmatter `date` is required for every post, including tutorials and ordinary blog writing; stable pages such as About and privacy do not need it. Keep code examples minimal and runnable. Do not preserve retired guide or development page copies as redirect shadows when the content tree intentionally removes them.
+
+## Security and runtime separation
+
+Escape text and attributes, use `safeUrl` for links, and keep untrusted content out of `unsafeHtml`. Search, form, and URL values are data: insert them with text APIs or equivalent safe DOM APIs, never `innerHTML` or `eval`. Configuration is data, not a code entry point.
+
+Static page bodies are generated ahead of time. The public snapshot lives in `dist/public`; `backend/handler.ts` stays private and serves same-origin APIs at runtime. Do not import backend code during generation to discover routes or read secrets. New dynamic endpoints validate input and implement their own identity, authorization, CSRF, and failure handling.
+
+Reuse the existing `privacyConsent` plugin. Optional categories default to false, and trusted `gatedScripts` belong only in `theme.yml`. Protocol checking does not prove that a third-party script is safe. Withdrawing consent prevents later loads but cannot undo work a script already performed.
+
+## Change and release discipline
+
+Change content in Markdown, visual behavior in the theme, site settings in `config.yml`, and dynamic behavior in `backend/handler.ts`. Remove overlapping dead files when a replacement is complete; do not keep duplicate mechanisms for hypothetical consumers. Preserve `.pagekiln/` and `_pagekiln` compatibility and the existing Cookie consent storage key.
+
+Keep the SemVer in `package.json` and `package-lock.json` synchronized with `CHANGELOG.md`, `CHANGELOG.zh-CN.md`, and a dated localized post when a release changes. The current release remains 3.0.0; do not create a separate 4.0 note for this content reorganization. Keep migration steps and planned verification commands in the release post without claiming results that have not been observed.
+
+## Verification
+
+For a source or content change, use the smallest relevant checks and report actual results:
 
 ```text
-pageskill inspect page:<id>
-pageskill inspect block:<id>
-pageskill inspect pattern:<id>
-pageskill inspect collection:<id>
-pageskill inspect plugin:<id>
-```
-
-`config.yml`, `content/`, and `themes/` are the source of truth. `.pagekiln/catalog.json` and `.well-known/agent.json` are generated discovery; `AGENTS.md` is operational guidance, not a capability registry.
-
-## Change and verify
-
-Change content in Markdown, visual behavior in a copied theme, site settings in `config.yml`, and dynamic behavior in `backend/handler.ts`. If a CSS or browser ESM redesign replaces an implementation, delete overlapping dead files and handlers; do not preserve them for hypothetical agents or rely on cascade order.
-
-Keep `theme.yml` declarations aligned with the actual `theme.ts`/`theme.js` export. Keep localized UI messages in `i18n.yml`, not in `config.yml`. Do not perform a broad compiler refactor for a local feature; a future candidate is splitting `src/compiler.ts` by pipeline responsibility.
-
-Verify proportionally, normally with:
-
-```bash
-npm run compile-runtime
-npm run compile-theme
-npm run compile-backend
+npm run g
 npm test
-npm run build -- --profile
-npm run check
-npm run catalog
-npm run inspect -- home
+pageskill g
+pageskill s
+pageskill d --dry-run
+git diff --check
 ```
 
-Use `npm run bench -- 100` only for the temporary scale/resource and preview-live-update measurement. Run `git diff --check` when Git metadata is available. Never publish, push, deploy, or open a PR unless the user explicitly asks for that action.
+`pageskill s` is a persistent process, so stop it after interactive verification. Use `pageskill d --dry-run` for routine deployment verification; run `pageskill d` only when the user has asked for publishing and the configured target is ready. Do not invent build, deployment, accessibility, or browser results.

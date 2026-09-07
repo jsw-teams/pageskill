@@ -175,7 +175,7 @@ async function createFixture(tool, size, runRoot) {
 }
 
 const specs = {
-  pageskill: { command: nodeBinary, args: [path.join(projectRoot, 'src/bin/pageskill.mjs'), 'build'], env: root => ({ PAGESKILL_SITE_ROOT: root }), version: async () => JSON.parse(await fs.readFile(path.join(projectRoot, 'package.json'), 'utf8')).version, commandText: 'node src/bin/pageskill.mjs build' },
+  pageskill: { command: nodeBinary, args: [path.join(projectRoot, 'src/bin/pageskill.mjs'), 'g'], env: root => ({ PAGESKILL_SITE_ROOT: root }), version: async () => JSON.parse(await fs.readFile(path.join(projectRoot, 'package.json'), 'utf8')).version, commandText: 'node src/bin/pageskill.mjs g' },
   astro: { command: toolCommand('astro'), args: ['build'], version: () => packageVersion('astro'), commandText: 'astro build' },
   eleventy: { command: toolCommand('eleventy'), args: ['--input=content', '--output=_site'], version: () => packageVersion('@11ty/eleventy'), commandText: 'eleventy --input=content --output=_site' },
   vitepress: { command: toolCommand('vitepress'), args: ['build', 'docs'], version: () => packageVersion('vitepress'), commandText: 'vitepress build docs' },

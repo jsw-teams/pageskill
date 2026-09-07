@@ -1,48 +1,46 @@
 ---
-title: "Pageskill 3.0.0: closing the 2.0 chapter"
-description: "Pageskill 3.0.0 starts a reuse-first product line after the archived 2.0 stage, with a CLI migration, a public runtime boundary, safer browser behavior, and six illustrated guides."
+title: "3.0 update: a simpler entry"
+description: Pageskill 3.0 narrows the daily workflow to g, s, and d, and turns the beginner guide into practical articles.
 date: 2026-09-07
-pattern: blog
 ---
 
-# Pageskill 3.0.0: closing the 2.0 chapter
+# 3.0 update: a simpler entry
 
-Pageskill 3.0.0 marks the end of the 2.0 chapter and the start of a new product line. This note records the repository's source and content state on 2026-09-07. Publication to npm and deployment are separate operations from this record.
+Pageskill 3.0 still generates sites from Markdown, settings, and themes, but a first-time author only needs three entries: generate with `g`, preview with `s`, and publish with `d`. This is a content and workflow cleanup; the version remains 3.0.0.
 
-## 2.0 is now an archived chapter
+## What changed
 
-The 2.0 foundation remains the reason this transition is possible: Markdown and configuration compose with reusable theme capabilities, while the compiler produces inspectable pages and delivery artifacts. 3.0 carries that foundation forward and makes reuse, runtime boundaries, and the Pageskill name the visible center of the product.
+- `pageskill g` validates and generates the public snapshot.
+- `pageskill s` starts a persistent preview; press `Ctrl+C` to end it, while editing can continue in another terminal.
+- `pageskill d` runs the deployment targets in `config.yml`.
+- A new site starts by copying `starter` from the source repository instead of using an initialization wizard.
+- Tutorials, blogs, and product records share `content/posts/`; every article keeps its required `date`.
+- The current `content/pages/` tree keeps the three-language home page, About, and privacy policy; long guide and development directories leave the current tree while their history stays in Git and the changelog.
 
-## Rename and migration
+## Migrate existing content
 
-The public name moves from Pagekiln to Pageskill across the package metadata, CLI, site identity, theme copy, documentation, and repository links. The old `pagekiln` CLI entry and `src/bin/pagekiln.mjs` are removed. Change commands such as `pagekiln build` to `pageskill build`, and change `PAGEKILN_SITE_ROOT` to `PAGESKILL_SITE_ROOT`; the old environment variable is no longer a fallback.
+1. Keep a backup of the source repository and site, then make [Start your site in ten minutes](/en/posts/start/) the tutorial entry.
+2. Put your tutorials or blog notes in `content/posts/<id>/`, with equivalent `zh-sg`, `zh-tw`, and `en` files and a `date`.
+3. Point the Cookie policy to `/:locale/privacy/`, then use [Privacy policy](/en/privacy/) to add real contacts and services.
+4. In the site directory, run `pageskill g`, `pageskill s`, and `pageskill d --dry-run` to check generation, preview, and the publishing plan for your target; run `pageskill d` only when you are ready to publish.
 
-The migration is deliberately narrow. Generated `.pagekiln/` discovery and build-profile paths, `_pagekiln/` runtime paths, and the existing `pagekiln-consent` Cookie storage key remain compatible. Existing content, localized routes, and the default theme's `landing`, `document`, `docs`, and `blog` Patterns remain part of the contract.
+## Discovery for advanced authors
 
-Deployment configuration has one related migration: if `deployment.openaiSites.staticDirectory` is `dist`, change it to `deployment.staticDirectory: public`. The new `deployment.staticDirectory` setting is optional, and a safe custom directory from the old OpenAI Sites setting remains a fallback.
+After generation, read `dist/.pagekiln/catalog.json` or `dist/.well-known/agent.json` to see reusable theme and content capabilities. Agent integrations can call the internal `getCatalog` and `inspect` functions; beginners can write articles and settings without adding discovery files to their daily steps.
 
-## Reuse before extension
+Pages and same-origin APIs remain separate: public static files live in `dist/public`, while dynamic business logic, writes, and secrets stay in `backend/handler.ts`. `config.yml` holds data and switches; optional Cookie scripts start disabled, and trusted `gatedScripts` are managed only in `theme.yml`.
 
-The normal authoring path starts with `pageskill catalog` and `pageskill inspect`. These commands expose the source-backed Patterns, Blocks, schemas, plugins, contexts, and resource dependencies that a site can reuse. Authors keep composing pages with Markdown, Frontmatter, and `config.yml`; a theme extension is shared behavior for a missing capability, rather than HTML written separately for each page.
+This release also fixes the Cookie prompt and footer layout. The language chooser prefers a visitor's manual choice before falling back to browser language, while locale URLs stay unchanged.
 
-The new guide follows that model. Six localized steps cover [starting a site](/en/guide/start/), [site settings](/en/guide/site-settings/), [Markdown](/en/guide/markdown/), [first content](/en/guide/first-content/), [Cookie consent](/en/guide/cookies/), and [theme customization](/en/guide/customize/). The `learning-path` Block renders the sequence as reusable content, and six independent bear PNGs in `content/assets/learning/` give each step its own illustration.
+## A new learning path
 
-## Static pages and same-origin APIs share a boundary
+The home page uses six bear illustrations to guide readers through [Start](/en/posts/start/), [Site settings](/en/posts/site-settings/), [Markdown](/en/posts/markdown/), [First article](/en/posts/first-post/), [Cookie choices](/en/posts/cookies/), and [Change the style](/en/posts/customize/). Individuals can edit a theme directly; shared capabilities only need to be implemented once.
 
-Pages are still generated ahead of requests. The unified build places public pages and assets in `dist/public`. One same-origin Worker/Fetch runtime can sit in front of that output, route `/api/*` first, and add explicitly configured dynamic routes. `backend/handler.ts` remains the source for dynamic business logic and runtime secrets.
+## Verify before publishing
 
-The public side is `dist/public` by default. `server/`, `_pagekiln/`, `.pagekiln/`, Worker files, and deployment manifests stay outside that public boundary; the whole `dist/` bundle should not be exposed as a CDN root. The boundary limits static file exposure, but it does not automatically authenticate users, authorize protected actions, or provide CSRF controls; those remain application business logic.
+Use these steps to check your site:
 
-## CSS budgets and browser boundaries
-
-Pattern and Block stylesheets can be inlined only when each original UTF-8 file is at most 2,048 bytes, the page's combined inline CSS stays within 4,096 bytes, and the source has no unsafe relative-resource or style-element hazard. The main theme bundle remains an external fingerprinted asset, and unsafe or oversized styles stay external.
-
-Local search continues to build labels, highlights, snippets, and links with DOM APIs. 3.0 validates a result URL as HTTP(S) before constructing its same-origin anchor. Cookie consent keeps optional categories disabled until an affirmative choice, checks configured optional script sources for HTTP(S), and retains the compatible `pagekiln-consent` key. These checks narrow input handling; provider configuration, privacy obligations, and backend authorization still belong to the site and its application.
-
-## Verification
-
-Local verification for this source state passed: `npm run compile-runtime`, `npm run compile-theme`, `npm run compile-backend`, `npm run build -- --profile`, and `npm run check` completed for 39 documents; `npm test` passed 66/66, with 1,080 internal link and asset references checked. The 100-entry fixture's incremental build and preview synchronization passed, and the learning entry had no horizontal overflow at desktop or 390px mobile widths with all six images loading normally. VPS verification used the generated handler against a mocked Deno interface, while Pages verification used dry-run staging with ASSETS. No cloud or Deno deployment was performed, and npm was not published.
-
-## Compatibility and the next chapter
-
-This version changes the public product and CLI names while preserving the content model, localized pages, theme contracts, internal paths, and consent storage needed by existing sites. From this point, major, minor, and patch version labels are intended to stay aligned across package metadata, the changelog, and dated content records. The 3.0.0 note records the source state; it does not assert that a package was published or a site was deployed.
+1. Run `pageskill g` and confirm that the articles, language links, and public files generate successfully.
+2. Run `pageskill s`, open the local home page, an article, and Cookie settings, then press `Ctrl+C` to stop the preview.
+3. Run `pageskill d --dry-run` to check the target, public directory, and credential source; this does not upload anything.
+4. Run `pageskill d` only when you are ready to publish, then check the pages and same-origin API at the target URL.

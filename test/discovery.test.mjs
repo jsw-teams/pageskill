@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createContext, build, inspect } from '../src/compiler.ts';
+import { createContext, build, inspect, getCatalog } from '../src/compiler.ts';
 
 const execFile = promisify(nodeExecFile);
 const cli = fileURLToPath(new URL('../src/bin/pageskill.mjs', import.meta.url));
@@ -148,21 +148,16 @@ test('inspect returns a stable structured not-found error', async () => {
       assert.deepEqual(error.details.available, ['hero']);
       return true;
     });
-    await assert.rejects(runCli(root, 'inspect', 'pattern:missing'), error => {
-      const payload = JSON.parse(error.stderr);
-      assert.equal(payload.error.code, 'INSPECT_NOT_FOUND');
-      assert.equal(payload.error.query, 'pattern:missing');
-      return true;
-    });
+    await assert.rejects(runCli(root, 'inspect', 'pattern:missing'), error => error?.code === 1);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test('catalog works without dist and matches the build catalog capability facts', async () => {
+test('catalog API works without dist and matches the build catalog capability facts', async () => {
   const root = await fixture();
   try {
-    const sourceCatalog = JSON.parse((await runCli(root, 'catalog')).stdout);
+    const sourceCatalog = JSON.parse(JSON.stringify(getCatalog(await createContext(root))));
     await assert.rejects(fs.stat(path.join(root, 'dist')));
     assert.equal(sourceCatalog.theme.name, 'default');
     assert.deepEqual(sourceCatalog.patterns.map(item => item.name), ['document', 'blog']);
@@ -180,26 +175,24 @@ test('catalog works without dist and matches the build catalog capability facts'
   }
 });
 
-test('init copies a minimal declared-and-implemented starter that checks and builds', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pagekiln-init-'));
+test('starter fixtures can be copied directly and g validates and builds them', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pagekiln-starter-'));
   try {
-    const result = await runCli(root, 'init');
-    assert.match(result.stdout, /Initialized neutral Pageskill site/);
+    await fs.cp(path.join(repoRoot, 'starter'), root, { recursive: true });
     for (const relative of ['config.yml', 'content/pages/home/en.md', 'themes/default/theme.yml', 'themes/default/theme.js', 'themes/default/style.css']) {
       await fs.access(path.join(root, relative));
     }
     const ctx = await createContext(root);
     assert.deepEqual(Object.keys(ctx.themeDefinition.patterns).sort(), [...ctx.theme.patterns].sort());
     assert.deepEqual(Object.keys(ctx.themeDefinition.blocks).sort(), [...ctx.theme.blocks].sort());
-    await runCli(root, 'check');
-    await runCli(root, 'build');
-    assert.match(await fs.readFile(path.join(root, 'dist/en/index.html'), 'utf8'), /Write Markdown/);
+    await runCli(root, 'g');
+    assert.match(await fs.readFile(path.join(root, 'dist/en/index.html'), 'utf8'), /first article|Three commands/i);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test('pageskill is the only CLI entry and PAGESKILL_SITE_ROOT wins without a legacy fallback', async () => {
+test('pageskill exposes only g, s, and d and PAGESKILL_SITE_ROOT wins without a legacy fallback', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pagekiln-cli-root-'));
   const ignoredRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pagekiln-legacy-root-'));
   const cwdRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pageskill-cwd-root-'));
@@ -208,18 +201,30 @@ test('pageskill is the only CLI entry and PAGESKILL_SITE_ROOT wins without a leg
     const packageLock = JSON.parse(await fs.readFile(path.join(repoRoot, 'package-lock.json'), 'utf8'));
     assert.deepEqual(packageManifest.bin, { pageskill: 'src/bin/pageskill.mjs' });
     assert.deepEqual(packageLock.packages[''].bin, { pageskill: 'src/bin/pageskill.mjs' });
-    assert.equal((await runCliFromCwd(cwdRoot, {}, '--version')).stdout.trim(), packageManifest.version);
-    assert.equal((await runCliFromCwd(cwdRoot, {}, '-v')).stdout.trim(), packageManifest.version);
-
-    await runCli(root, 'init');
-    await runCliWithEnv(root, { PAGEKILN_SITE_ROOT: ignoredRoot }, 'build');
+    const help = await runCliFromCwd(cwdRoot, {}, '--help');
+    assert.match(help.stdout, new RegExp(`Pageskill ${packageManifest.version}`));
+    assert.match(help.stdout, /Usage: pageskill <g\|s\|d>/);
+    assert.match(help.stdout, /\bg\b/);
+    assert.match(help.stdout, /\bs\b/);
+    assert.match(help.stdout, /\bd\b/);
+    assert.doesNotMatch(help.stdout, /\b(?:build|check|catalog|inspect|init)\b/);
+    await runCliFromCwd(cwdRoot, {}, '-h');
+    const empty = await runCliFromCwd(cwdRoot, {});
+    assert.match(empty.stdout, /Usage: pageskill <g\|s\|d>/);
+    await assert.rejects(runCliFromCwd(cwdRoot, {}, '--version'), error => error?.code === 1);
+    await assert.rejects(runCliFromCwd(cwdRoot, {}, '-v'), error => error?.code === 1);
+    for (const legacy of ['build', 'check', 'catalog', 'inspect', 'init']) {
+      await assert.rejects(runCli(root, legacy), error => error?.code === 1);
+      await assert.rejects(fs.access(path.join(root, 'dist')), error => error?.code === 'ENOENT');
+    }
+    await fs.cp(path.join(repoRoot, 'starter'), root, { recursive: true });
+    await assert.rejects(runCli(root, 'g', '--unknown'), error => error?.code === 1);
+    await assert.rejects(fs.access(path.join(root, 'dist')), error => error?.code === 'ENOENT');
+    const generated = await runCliWithEnv(root, { PAGEKILN_SITE_ROOT: ignoredRoot }, 'g', '--profile');
+    assert.match(generated.stdout, /"documents"/);
     await fs.access(path.join(root, 'dist/en/index.html'));
     await assert.rejects(fs.access(path.join(ignoredRoot, 'dist')), error => error?.code === 'ENOENT');
     await assert.rejects(fs.access(legacyCli), error => error?.code === 'ENOENT');
-
-    await runCliFromCwd(cwdRoot, { PAGEKILN_SITE_ROOT: ignoredRoot }, 'init');
-    await fs.access(path.join(cwdRoot, 'config.yml'));
-    await assert.rejects(fs.access(path.join(ignoredRoot, 'config.yml')), error => error?.code === 'ENOENT');
   } finally {
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(ignoredRoot, { recursive: true, force: true });

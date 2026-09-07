@@ -1,69 +1,52 @@
 ---
-title: 重用結構，寫出可發佈的網站
-description: 先發現 Pattern、Block 與 Schema，再用 Markdown、Frontmatter 和設定組合頁面；缺少能力時只需擴充主題一次。
+title: 寫下第一篇文章，搭好你的網站
+description: 用三個指令預覽、產生並發佈一個由文章組成的網站。
 pattern: landing
 ---
 
 :::hero{tone="brand" align="left"}
-*Pageskill 可重用內容編譯器*
+*Pageskill 3.0 · 用文章搭站*
 
-# 發現一次，重用到每個頁面。
+# 寫下第一篇文章，搭好你的網站
 
-人可以直接重用現成的 Pattern、Block 與 Schema，不需要 Agent 參與；Agent 也可先用 `pageskill catalog` 和 `pageskill inspect` 查看能力與資源，再用 Markdown、Frontmatter 和 `config.yml` 組合頁面。Agent 和頁面作者都不必逐頁手寫 HTML；只有能力目錄沒有涵蓋需求時，才在主題中實作一次可重用擴充。
+Pageskill 把 Markdown 文章、網站設定和樣式組合成一個網站。你可以先複製 `starter`，再依照自己的內容修改；需要動態功能時，頁面和同源 API 仍然各自保持清楚的邊界。
 
-[依重用流程開始](/zh-tw/guide/) [查看擴充邊界](/zh-tw/development/)
+[十分鐘開始](/zh-tw/posts/start/) [查看全部教學](/zh-tw/posts/)
 :::
 
-:::compiler-board
-### 先發現能力
-從 catalog 和 inspect 讀取主題提供的 Pattern、Block、Schema、外掛和資源依賴，先確認既有能力再開始寫頁面。
+:::learning-path
+### [開始](/zh-tw/posts/start/)
+從原始碼儲存庫安裝 Pageskill，複製 `starter`，產生第一個首頁。
 
-### 再組合內容
-選擇合適的 Pattern 和 Block，填寫 Markdown、Frontmatter 與設定資料，讓編譯器產生多語言靜態頁面；同一結構可以在多個頁面重用。
+### [網站設定](/zh-tw/posts/site-settings/)
+修改網站名稱、語言和導覽；設定檔只放資料，不放程式碼。
 
-### 只擴充缺口
-發現沒有可重用能力時，複製主題並實作一次 Pattern 或 Block。擴充完成後回到 catalog、inspect、check 和 build 流程。
+### [Markdown](/zh-tw/posts/markdown/)
+用標題、段落、清單和程式碼圍欄寫文章，先做出最小頁面。
+
+### [第一篇文章](/zh-tw/posts/first-post/)
+在 `content/posts/` 新增帶日期的文章，產生後從文章列表開啟它。
+
+### [Cookie 選擇](/zh-tw/posts/cookies/)
+沿用現成的 Cookie 外掛，可選腳本預設關閉，訪客同意後才載入。
+
+### [更換樣式](/zh-tw/posts/customize/)
+先重用主題已有能力；需要新結構時實作一次，讓之後的頁面繼續使用。
 :::
 
-:::feature-grid{columns="3"}
-### 不必逐頁 HTML
-頁面作者寫 Markdown、Frontmatter 和設定；Pattern 決定骨架，Block 提供可重用段落，Schema Data 保存結構化輸入。
+## 只要記住三個指令
 
-### 靜態交付
-編譯器產生多語言 HTML、資源、搜尋和部署檔案。普通頁面預設不需要 hydration；需要瀏覽器行為時才宣告對應資源。
+| 指令 | 用途 |
+| --- | --- |
+| `pageskill g` | 自動驗證並產生公開靜態檔案到 `dist/public`。 |
+| `pageskill s` | 啟動持續預覽；按 `Ctrl+C` 停止，也可以在另一個終端機繼續編輯。 |
+| `pageskill d` | 依照 `config.yml` 中的目標發佈網站。 |
 
-### 目前與歷史
-`content/pages/` 保存目前有效內容，`content/posts/` 保存帶必填日期的已發生變化；`docs` 仍是 pages 中的呈現 Pattern。
+:::post-list{limit="6"}
 :::
 
-## 從發現到發佈
+:::cta{href="/zh-tw/posts/start/"}
+## 現在就開始
 
-| 步驟 | 做法 | 結果 |
-| --- | --- | --- |
-| 發現 | 執行 `pageskill catalog`，再用 `pageskill inspect pattern:<id>`、`block:<id>` 或 `collection:<id>` 查詢 | 確認可重用的 Pattern、Block 與 Schema |
-| 組合 | 選擇結構並填寫 Markdown、Frontmatter 與 `config.yml` | 不寫逐頁 HTML 即得到頁面原始檔 |
-| 驗證 | 執行 `pageskill check` 和 `pageskill g --profile` | 檢查 schema、路由、翻譯與靜態輸出 |
-| 擴充 | 只有缺少能力時在複製的主題中實作一次，並重新 catalog/inspect | 新能力可被後續頁面重用 |
-
-## 內容邊界仍然明確
-
-| 需求 | 檔案入口 | 結果 |
-| --- | --- | --- |
-| 說明 Pageskill 現在如何運作 | `content/pages/<id>/<locale>.md` | 目前狀態頁面與語言路由 |
-| 記錄某一天為何發生變更 | `content/posts/<id>/<locale>.md` | 有日期的產品筆記、彙整、Feed 和搜尋條目 |
-| 以文件形式呈現目前頁面 | `content/pages/<id>/<locale>.md` 並使用 `pattern: docs` | docs 形式的 `pages` 頁面，不新增 collection |
-| 調整結構與視覺 | `themes/default/theme.ts`、`theme.yml`、`style.css` | 主題級 Pattern、Block 和樣式 |
-| 修改網站資訊或能力開關 | `config.yml` | 網站元資料、語言、路由和功能設定 |
-
-## 預設就能重用的能力
-
-Markdown 表格、摘要邊界、三語言回退、文章封面、網站地圖、RSS 訂閱清單、靜態搜尋、404、OG 圖和部署檔案都屬於現成能力。需要客製時，先看主題目錄和能力目錄，再決定是否要寫程式。
-
-:::post-list{limit="3"}
-:::
-
-:::cta{href="/zh-tw/guide/"}
-## 先重用訪客現在需要的結構
-
-先 catalog/inspect，再選擇 Pattern、Block 和 Schema，填寫 `content/pages/` 的 Markdown；要為已完成變更記錄原因和結果時，放進 `content/posts/`。執行檢查和建置後，再讓主題決定它如何呈現。
+先完成 [十分鐘開始你的網站](/zh-tw/posts/start/)，再依序閱讀網站設定、Markdown 和第一篇文章。每篇教學都提供最小範例、成功結果和一個常見問題。
 :::
