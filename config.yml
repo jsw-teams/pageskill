@@ -5,13 +5,13 @@ activeLocales:
   - zh-tw
   - en
 siteName:
-  zh-sg: Pagekiln
-  zh-tw: Pagekiln
-  en: Pagekiln
+  zh-sg: Pageskill
+  zh-tw: Pageskill
+  en: Pageskill
 description:
-  zh-sg: 把 Markdown、受约束 Block 与站点配置编译成可检查静态产物。
-  zh-tw: 把 Markdown、受約束 Block 與網站設定編譯成可檢查靜態產物。
-  en: Compile Markdown, constrained Blocks, and site config into inspectable static output.
+  zh-sg: 发现并复用 Pattern、Block 与 Schema，用 Markdown 和配置编译可检查的多语言网站，并按需连接同源 API。
+  zh-tw: 發現並重用 Pattern、Block 與 Schema，用 Markdown 和設定編譯可檢查的多語言網站，並按需連接同源 API。
+  en: Discover and reuse Patterns, Blocks, and schemas; compose inspectable localized sites from Markdown and configuration, with same-origin APIs when needed.
 author:
   zh-sg: Site Owner
   zh-tw: Site Owner
@@ -36,10 +36,10 @@ theme:
 plugins:
   search:
     enabled: true
-    provider: Pagekiln
+    provider: Pageskill
   privacyConsent:
     enabled: true
-    provider: Pagekiln
+    provider: Pageskill
 
 icons:
   favicon: /favicon.ico
@@ -52,11 +52,11 @@ icons:
 
 branding:
   showAttribution: false
-  attributionUrl: https://github.com/jsw-teams/pagekiln
+  attributionUrl: https://github.com/jsw-teams/pageskill
   attribution:
-    zh-sg: Pagekiln by JSW Teams
-    zh-tw: Pagekiln by JSW Teams
-    en: Pagekiln by JSW Teams
+    zh-sg: Pageskill by JSW Teams
+    zh-tw: Pageskill by JSW Teams
+    en: Pageskill by JSW Teams
 
 pwa:
   backgroundColor: "#f3f0e8"
@@ -87,8 +87,8 @@ robots:
         - /
 
 llms:
-  title: Pagekiln
-  description: The static-first website compiler for content that scales.
+  title: Pageskill
+  description: A reuse-first static website compiler where people can directly discover and compose localized sites from reusable Patterns, Blocks, schemas, Markdown, and configuration; Agents are optional and per-page HTML is not required.
   full:
     enabled: true
     shardSize: 250
@@ -106,14 +106,14 @@ archive:
   collection: posts
 
 feed:
-  title: Pagekiln
+  title: Pageskill
   limit: 20
   collection: posts
 
 privacy:
   controller:
     name: Site Owner
-    contactUrl: https://github.com/jsw-teams/pagekiln
+    contactUrl: https://github.com/jsw-teams/pageskill
     supervisoryAuthorityUrl: https://edpb.europa.eu/about-edpb/about-edpb_en
   cookieConsent:
     enabled: true

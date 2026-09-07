@@ -44,7 +44,7 @@ const quick = args.includes('--quick');
 const incrementalOnly = args.includes('--incremental');
 const logicalCpus = os.cpus().length;
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const devCli = path.join(projectRoot, 'src', 'bin', 'pagekiln.mjs');
+const devCli = path.join(projectRoot, 'src', 'bin', 'pageskill.mjs');
 const machine = { node: process.version, platform: process.platform, release: os.release(), arch: process.arch, cpu: os.cpus()[0]?.model || 'unknown', logicalCpus, totalMemoryGiB: round(os.totalmem() / 1024 / 1024 / 1024) };
 
 function round(value) { return Math.round(value * 100) / 100; }
@@ -52,7 +52,7 @@ function siteOutputs(profile) { return Math.max(0, Number(profile.changedOutputs
 function rssMiB() { return process.memoryUsage().rss / 1024 / 1024; }
 
 async function windowsGpuProbe() {
-  if (process.platform !== 'win32') return { status: 'unsupported', sampleCount: 0, averagePercent: null, peakPercent: null, note: 'GPU Engine counters are only available on Windows; the Pagekiln compiler does not issue GPU work.' };
+  if (process.platform !== 'win32') return { status: 'unsupported', sampleCount: 0, averagePercent: null, peakPercent: null, note: 'GPU Engine counters are only available on Windows; the Pageskill compiler does not issue GPU work.' };
   const script = '$pidValue=$env:PAGEKILN_GPU_PID; $counter="\\GPU Engine(pid_"+$pidValue+"_*)\\Utilization Percentage"; try { $values=@((Get-Counter -Counter $counter -SampleInterval 1 -MaxSamples 1 -ErrorAction Stop).CounterSamples | ForEach-Object { [double]$_.CookedValue }); if($values.Count){ [pscustomobject]@{sampleCount=$values.Count;averagePercent=(($values | Measure-Object -Average).Average);peakPercent=(($values | Measure-Object -Maximum).Maximum)} | ConvertTo-Json -Compress } else { "{}" } } catch { "{}" }';
   try {
     const result = await new Promise((resolve, reject) => {
@@ -131,7 +131,7 @@ function waitForLiveReload(url, timeoutMs = 8000) {
 async function previewLiveUpdate(root, file) {
   const port = await freePort();
   const url = `http://127.0.0.1:${port}/en/`;
-  const child = spawn(process.execPath, [devCli, 's', String(port)], { cwd: projectRoot, env: { ...process.env, PAGEKILN_SITE_ROOT: root }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [devCli, 's', String(port)], { cwd: projectRoot, env: { ...process.env, PAGESKILL_SITE_ROOT: root }, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.resume();
   child.stderr.resume();
   try {
@@ -174,7 +174,7 @@ function benchmarkDetails(count, documentsCold) {
     scenarios: {
       coldPublish: 'createContext + build a new site from an empty output directory',
       noChangePreview: 'reuse the completed BuildContext with no input change; models an unchanged dev refresh',
-      previewLiveUpdate: 'start pagekiln s, edit one page, wait for its SSE reload event, and verify the served route contains the new content',
+      previewLiveUpdate: 'start pageskill s, edit one page, wait for its SSE reload event, and verify the served route contains the new content',
       editOnePost: 'edit one translated post, refresh that path, and rebuild dependent outputs',
       publishOnePost: 'add one new translated post, update archive/feed/search/home outputs, and rebuild',
       deleteOnePost: 'remove one complete translated post and clean stale route/output files',
@@ -253,10 +253,10 @@ theme:
 plugins:
   search:
     enabled: true
-    provider: Pagekiln
+    provider: Pageskill
   privacyConsent:
     enabled: true
-    provider: Pagekiln
+    provider: Pageskill
 content:
   collections:
     pages:

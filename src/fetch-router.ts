@@ -1,3 +1,5 @@
+import { classifyPublicUrl, publicPathFromUrl } from './lib/static-security.ts';
+
 export type RouteContext<Environment = Record<string, unknown>, ExecutionContext = unknown> = {
   request: Request;
   url: URL;
@@ -79,28 +81,40 @@ export type SiteFetchOptions<Environment = Record<string, unknown>, ExecutionCon
   assets?: (request: Request, env: Environment) => Response | Promise<Response>;
 };
 
-function assetRequest(request: Request, defaultLocale: string): Request {
+function publicAssetRequest(request: Request, staticDirectory = ''): Request | null {
+  const pathname = publicPathFromUrl(request.url, { staticDirectory });
+  if (!pathname) return null;
   const url = new URL(request.url);
-  if (url.pathname === '/') url.pathname = '/index.html';
-  else if (url.pathname.endsWith('/')) url.pathname += 'index.html';
+  url.pathname = pathname;
   return new Request(url, request);
 }
 
+function assetRequest(request: Request, defaultLocale: string, staticDirectory = ''): Request {
+  const publicRequest = publicAssetRequest(request, staticDirectory) || request;
+  const url = new URL(publicRequest.url);
+  if (url.pathname === '/') url.pathname = '/index.html';
+  else if (url.pathname.endsWith('/')) url.pathname += 'index.html';
+  return new Request(url, publicRequest);
+}
+
 function assetRequests(request: Request, defaultLocale: string, staticDirectory = ''): Request[] {
-  const standard = assetRequest(request, defaultLocale);
-  const original = new Request(request);
+  const publicRequest = publicAssetRequest(request, staticDirectory) || request;
+  const standard = assetRequest(publicRequest, defaultLocale, staticDirectory);
+  const original = new Request(publicRequest);
   // Pages' ASSETS binding owns directory-index and trailing-slash resolution.
   // Ask for the published URL first; translating `/` to `index.html` before
   // the binding sees it can turn Pages' canonical 308 into a self-redirect.
   const candidates = [original, standard];
   const normalizedStaticDirectory = String(staticDirectory).replace(/^\/+|\/+$/g, '');
-  if (normalizedStaticDirectory && !standard.url.includes(`/${normalizedStaticDirectory}/`)) {
+  const standardPathname = new URL(standard.url).pathname;
+  const staticPrefix = normalizedStaticDirectory ? `/${normalizedStaticDirectory}/` : '';
+  if (normalizedStaticDirectory && !standardPathname.startsWith(staticPrefix)) {
     const staticUrl = new URL(standard.url);
     staticUrl.pathname = `/${normalizedStaticDirectory}${staticUrl.pathname}`;
     candidates.push(new Request(staticUrl, request));
   }
   const archivedUrl = new URL(standard.url);
-  if (!archivedUrl.pathname.startsWith('/dist/')) archivedUrl.pathname = `/dist${archivedUrl.pathname}`;
+  if (archivedUrl.pathname !== '/dist' && !archivedUrl.pathname.startsWith('/dist/')) archivedUrl.pathname = `/dist${archivedUrl.pathname}`;
   candidates.push(new Request(archivedUrl, request));
   const seen = new Set<string>();
   return candidates.filter(candidate => {
@@ -131,8 +145,27 @@ export function createSiteFetchHandler<Environment = Record<string, unknown>, Ex
   return async (request: Request, env: Environment, executionContext: ExecutionContext): Promise<Response> => {
     const dynamic = options.router ? await options.router.match(request, env, executionContext) : null;
     if (dynamic) return dynamic;
+    const method = request.method.toUpperCase();
+    const security = classifyPublicUrl(request.url, { staticDirectory: options.staticDirectory });
+    if (!security.ok) {
+      const status = security.reason === 'invalid' ? 400 : 404;
+      const response = new Response(status === 400 ? 'Bad request' : 'Not found', {
+        status,
+        headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }
+      });
+      return method === 'HEAD' ? new Response(null, response) : response;
+    }
+    if (method !== 'GET' && method !== 'HEAD') {
+      return new Response('Method not allowed', {
+        status: 405,
+        headers: { allow: 'GET, HEAD', 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }
+      });
+    }
     const explicitAssets = options.assets;
-    if (explicitAssets) return explicitAssets(assetRequest(request, defaultLocale), env);
+    if (explicitAssets) {
+      const response = await explicitAssets(assetRequest(request, defaultLocale, options.staticDirectory), env);
+      return method === 'HEAD' ? new Response(null, response) : response;
+    }
     const binding = (env as Record<string, unknown> | undefined)?.ASSETS as AssetBinding | undefined;
     if (binding && typeof binding.fetch === 'function') {
       let response = new Response('Not found', { status: 404 });
@@ -142,10 +175,11 @@ export function createSiteFetchHandler<Environment = Record<string, unknown>, Ex
           response = new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
           continue;
         }
-        if (response.status !== 404) return response;
+        if (response.status !== 404) return method === 'HEAD' ? new Response(null, response) : response;
       }
-      return response;
+      return method === 'HEAD' ? new Response(null, response) : response;
     }
-    return new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+    const response = new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+    return method === 'HEAD' ? new Response(null, response) : response;
   };
 }

@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { deploy } from '../src/deploy.mjs';
 
 test('deployment reads the target and VPS destination from config.yml data', async () => {
@@ -94,25 +95,128 @@ test('deployment can resolve multiple targets from config.yml in order', async (
 });
 
 test('OpenAI Sites handoff validates the dist entry and static root', async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'pagekiln-deploy-sites-'));
+    const root = await mkdtemp(path.join(os.tmpdir(), 'pagekiln-deploy-sites-'));
   try {
     const out = path.join(root, 'dist');
     await mkdir(path.join(out, 'server'), { recursive: true });
+    await mkdir(path.join(out, 'public'), { recursive: true });
     await mkdir(path.join(root, '.openai'), { recursive: true });
     await writeFile(path.join(out, 'server/index.js'), 'export default {}');
-    await writeFile(path.join(out, 'index.html'), '<!doctype html>');
+    await writeFile(path.join(out, 'public/index.html'), '<!doctype html>');
     await writeFile(path.join(root, '.openai/hosting.json'), '{"project_id":"appgprj_test"}');
     const result = await deploy(root, {
-      config: { deployment: { targets: ['openai-sites'], openaiSites: { metadata: '.openai/hosting.json', staticDirectory: 'dist' } } },
+      config: { deployment: { targets: ['openai-sites'], openaiSites: { metadata: '.openai/hosting.json', staticDirectory: 'public' } } },
       out
     }, ['--dry-run']);
     assert.equal(result.results[0].status, 'handoff-required');
-    assert.equal(result.results[0].staticDirectory, 'dist');
-    await rm(path.join(out, 'index.html'));
+    assert.equal(result.results[0].staticDirectory, 'public');
+    await rm(path.join(out, 'public/index.html'));
+    await assert.rejects(() => deploy(root, {
+      config: { deployment: { targets: ['openai-sites'], openaiSites: { metadata: '.openai/hosting.json', staticDirectory: 'public' } } },
+      out
+    }, ['--dry-run']), /public\/index\.html/);
     await assert.rejects(() => deploy(root, {
       config: { deployment: { targets: ['openai-sites'], openaiSites: { metadata: '.openai/hosting.json', staticDirectory: 'dist' } } },
       out
-    }, ['--dry-run']), /dist\/index\.html/);
+    }, ['--dry-run']), /cannot be "dist"/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Cloudflare Pages dry-run stages public files and keeps the Worker runtime under _worker.js', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'pagekiln-deploy-pages-stage-'));
+  try {
+    const out = path.join(root, 'dist');
+    await mkdir(path.join(out, 'public', 'assets'), { recursive: true });
+    await mkdir(path.join(out, 'server'), { recursive: true });
+    await mkdir(path.join(out, '_pagekiln', 'backend'), { recursive: true });
+    await writeFile(path.join(out, 'public', 'index.html'), '<!doctype html>');
+    await writeFile(path.join(out, 'public', 'assets', 'app.js'), 'window.app = true;');
+    await mkdir(path.join(out, 'public', '.well-known'), { recursive: true });
+    await writeFile(path.join(out, 'public', '.well-known', 'agent.json'), '{}');
+    await writeFile(path.join(out, 'server', 'index.js'), 'private server');
+    await mkdir(path.join(out, '_pagekiln', 'lib'), { recursive: true });
+    const fetchRouterSource = await readFile(path.join(process.cwd(), 'src', 'runtime', 'fetch-router.js'), 'utf8');
+    const securitySource = await readFile(path.join(process.cwd(), 'src', 'runtime', 'lib', 'static-security.js'), 'utf8');
+    await writeFile(path.join(out, '_pagekiln', 'fetch-router.js'), fetchRouterSource);
+    await writeFile(path.join(out, '_pagekiln', 'lib', 'static-security.js'), securitySource);
+    await writeFile(path.join(out, '_pagekiln', 'backend', 'handler.js'), `import { Router } from '../fetch-router.js';
+const router = new Router();
+router.get('/api/health', () => new Response('ok'));
+export { router };
+`);
+    await writeFile(path.join(root, 'package.json'), '{"type":"module"}');
+    await writeFile(path.join(out, '_worker.js'), `import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';
+import { router } from './_pagekiln/backend/handler.js';
+const fetchHandler = createSiteFetchHandler({ router, defaultLocale: 'en' });
+export { fetchHandler };
+export default { fetch: fetchHandler };
+`);
+    const result = await deploy(root, {
+      config: { deployment: { targets: ['cloudflare-pages'], cloudflare: { pages: { project: 'pagekiln-site' } } } },
+      out
+    }, ['--dry-run']);
+    const stage = result.results[0].args[2];
+    assert.equal(result.results[0].source, path.relative(root, stage).replaceAll('\\', '/'));
+    assert.equal(await readFile(path.join(stage, 'index.html'), 'utf8'), '<!doctype html>');
+    assert.equal(await readFile(path.join(stage, 'assets', 'app.js'), 'utf8'), 'window.app = true;');
+    assert.equal(await readFile(path.join(stage, '.well-known', 'agent.json'), 'utf8'), '{}');
+    assert.match(await readFile(path.join(stage, '_worker.js', 'index.js'), 'utf8'), /fetch-router/);
+    assert.match(await readFile(path.join(stage, '_worker.js', '_pagekiln', 'backend', 'handler.js'), 'utf8'), /api\/health/);
+    assert.match(await readFile(path.join(stage, '_worker.js', '_pagekiln', 'fetch-router.js'), 'utf8'), /createSiteFetchHandler/);
+    assert.match(await readFile(path.join(stage, '_worker.js', '_pagekiln', 'lib', 'static-security.js'), 'utf8'), /publicPathFromUrl/);
+    const worker = await import(`${pathToFileURL(path.join(stage, '_worker.js', 'index.js')).href}?test=${Date.now()}`);
+    const assets = {
+      async fetch(request) {
+        const pathname = new URL(request.url).pathname;
+        if (pathname === '/' || pathname === '/index.html') return new Response('<!doctype html>', { status: 200, headers: { 'content-type': 'text/html' } });
+        return new Response('Not found', { status: 404 });
+      }
+    };
+    const page = await worker.default.fetch(new Request('https://example.test/'), { ASSETS: assets });
+    assert.equal(page.status, 200);
+    assert.equal(await page.text(), '<!doctype html>');
+    const health = await worker.default.fetch(new Request('https://example.test/api/health'), { ASSETS: assets });
+    assert.equal(health.status, 200);
+    assert.equal(await health.text(), 'ok');
+    await assert.rejects(stat(path.join(stage, 'server')));
+    await assert.rejects(stat(path.join(stage, '_pagekiln')));
+    await assert.rejects(stat(path.join(stage, '_worker.js', 'cloudflare-worker.mjs')));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('GitHub Pages uses a public snapshot for mixed builds and rejects a mixed root without one', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'pagekiln-deploy-github-static-'));
+  try {
+    const out = path.join(root, 'dist');
+    await mkdir(path.join(out, 'public'), { recursive: true });
+    await mkdir(path.join(out, 'server'), { recursive: true });
+    await writeFile(path.join(out, 'public', 'index.html'), '<!doctype html>');
+    await writeFile(path.join(out, 'server', 'index.js'), 'private server');
+    await writeFile(path.join(out, '_worker.js'), 'private worker');
+    const mixed = await deploy(root, {
+      config: { deployment: { targets: ['github-pages'], github: { remote: 'origin', branch: 'gh-pages' } } },
+      out
+    }, ['--dry-run']);
+    assert.equal(mixed.results[0].args[3], 'dist/public');
+    assert.equal(mixed.results[0].source, 'dist/public');
+
+    await mkdir(path.join(out, 'dist', 'public'), { recursive: true });
+    await writeFile(path.join(out, 'dist', 'public', 'index.html'), '<!doctype html>');
+    const exact = await deploy(root, {
+      config: { deployment: { targets: ['github-pages'], staticDirectory: 'dist/public', github: { remote: 'origin', branch: 'gh-pages' } } },
+      out
+    }, ['--dry-run']);
+    assert.equal(exact.results[0].source, 'dist/dist/public');
+
+    await rm(path.join(out, 'public'), { recursive: true, force: true });
+    await assert.rejects(() => deploy(root, {
+      config: { deployment: { targets: ['github-pages'], github: { remote: 'origin', branch: 'gh-pages' } } },
+      out
+    }, ['--dry-run']), /pure static dist/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

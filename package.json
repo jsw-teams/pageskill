@@ -1,12 +1,12 @@
 {
-  "name": "pagekiln",
-  "version": "2.0.0",
-  "description": "Pagekiln 2.0: a TypeScript, static-first, schema-driven website compiler.",
+  "name": "pageskill",
+  "version": "3.0.0",
+  "description": "Pageskill: discover reusable Patterns, Blocks, and schemas, then compile localized websites with static pages and same-origin APIs from Markdown and configuration.",
   "license": "MIT",
   "type": "module",
   "packageManager": "npm@10.9.8",
   "bin": {
-    "pagekiln": "src/bin/pagekiln.mjs"
+    "pageskill": "src/bin/pageskill.mjs"
   },
   "exports": {
     ".": "./src/runtime/compiler.js",
@@ -17,6 +17,8 @@
     "AGENTS.md",
     "LICENSE",
     "NOTICE",
+    "CHANGELOG.md",
+    "CHANGELOG.zh-CN.md",
     "README.md",
     "README.en.md",
     "config.yml",
@@ -36,32 +38,32 @@
     "typescript",
     "incremental-build"
   ],
-  "homepage": "https://github.com/jsw-teams/pagekiln#readme",
+  "homepage": "https://github.com/jsw-teams/pageskill#readme",
   "bugs": {
-    "url": "https://github.com/jsw-teams/pagekiln/issues"
+    "url": "https://github.com/jsw-teams/pageskill/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jsw-teams/pagekiln.git"
+    "url": "git+https://github.com/jsw-teams/pageskill.git"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "prebuild": "npm run compile-runtime && npm run compile-theme && npm run compile-backend",
-    "build": "node src/bin/pagekiln.mjs build",
+    "build": "node src/bin/pageskill.mjs build",
     "preg": "npm run compile-runtime && npm run compile-theme && npm run compile-backend",
-    "g": "node src/bin/pagekiln.mjs g",
+    "g": "node src/bin/pageskill.mjs g",
     "pres": "npm run compile-runtime && npm run compile-theme && npm run compile-backend",
-    "s": "node src/bin/pagekiln.mjs s",
+    "s": "node src/bin/pageskill.mjs s",
     "pred": "npm run compile-runtime && npm run compile-theme && npm run compile-backend",
-    "d": "node src/bin/pagekiln.mjs d",
+    "d": "node src/bin/pageskill.mjs d",
     "precheck": "npm run compile-runtime && npm run compile-theme && npm run compile-backend",
-    "check": "node src/bin/pagekiln.mjs check",
+    "check": "node src/bin/pageskill.mjs check",
     "precatalog": "npm run compile-runtime && npm run compile-theme && npm run compile-backend",
-    "catalog": "node src/bin/pagekiln.mjs catalog",
+    "catalog": "node src/bin/pageskill.mjs catalog",
     "preinspect": "npm run compile-runtime && npm run compile-theme && npm run compile-backend",
-    "inspect": "node src/bin/pagekiln.mjs inspect",
+    "inspect": "node src/bin/pageskill.mjs inspect",
     "test": "node --test test/*.test.mjs",
     "bench": "node scripts/benchmark.mjs",
     "bench:compare": "node scripts/benchmark-compare.mjs",

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const toolRoot = process.env.PAGEKILN_COMPARE_TOOL_ROOT || '';
+const toolRoot = process.env.PAGESKILL_COMPARE_TOOL_ROOT || '';
 const hugoBinary = process.env.HUGO_BIN || (toolRoot ? path.join(toolRoot, 'hugo.exe') : 'hugo');
 const nodeBinary = process.execPath;
 const benchmarkDate = new Date().toISOString().slice(0, 10);
@@ -86,15 +86,15 @@ function markdownDocument(index) {
   return `---\ntitle: Benchmark document ${index}\ndescription: A generated Markdown document for a reproducible static build benchmark.\n---\n\n# Benchmark document ${index}\n\nThis is the same plain Markdown body used by every tool in this comparison.\n`;
 }
 
-function pagekilnConfig() {
+function pageskillConfig() {
   return `siteUrl: https://example.test\ndefaultLocale: en\nactiveLocales:\n  - en\nsiteName:\n  en: Benchmark\ndescription:\n  en: Reproducible static build benchmark.\nbranding:\n  showAttribution: false\ntheme:\n  name: default\n  preset: aurora\n  nav:\n    links: []\ncontent:\n  collections:\n    pages:\n      pattern: document\n      route: /:locale/:id/\nsearch:\n  enabled: true\n  shardSize: 500\narchive:\n  enabled: false\nllms:\n  enabled: true\n  title:\n    en: Benchmark\n  description:\n    en: Reproducible static build benchmark.\n  full:\n    enabled: false\ndeployment:\n  enabled: true\n`;
 }
 
-function pagekilnTheme() {
+function pageskillTheme() {
   return `name: default\nversion: 1\nmodule: theme.js\nstyle: style.css\npatterns: [document]\nblocks: []\n`;
 }
 
-function pagekilnThemeModule() {
+function pageskillThemeModule() {
   return `export default { patterns: { document: { name: 'document', contexts: ['page'], render: content => '<article>' + content + '</article>' } }, blocks: {} };\n`;
 }
 
@@ -106,13 +106,13 @@ async function createFixture(tool, size, runRoot) {
 
   if (['astro', 'vitepress'].includes(tool)) await fs.symlink(path.join(toolRoot, 'node_modules'), path.join(root, 'node_modules'), 'junction');
 
-  if (tool === 'pagekiln') {
+  if (tool === 'pageskill') {
     await fs.mkdir(path.join(root, 'content/pages'), { recursive: true });
     await fs.mkdir(path.join(root, 'themes/default'), { recursive: true });
     await Promise.all([
-      fs.writeFile(path.join(root, 'config.yml'), pagekilnConfig()),
-      fs.writeFile(path.join(root, 'themes/default/theme.yml'), pagekilnTheme()),
-      fs.writeFile(path.join(root, 'themes/default/theme.js'), pagekilnThemeModule()),
+      fs.writeFile(path.join(root, 'config.yml'), pageskillConfig()),
+      fs.writeFile(path.join(root, 'themes/default/theme.yml'), pageskillTheme()),
+      fs.writeFile(path.join(root, 'themes/default/theme.js'), pageskillThemeModule()),
       fs.writeFile(path.join(root, 'themes/default/style.css'), 'body{font-family:system-ui}\n')
     ]);
     await writeBatch(bodyFiles.map(([file]) => {
@@ -152,7 +152,7 @@ async function createFixture(tool, size, runRoot) {
   if (tool === 'docusaurus') {
     await fs.mkdir(path.join(root, 'docs'), { recursive: true });
     await fs.mkdir(path.join(root, 'src/css'), { recursive: true });
-    await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'pagekiln-comparison-fixture', private: true }));
+    await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'pageskill-comparison-fixture', private: true }));
     await fs.symlink(path.join(toolRoot, 'node_modules'), path.join(root, 'node_modules'), 'junction');
     const presetPath = path.join(toolRoot, 'node_modules', '@docusaurus', 'preset-classic');
     const cssPath = path.join(root, 'src/css/custom.css');
@@ -175,7 +175,7 @@ async function createFixture(tool, size, runRoot) {
 }
 
 const specs = {
-  pagekiln: { command: nodeBinary, args: [path.join(projectRoot, 'src/bin/pagekiln.mjs'), 'build'], env: root => ({ PAGEKILN_SITE_ROOT: root }), version: async () => JSON.parse(await fs.readFile(path.join(projectRoot, 'package.json'), 'utf8')).version, commandText: 'node src/bin/pagekiln.mjs build' },
+  pageskill: { command: nodeBinary, args: [path.join(projectRoot, 'src/bin/pageskill.mjs'), 'build'], env: root => ({ PAGESKILL_SITE_ROOT: root }), version: async () => JSON.parse(await fs.readFile(path.join(projectRoot, 'package.json'), 'utf8')).version, commandText: 'node src/bin/pageskill.mjs build' },
   astro: { command: toolCommand('astro'), args: ['build'], version: () => packageVersion('astro'), commandText: 'astro build' },
   eleventy: { command: toolCommand('eleventy'), args: ['--input=content', '--output=_site'], version: () => packageVersion('@11ty/eleventy'), commandText: 'eleventy --input=content --output=_site' },
   vitepress: { command: toolCommand('vitepress'), args: ['build', 'docs'], version: () => packageVersion('vitepress'), commandText: 'vitepress build docs' },
@@ -323,7 +323,7 @@ async function runTool(tool, size, scenario, runRoot) {
     result.scenarios.push(await measuredBuild('no-change-cli'));
     await replaceInput(fixture.input, size);
     result.scenarios.push(await measuredBuild('change-one-cli'));
-    const deletedStem = tool === 'pagekiln' ? path.basename(path.dirname(fixture.input)) : path.basename(fixture.input).replace(/\.md$/, '');
+    const deletedStem = tool === 'pageskill' ? path.basename(path.dirname(fixture.input)) : path.basename(fixture.input).replace(/\.md$/, '');
     await fs.rm(fixture.input, { force: true });
     fixture.documents = fixture.documents.filter(stem => stem !== deletedStem);
     const deletion = await runBuild(tool, fixture, 'delete-one-cli');
@@ -343,8 +343,8 @@ async function main() {
   const tools = requestedTools?.length ? requestedTools : Object.keys(specs);
   const unknownTools = tools.filter(tool => !specs[tool]);
   if (unknownTools.length) throw new Error(`Unknown tools: ${unknownTools.join(', ')}`);
-  if (tools.some(tool => tool !== 'pagekiln') && !toolRoot) throw new Error('Set PAGEKILN_COMPARE_TOOL_ROOT to the temporary dependency directory before comparing installed Node tools.');
-  const compareRunBase = process.env.PAGEKILN_COMPARE_RUN_ROOT || os.tmpdir();
+  if (tools.some(tool => tool !== 'pageskill') && !toolRoot) throw new Error('Set PAGESKILL_COMPARE_TOOL_ROOT to the temporary dependency directory before comparing installed Node tools.');
+  const compareRunBase = process.env.PAGESKILL_COMPARE_RUN_ROOT || os.tmpdir();
   await fs.mkdir(compareRunBase, { recursive: true });
   const runRoot = await fs.mkdtemp(path.join(compareRunBase, 'pagekiln-compare-run-'));
   const results = [];
@@ -367,7 +367,7 @@ async function main() {
   const output = {
     measured: benchmarkDate,
     machine: { node: process.version, platform: process.platform, release: os.release(), arch: process.arch, cpu: os.cpus()[0]?.model || 'unknown', logicalCpus: os.cpus().length, totalMemoryGiB: round(os.totalmem() / 1024 / 1024 / 1024) },
-    methodology: 'Same generated Markdown body and document count; one locale, static output, no images. Pagekiln search, llms, deployment, sitemap, robots, 404, catalog, Agent metadata, and manifest stay enabled. Every tool receives the same post-build static site contract (search index, sitemap, robots, llms, catalog, Agent metadata, not-found page, consent disclosure, manifest, and static deployment manifest), and contract time is included in ms. Each scenario launches the tool CLI as a fresh process; no-change-cli and change-one-cli measure a fresh CLI rebuild, not a long-lived watch context.',
+    methodology: 'Same generated Markdown body and document count; one locale, static output, no images. Pageskill search, llms, deployment, sitemap, robots, 404, catalog, Agent metadata, and manifest stay enabled. Every tool receives the same post-build static site contract (search index, sitemap, robots, llms, catalog, Agent metadata, not-found page, consent disclosure, manifest, and static deployment manifest), and contract time is included in ms. Each scenario launches the tool CLI as a fresh process; no-change-cli and change-one-cli measure a fresh CLI rebuild, not a long-lived watch context.',
     results: reportResults
   };
   await fs.mkdir(path.dirname(outputFile), { recursive: true });

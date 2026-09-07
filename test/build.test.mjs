@@ -314,14 +314,24 @@ test('deployment output uses one Web Fetch handler and keeps static Pages mode w
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('Sites deployment mirrors public output into its configured static directory', async () => {
+test('unified public boundary rejects the legacy dist static root', async () => {
   const root = await fixture();
   try {
     const configFile = path.join(root, 'config.yml');
     await writeFile(configFile, `${await readFile(configFile, 'utf8')}\ndeployment:\n  openaiSites:\n    staticDirectory: dist\n`);
+    await assert.rejects(createContext(root), /staticDirectory.*private dist bundle root/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('mixed Sites deployment mirrors public output into its configured static directory', async () => {
+  const root = await fixture();
+  try {
+    const configFile = path.join(root, 'config.yml');
+    await writeFile(configFile, `${await readFile(configFile, 'utf8')}\ndeployment:\n  openaiSites:\n    staticDirectory: public\n`);
     await build(await createContext(root));
     assert.match(await readFile(path.join(root, 'dist/index.html'), 'utf8'), /Choose a site language/);
     assert.match(await readFile(path.join(root, 'dist/en/index.html'), 'utf8'), /Hello/);
+    assert.match(await readFile(path.join(root, 'dist/public/index.html'), 'utf8'), /Choose a site language/);
     assert.match(await readFile(path.join(root, 'dist/server/index.js'), 'utf8'), /static-assets\.js/);
     assert.match(await readFile(path.join(root, 'dist/server/_pagekiln/static-assets.js'), 'utf8'), /index\.html/);
     assert.doesNotMatch(await readFile(path.join(root, 'dist/server/_pagekiln/static-assets.js'), 'utf8'), /server\/index\.js/);
@@ -330,6 +340,10 @@ test('Sites deployment mirrors public output into its configured static director
       const response = await fetchStaticAsset(new Request(`https://example.test${requestPath}`));
       assert.equal(response.status, 200, requestPath);
     }
+    await rm(path.join(root, 'content/pages/home/en.md'));
+    await build(await createContext(root));
+    const refreshed = await import(`${pathToFileURL(path.join(root, 'dist/server/_pagekiln/static-assets.js')).href}?deleted=${Date.now()}`);
+    assert.equal((await refreshed.fetchStaticAsset(new Request('https://example.test/dist/en/'))).status, 404);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

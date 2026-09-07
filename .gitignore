@@ -26,3 +26,5 @@ serve.log
 serve.err.log
 pagekiln-preview.log
 pagekiln-preview.err.log
+pageskill-preview.log
+pageskill-preview.err.log

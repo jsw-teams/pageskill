@@ -12,7 +12,7 @@ pattern: docs
 
 本站的資料控制者為 **Site Owner**。
 
-聯絡入口：[Pagekiln 儲存庫](https://github.com/jsw-teams/pagekiln)
+聯絡入口：[Pageskill 儲存庫](https://github.com/jsw-teams/pageskill)
 
 監管機構資訊可查看[歐洲資料保護委員會目錄](https://edpb.europa.eu/about-edpb/about-edpb_en)。你可以向與你的居住地、工作地或疑似侵權地點相關的主管監管機構提出申訴。
 

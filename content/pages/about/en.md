@@ -1,35 +1,40 @@
 ---
 title: "Practical comparison: install, preview, deploy, and extend"
-description: Compare the official working paths of Pagekiln, Astro, Eleventy, Hugo, VitePress, and Docusaurus.
+description: Compare the official working paths of Pageskill, Astro, Eleventy, Hugo, VitePress, and Docusaurus.
 pattern: docs
 ---
 
 # Practical comparison: install, preview, deploy, and extend
 
-This comparison is about the commands and files a developer must operate. It does not turn one benchmark run into a universal ranking. The linked commands are from each project's official documentation; Pagekiln commands are the current CLI in this repository.
+This comparison is about the commands and files a developer must operate. It does not turn one benchmark run into a universal ranking. The linked commands are from each project's official documentation; Pageskill commands are the current CLI in this repository.
+
+Pageskill is reuse-first: people can use built-in Patterns, Blocks, and schemas directly, while an Agent is an optional discovery helper. Page authors do not hand-write HTML for each page; a theme extension is implemented once only when the catalog shows a real capability gap.
 
 ## The shortest working path
 
 | Tool | Install / start | Local preview | Production build | Extension entry |
 | --- | --- | --- | --- | --- |
-| Pagekiln | `npm install`; `npm link`; `pagekiln init` | `pagekiln s` | `pagekiln g` → `dist/` | `themes/<name>/theme.ts`, `theme.yml`, `style.css`, plugin switches |
+| Pageskill | `npm install`; `npm link`; `pageskill init` | `pageskill s` | `pageskill g` → public snapshot in `dist/public` | `themes/<name>/theme.ts`, `theme.yml`, `style.css`, plugin switches |
 | Astro | `npm create astro@latest` | `npm run dev` | `npm run build` → `dist/` | `.astro` pages, components, integrations |
 | Eleventy | `npm install @11ty/eleventy`; `npx @11ty/eleventy --serve` | `npx @11ty/eleventy --serve` | `npx @11ty/eleventy` → `_site/` | templates, shortcodes, Data Cascade |
 | Hugo | install the Hugo binary; `hugo new site` | `hugo server` | `hugo` → `public/` | `layouts/`, shortcodes, modules, resources |
 | VitePress | `npx vitepress init` | `npm run docs:dev` | `npm run docs:build` → `.vitepress/dist/` | Vue theme, Vue components in Markdown |
 | Docusaurus | `npm init docusaurus@latest my-website classic` | `npm run start` | `npm run build` → `build/` | React theme, plugins, MDX |
 
-The output directory is a deployment fact, not a cosmetic detail: configure the host to publish the directory produced by the build command. Pagekiln's current unified static directory is `dist/`; its deploy command reads destinations from `config.yml`.
+The output boundary is a deployment fact, not a cosmetic detail: the public snapshot is under `dist/public`, while target-specific server or Worker files remain private. Pageskill reads deployment destinations from `config.yml`. Static generation is the default rendering method: ordinary content is pre-generated, and interactive features call same-origin APIs when needed. One Worker/Fetch service can serve the generated pages and same-origin APIs; `/api/*` is handled by the Worker first by default, and other dynamic paths belong in `deployment.dynamicRoutes`. Do not expose build output containing private code as a CDN, Caddy, Nginx, or GitHub Pages root. Keep `server/`, `_pagekiln/`, `.pagekiln/`, Worker files, and `*.toml` private, and read secrets only at runtime.
 
-## Pagekiln task recipes
+## Pageskill task recipes
 
 ### Install a new site
 
 ```bash
 npm install
+npm run compile-runtime
+npm run compile-theme
+npm run compile-backend
 npm link
-pagekiln init
-pagekiln check
+pageskill init
+pageskill check
 ```
 
 The starter is a real source directory. Its `config.yml`, `content/`, and `themes/` show the contract that the CLI copies.
@@ -37,8 +42,8 @@ The starter is a real source directory. Its `config.yml`, `content/`, and `theme
 ### Preview and edit
 
 ```bash
-pagekiln s
-pagekiln s --port=4174
+pageskill s
+pageskill s --port=4174
 ```
 
 The preview server watches `config.yml`, `content/`, and `themes/`. An affected Markdown, CSS, or theme edit rebuilds and reloads the browser while the process stays alive after a diagnostic error.
@@ -66,11 +71,11 @@ deployment:
 ```
 
 ```bash
-pagekiln d --dry-run
-pagekiln d
+pageskill d --dry-run
+pageskill d
 ```
 
-The supported connectors are `cloudflare-pages`, `cloudflare-workers`, `github-pages`, `vps`, and the optional `openai-sites` handoff. Tokens stay in environment variables. VPS authentication uses the local SSH agent or an existing private key; the public key must already be authorized on the server. Static hosting does not require a dynamic backend.
+The supported connectors are `cloudflare-pages`, `cloudflare-workers`, `github-pages`, `vps`, and the optional `openai-sites` handoff. Tokens stay in environment variables. VPS authentication uses the local SSH agent or an existing private key; the public key must already be authorized on the server. GitHub Pages publishes the `dist/public` snapshot only and does not run APIs, while a dynamic VPS backend belongs in a private server directory. Workers use `assets.directory: public`, with `.assetsignore` as an additional exclusion layer; Cloudflare Pages uses target-specific deployment staging so public static uploads contain only public resources. A Worker/Fetch deployment can serve generated pages together with same-origin dynamic APIs; `/api/*` is handled by the Worker first by default, and other dynamic paths belong in `deployment.dynamicRoutes`.
 
 ### Develop a Block
 
@@ -85,17 +90,17 @@ Implement the Block through `defineTheme`, register it in `theme.yml`, use it wi
 
 ```bash
 npm run compile-theme
-pagekiln catalog
-pagekiln inspect block:notice
-pagekiln check
-pagekiln g
+pageskill catalog
+pageskill inspect block:hero
+pageskill check
+pageskill g
 ```
 
 The full example and security boundary are in the [development guide](/en/development/).
 
 ## What each tool makes you maintain
 
-### Pagekiln
+### Pageskill
 
 Content identity is explicit: `content/pages/<id>/<locale>.md` is current site content, and `content/posts/<id>/<locale>.md` is a dated Product Note with a required `date`. `docs` is a Pattern inside `pages`, not a parallel collection. `config.yml` owns site settings and deployment destinations; the copied theme owns Patterns, Blocks, CSS, browser ESM, and plugin presentation.
 
@@ -121,11 +126,11 @@ Docusaurus's [installation guide](https://docusaurus.io/docs/installation) uses 
 
 ## Choose by the next concrete task
 
-- Need a Markdown-first product site with explicit current pages, dated Product Notes, locales, search, archive, sitemap, and static deployment: use Pagekiln and start with the Guide.
+- Need a Markdown-first product site with explicit current pages, dated Product Notes, locales, search, archive, sitemap, and static deployment: use Pageskill and start with the Guide.
 - Need `.astro` components or an integration ecosystem: follow Astro's official starter.
 - Need template-language choice and Data Cascade: follow Eleventy's starter.
 - Need sections, taxonomies, shortcodes, and a native binary: follow Hugo's quick start.
 - Need Vue components inside a documentation site: follow VitePress.
 - Need React/MDX docs with sidebars, versions, and plugin translations: follow Docusaurus.
 
-The decision should follow the next file you need to write. For Pagekiln, that file is `content/pages/` for current usage, `content/posts/` for a dated change, or `themes/<name>/theme.ts` for a new Block.
+The decision should follow the next file you need to write. For Pageskill, that file is `content/pages/` for current usage, `content/posts/` for a dated change, or `themes/<name>/theme.ts` for a new Block.

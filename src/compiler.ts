@@ -5,8 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { parseYaml, YamlError } from './lib/yaml.ts';
 import { escapeHtml, safeUrl, html, unsafeHtml } from './lib/safe-html.ts';
 import { flattenDirectives, MarkdownError, parseMarkdown, renderInline } from './lib/markdown.ts';
+import { planThemeStyles } from './lib/theme-styles.ts';
+import { isPublicPath } from './lib/static-security.ts';
 import type { MarkdownNode, SourcePosition, DirectiveNode } from './lib/markdown.ts';
-import type { PagekilnTheme, ThemeBlockDefinition, ThemeRenderContext, ThemeShellContext } from './theme-api.ts';
+import type { PageskillTheme, ThemeBlockDefinition, ThemeRenderContext, ThemeShellContext } from './theme-api.ts';
 
 export type Locale = string;
 export type Document = {
@@ -16,7 +18,7 @@ export type Document = {
   dependencyKeys: string[]; blockNames: string[];
 };
 export type BuildContext = {
-  root: string; out: string; config: Record<string, any>; theme: Record<string, any>; themeI18n: Record<string, any>; themeDefinition: PagekilnTheme; docs: Document[];
+  root: string; out: string; config: Record<string, any>; theme: Record<string, any>; themeI18n: Record<string, any>; themeDefinition: PageskillTheme; docs: Document[];
   byKey: Map<string, Document>; routes: Map<string, Document>; cache: CacheManifest; profile: BuildProfile;
   outputs: Set<string>; diagnostics: string[]; configHash: string; themeHash: string;
   imageCache: Record<string, CachedImage>; collectionIndex: Map<string, Document[]>;
@@ -26,12 +28,13 @@ export type BuildContext = {
   stagedOutput?: { final: string; temporary: string };
   markdownCache: Map<string, MarkdownNode[]>;
   sourceParseCache: Map<string, { data: Record<string, any>; body: string; excerpt: string; bodyLine: number }>;
+  themeStyleSources: Map<string, string>;
 };
 type CachedDocument = { hash: string; outputs: string[]; dependencies?: string[]; blocks?: string[]; mtimeMs: number; size: number; collection: string; id: string; locale: string; title: string; description: string; pattern: string; date?: string; data: Record<string, any>; markdown: string; excerpt?: string; bodyLine: number };
 type CachedImage = { hash: string; output: string };
 type CacheManifest = { version: 2; rendererVersion?: string; configHash?: string; themeHash?: string; assetHash?: string; contentRoots?: Record<string, number>; routeCount?: number; documents: Record<string, CachedDocument>; images?: Record<string, CachedImage>; outputs: string[]; outputHashes?: Record<string, string> };
 export type BuildProfile = { discover: number; load: number; validate: number; parse: number; route: number; render: number; assets: number; write: number; total: number; documents: number; changedOutputs: number; imagesProcessed: number; imageCacheHits: number };
-const RENDERER_VERSION = '2.4.19';
+const RENDERER_VERSION = '2.4.21';
 const MAX_MARKDOWN_CACHE = 32;
 const MAX_SOURCE_PARSE_CACHE = 64;
 const LOAD_CONCURRENCY = 32;
@@ -44,6 +47,107 @@ function duration(start: number) { return Math.round((performance.now() - start)
 function sha(value: string | Uint8Array) { return crypto.createHash('sha256').update(value).digest('hex'); }
 function shortHash(value: string | Uint8Array) { return sha(value).slice(0, 20); }
 function normalizePath(value: string) { return value.replaceAll('\\', '/'); }
+
+type RelativePathOptions = { allowEmpty?: boolean; rejectDoubleDot?: boolean };
+
+/**
+ * Validate an untrusted path before normalising it.  Build outputs and theme
+ * resources are addressed with POSIX separators in manifests, but a Windows
+ * backslash must be treated as a separator while validating too.
+ */
+function safeRelativePath(value: unknown, label: string, options: RelativePathOptions = {}): string {
+  if (typeof value !== 'string') throw new Error(`${label} must be a relative path`);
+  const raw = value;
+  if (!raw) {
+    if (options.allowEmpty) return '';
+    throw new Error(`${label} must be a non-empty relative path`);
+  }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(raw)) throw new Error(`${label} contains control characters`);
+  const normalized = normalizePath(raw);
+  if (normalized.startsWith('/') || /^[A-Za-z]:/.test(normalized)) throw new Error(`${label} must be a relative path`);
+  if (options.rejectDoubleDot && raw.includes('..')) throw new Error(`${label} must not contain ".."`);
+  if (normalized.split('/').some(part => part === '..')) throw new Error(`${label} must not escape its root`);
+  // A colon in an output component can address an NTFS alternate data stream.
+  if (normalized.split('/').some(part => part.includes(':'))) throw new Error(`${label} contains an unsafe path component`);
+  // Windows trims these characters from names, so accepting them would make
+  // the manifest key and the actual file differ.
+  if (normalized.split('/').some(part => part !== '.' && /[. ]$/.test(part))) throw new Error(`${label} contains an unsafe path component`);
+  const canonical = normalized.split('/').filter(part => part && part !== '.').join('/');
+  if (!canonical && !options.allowEmpty) throw new Error(`${label} must be a non-empty relative path`);
+  return canonical;
+}
+
+function pathIsWithin(root: string, target: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(target));
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+function containedPath(root: string, value: unknown, label: string): string {
+  const relative = safeRelativePath(value, label);
+  const target = path.resolve(root, relative);
+  if (!pathIsWithin(root, target) || target === path.resolve(root)) throw new Error(`${label} escapes its root`);
+  return target;
+}
+
+function outputTarget(ctx: BuildContext, relative: unknown): { normalized: string; target: string } {
+  const raw = typeof relative === 'string' ? relative : String(relative ?? '');
+  const target = containedPath(ctx.out, raw, 'build output path');
+  return { normalized: normalizePath(path.relative(path.resolve(ctx.out), target)), target };
+}
+
+const LOCALE_TAG = /^[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*$/;
+
+function validLocaleTag(value: unknown): value is string {
+  return typeof value === 'string' && LOCALE_TAG.test(value);
+}
+
+function configuredThemeName(config: Record<string, any>): string {
+  const value = config.theme?.name;
+  if (value === undefined || value === null || value === '') return 'default';
+  if (typeof value !== 'string' || !value || value === '.' || value === '..' || /[\\/\u0000-\u001f\u007f-\u009f:]/.test(value) || /[. ]$/.test(value)) {
+    throw new Error('config.yml: theme.name must name one safe theme directory');
+  }
+  return value;
+}
+
+function configuredStaticDirectory(config: Record<string, any>): string {
+  const deployment = config.deployment && typeof config.deployment === 'object' && !Array.isArray(config.deployment) ? config.deployment : {};
+  const sites = deployment.openaiSites && typeof deployment.openaiSites === 'object' && !Array.isArray(deployment.openaiSites) ? deployment.openaiSites : {};
+  // `deployment.staticDirectory` is the mixed deployment setting. Keep the
+  // OpenAI Sites value as a compatibility fallback for existing projects.
+  const value = Object.prototype.hasOwnProperty.call(deployment, 'staticDirectory')
+    ? deployment.staticDirectory
+    : sites.staticDirectory;
+  if (value === undefined || value === null || value === '') return '';
+  const label = Object.prototype.hasOwnProperty.call(deployment, 'staticDirectory')
+    ? 'config.yml: deployment.staticDirectory'
+    : 'config.yml: deployment.openaiSites.staticDirectory';
+  const normalized = safeRelativePath(value, label, { rejectDoubleDot: true });
+  if (!normalized) throw new Error(`${label} must be a non-empty relative path`);
+  return normalized;
+}
+
+function hasOpenAiSitesDeployment(config: Record<string, any>): boolean {
+  const deployment = config.deployment && typeof config.deployment === 'object' && !Array.isArray(config.deployment) ? config.deployment : {};
+  return Boolean(deployment.openaiSites && typeof deployment.openaiSites === 'object' && !Array.isArray(deployment.openaiSites));
+}
+
+function configuredPublicDirectory(config: Record<string, any>): string {
+  if (config.deployment?.enabled === false) return '';
+  const configured = configuredStaticDirectory(config);
+  // A deployment must never expose the private build root as its public asset
+  // directory. The old OpenAI Sites `dist` setting needs migration.
+  if (configured.toLocaleLowerCase() === 'dist') {
+    throw new Error('config.yml: deployment.staticDirectory cannot use the private dist bundle root; choose "public" or another public subdirectory');
+  }
+  const directory = configured || 'public';
+  const first = directory.split('/')[0].toLocaleLowerCase();
+  if (new Set(['server', '_pagekiln', '.pagekiln', 'assets']).has(first)) {
+    throw new Error(`config.yml: deployment.staticDirectory cannot use reserved public directory "${directory}"`);
+  }
+  return directory;
+}
+
 function versionedThemeAsset(relative: string, fingerprint: string) {
   const normalized = normalizePath(relative).replace(/^\/+/, '');
   const extension = path.extname(normalized).toLowerCase();
@@ -51,7 +155,7 @@ function versionedThemeAsset(relative: string, fingerprint: string) {
   return `${normalized.slice(0, -extension.length)}.${fingerprint}${extension}`;
 }
 function themeAssetHref(themeBase: string, relative: string, fingerprint: string) {
-  return `${themeBase}/${versionedThemeAsset(relative, fingerprint)}`;
+  return `${themeBase}/${versionedThemeAsset(safeRelativePath(relative, 'theme asset path'), fingerprint)}`;
 }
 function minifyCss(source: string) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').replace(/\s*([{}:;,>+~])\s*/g, '$1').replace(/;}\s*/g, '}').trim();
@@ -135,13 +239,13 @@ async function walk(directory: string, extensions: string[] = []): Promise<strin
   return result.sort();
 }
 
-async function loadThemeDefinition(root: string, themeName: string, theme: Record<string, any>, fingerprint: string): Promise<PagekilnTheme> {
-  const themeRoot = path.join(root, 'themes', themeName);
-  const configuredEntry = String(theme.module || theme.entry || 'theme.ts');
+async function loadThemeDefinition(root: string, themeName: string, theme: Record<string, any>, fingerprint: string): Promise<PageskillTheme> {
+  const themeRoot = containedPath(path.join(root, 'themes'), themeName, 'theme directory');
+  const configuredEntry = safeRelativePath(theme.module || theme.entry || 'theme.ts', 'theme module path');
   const sourceCandidates = [
-    path.join(themeRoot, configuredEntry),
-    path.join(themeRoot, 'theme.js'),
-    path.join(themeRoot, 'theme.mjs')
+    containedPath(themeRoot, configuredEntry, 'theme module path'),
+    containedPath(themeRoot, 'theme.js', 'theme module path'),
+    containedPath(themeRoot, 'theme.mjs', 'theme module path')
   ];
   const runtimeCandidates = sourceCandidates
     .filter(file => file.endsWith('.ts'))
@@ -152,8 +256,8 @@ async function loadThemeDefinition(root: string, themeName: string, theme: Recor
       await fs.access(candidate);
       const module = await import(`${new URL(`file:///${normalizePath(path.resolve(candidate))}`).href}#${fingerprint}`);
       const definition = module.default || module.theme;
-      if (definition?.patterns && definition?.blocks) return definition as PagekilnTheme;
-      throw new Error(`theme module ${normalizePath(path.relative(root, candidate))} must export a PagekilnTheme as default`);
+      if (definition?.patterns && definition?.blocks) return definition as PageskillTheme;
+      throw new Error(`theme module ${normalizePath(path.relative(root, candidate))} must export a PageskillTheme as default`);
     } catch (error: any) {
       if (error.code === 'ENOENT') continue;
       if (error instanceof TypeError && /Cannot find module/.test(error.message)) continue;
@@ -173,6 +277,7 @@ function splitMoreMarker(body: string): { markdown: string; excerpt: string } {
 }
 
 function assertConfigSurface(config: Record<string, any>) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('config.yml must contain a mapping');
   const forbidden = new Set(['css', 'style', 'styles', 'script', 'scripts', 'html', 'rawhtml', 'unsafehtml']);
   const visit = (value: unknown, trail: string): void => {
     if (!value || typeof value !== 'object') return;
@@ -183,6 +288,16 @@ function assertConfigSurface(config: Record<string, any>) {
     }
   };
   visit(config, 'config');
+
+  const defaultLocale = config.defaultLocale ?? 'en';
+  if (!validLocaleTag(defaultLocale)) throw new Error('config.yml: defaultLocale must be a valid locale tag');
+  const activeLocales = config.activeLocales === undefined ? [defaultLocale] : config.activeLocales;
+  if (!Array.isArray(activeLocales) || activeLocales.some(locale => !validLocaleTag(locale))) {
+    throw new Error('config.yml: activeLocales must contain valid locale tags');
+  }
+  configuredThemeName(config);
+  configuredStaticDirectory(config);
+  configuredPublicDirectory(config);
 }
 
 function parseFrontmatter(source: string, file: string) {
@@ -415,7 +530,7 @@ function fallbackShell(context: ThemeShellContext): string {
 
 const DEFAULT_COOKIE_CATEGORIES = [
   {
-    id: 'essential', required: true, defaultValue: true, provider: 'Pagekiln', retentionDays: 365
+    id: 'essential', required: true, defaultValue: true, provider: 'Pageskill', retentionDays: 365
   },
   {
     id: 'analytics', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
@@ -466,7 +581,7 @@ function cookieCategories(settings: Record<string, any>, locale: string, localiz
       description: localizedValue(copy.description, locale, required ? 'Required for the site to work.' : 'Optional; off until you choose it.'),
       required,
       defaultValue: required || raw?.default === true || raw?.defaultValue === true,
-      provider: localizedValue(copy.provider, locale, required ? 'Pagekiln' : 'Not configured'),
+      provider: localizedValue(copy.provider, locale, required ? 'Pageskill' : 'Not configured'),
       retentionDays
     };
   }).filter(Boolean);
@@ -548,7 +663,10 @@ function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string, f
   const escape = (value: unknown) => escapeHtml(value);
   const retentionUnit = doc.locale.startsWith('zh') ? '天' : 'days';
   const categoryMarkup = privacy.categories.map(category => `<label class="cookie-option"><input type="checkbox" data-cookie-category="${escape(category.id)}"${category.required ? ' checked disabled' : category.defaultValue ? ' checked' : ''}><span><strong>${escape(category.label)}</strong><small>${escape(category.description)}${category.provider ? ` · ${escape(category.provider)}` : ''}${category.retentionDays ? ` · ${escape(String(category.retentionDays))} ${retentionUnit}` : ''}</small></span></label>`).join('');
-  const gatedScriptMarkup = gatedScripts.map(script => `<template data-cookie-script data-cookie-category="${escape(script.category)}" data-cookie-src="${escape(script.href)}"></template>`).join('');
+  // href has already passed safeUrl, which HTML-escapes the attribute once.
+  // Escaping it again turns a legal query ampersand into literal "&amp;" in
+  // the DOM value and changes the URL consumed by the consent runtime.
+  const gatedScriptMarkup = gatedScripts.map(script => `<template data-cookie-script data-cookie-category="${escape(script.category)}" data-cookie-src="${script.href}"></template>`).join('');
   const privacyMarkup = enabled ? `<section class="privacy-consent" data-cookie-consent data-cookie-audience="human" data-cookie-version="1" data-cookie-storage="${escape(privacy.storage)}" data-cookie-retention-days="${privacy.retentionDays}" data-cookie-integrations="${escape(JSON.stringify(integrations))}" aria-label="${escape(privacy.bannerLabel)}"><div class="cookie-banner" data-cookie-banner hidden role="region" aria-labelledby="cookie-banner-title"><div class="cookie-banner-copy"><p id="cookie-banner-title"><strong>${escape(privacy.title)}</strong></p><p>${escape(privacy.description)}</p></div><div class="cookie-actions"><button class="button-secondary" type="button" data-cookie-action="reject-optional">${escape(privacy.rejectLabel)}</button><button class="button-primary" type="button" data-cookie-action="open" aria-controls="cookie-dialog">${escape(privacy.settingsLabel)}</button><button class="button-primary" type="button" data-cookie-action="accept-all">${escape(privacy.acceptLabel)}</button></div><p class="privacy-links"><a href="${privacy.policyHref}">${escape(privacy.policyLabel)}</a></p></div><dialog id="cookie-dialog" class="cookie-dialog" data-cookie-dialog aria-labelledby="cookie-dialog-title" aria-describedby="cookie-dialog-description"><form method="dialog" class="cookie-dialog-card"><div class="cookie-dialog-heading"><h2 id="cookie-dialog-title">${escape(privacy.title)}</h2><button class="cookie-close" type="button" data-cookie-action="close" aria-label="${escape(privacy.closeLabel)}">×</button></div><p id="cookie-dialog-description">${escape(privacy.description)}</p><fieldset><legend>${escape(privacy.bannerLabel)}</legend>${categoryMarkup}</fieldset><p class="privacy-links"><a href="${privacy.policyHref}">${escape(privacy.policyLabel)}</a></p><div class="cookie-actions"><button class="button-secondary" type="button" data-cookie-action="reject-optional">${escape(privacy.rejectLabel)}</button><button class="button-primary" type="button" data-cookie-action="save">${escape(privacy.saveLabel)}</button></div></form></dialog>${gatedScriptMarkup}<script type="module" src="${privacy.scriptSrc}"></script></section>` : '';
   const privacyTriggerMarkup = enabled ? `<button class="privacy-trigger" type="button" data-cookie-action="open" aria-controls="cookie-dialog">${escape(privacy.settingsLabel)}</button>` : '';
   return { privacy, privacyMarkup, privacyTriggerMarkup };
@@ -645,13 +763,32 @@ async function writeGeneratedPages(ctx: BuildContext) {
   await writeIfChanged(ctx, '404.html', pageShell(ctx, notFound, notFoundMarkup(ctx, locale)));
 }
 
+type ThemeStyleBundle = { styleFile: string; styleFiles: string[]; bundled: Set<string> };
+
+function themeResourcePaths(values: unknown[], label: string): string[] {
+  return [...new Set(values.map(value => safeRelativePath(value, label)))];
+}
+
+/** The main stylesheet is the bundle for theme.styles and the selected preset. */
+function themeStyleBundle(ctx: BuildContext): ThemeStyleBundle {
+  const selectedPreset = ctx.theme.presets?.[ctx.config.theme?.preset || 'aurora'];
+  const rawStyles = [
+    ctx.theme.style || 'style.css',
+    ...(Array.isArray(ctx.theme.styles) ? ctx.theme.styles : []),
+    ...(Array.isArray(selectedPreset?.styles) ? selectedPreset.styles : [])
+  ];
+  const styleFiles = themeResourcePaths(rawStyles, 'theme stylesheet path');
+  const styleFile = styleFiles[0] || 'style.css';
+  return { styleFile, styleFiles, bundled: new Set(styleFiles) };
+}
+
 function pageShell(ctx: BuildContext, doc: Document, content: string): string {
-  const siteName = localizedValue(ctx.config.siteName, doc.locale, 'Pagekiln');
+  const siteName = localizedValue(ctx.config.siteName, doc.locale, 'Pageskill');
   const siteDescription = localizedValue(ctx.config.description, doc.locale, 'The static-first website compiler for content that scales.');
   const icons = ctx.config.icons || {};
   const branding = ctx.config.branding || {};
   const showAttribution = branding.showAttribution === true;
-  const attributionText = localizedValue(branding.attribution, doc.locale, 'Pagekiln by JSW Teams');
+  const attributionText = localizedValue(branding.attribution, doc.locale, 'Pageskill by JSW Teams');
   const attributionUrl = branding.attributionUrl ? safeUrl(branding.attributionUrl) : '#';
   const headerNote = themeText(ctx, doc.locale, 'shell.headerNote', 'Markdown-native · static-first');
   const skipLabel = themeText(ctx, doc.locale, 'shell.skipToContent', 'Skip to content');
@@ -688,14 +825,35 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const brandIcon = safeUrl(icons.icon32 || icons.icon192 || '/assets/icon-192.png');
   const absoluteUrl = `${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${currentRoute}`;
   const homeHref = safeUrl(routeFor(ctx, { ...doc, id: 'home', collection: 'pages', data: {} }));
-  const themeBase = `/assets/theme/${ctx.config.theme?.name || 'default'}`;
-  const styleFile = String(ctx.theme.style || 'style.css');
-  const patternStyles = [...new Set([...(ctx.themeDefinition.patterns[doc.pattern]?.resources?.styles || []), ...(Array.isArray(ctx.theme.patternStyles?.[doc.pattern]) ? ctx.theme.patternStyles[doc.pattern] : [])])];
-  const blockStyles = [...new Set(doc.directives.flatMap(node => [...(ctx.themeDefinition.blocks[node.name]?.resources?.styles || []), ...(Array.isArray(ctx.theme.blockStyles?.[node.name]) ? ctx.theme.blockStyles[node.name] : [])]))];
+  const themeName = configuredThemeName(ctx.config);
+  const themeBase = `/assets/theme/${themeName}`;
+  const styleBundle = themeStyleBundle(ctx);
+  const patternStyles = themeResourcePaths([
+    ...(ctx.themeDefinition.patterns[doc.pattern]?.resources?.styles || []),
+    ...(Array.isArray(ctx.theme.patternStyles?.[doc.pattern]) ? ctx.theme.patternStyles[doc.pattern] : [])
+  ], 'Pattern stylesheet path');
+  const blockStyles = themeResourcePaths(doc.directives.flatMap(node => [
+    ...(ctx.themeDefinition.blocks[node.name]?.resources?.styles || []),
+    ...(Array.isArray(ctx.theme.blockStyles?.[node.name]) ? ctx.theme.blockStyles[node.name] : [])
+  ]), 'Block stylesheet path');
   const fingerprint = String(ctx.theme.__fingerprint || RENDERER_VERSION).slice(0, 12);
-  const stylesheets = [...new Set([styleFile, ...patternStyles, ...blockStyles])].map(style => `<link rel="stylesheet" href="${safeUrl(themeAssetHref(themeBase, String(style), fingerprint))}">`).join('');
+  // theme.styles and preset.styles are already part of the fingerprinted main
+  // bundle.  Remove them here so a page cannot inline them or link a file that
+  // copyThemeAndAssets intentionally did not emit separately.
+  const pageStyles = [styleBundle.styleFile, ...patternStyles, ...blockStyles]
+    .filter(style => style === styleBundle.styleFile || !styleBundle.bundled.has(style));
+  const styleTags = planThemeStyles(pageStyles, ctx.themeStyleSources, {
+    inlineStyles: ctx.theme.inlineStyles !== false,
+    alwaysExternal: [styleBundle.styleFile]
+  });
+  const stylesheets = styleTags.map(tag => tag.kind === 'inline'
+    ? `<style>${tag.css}</style>`
+    : `<link rel="stylesheet" href="${safeUrl(themeAssetHref(themeBase, tag.path, fingerprint))}">`).join('');
   const searchData = localSearchData(ctx, doc, themeBase, fingerprint);
-  const browserScripts = [...new Set(doc.directives.flatMap(node => [...(ctx.themeDefinition.blocks[node.name]?.resources?.scripts || []), ...(Array.isArray(ctx.theme.blockScripts?.[node.name]) ? ctx.theme.blockScripts[node.name] : [])]))];
+  const browserScripts = themeResourcePaths(doc.directives.flatMap(node => [
+    ...(ctx.themeDefinition.blocks[node.name]?.resources?.scripts || []),
+    ...(Array.isArray(ctx.theme.blockScripts?.[node.name]) ? ctx.theme.blockScripts[node.name] : [])
+  ]), 'Block script path');
   const scriptTags = browserScripts.map(script => `<script type="module" src="${safeUrl(themeAssetHref(themeBase, String(script), fingerprint))}"></script>`).join('');
   const attribution = showAttribution ? (attributionUrl === '#' ? `<span>${escapeHtml(attributionText)}</span>` : `<a href="${attributionUrl}">${escapeHtml(attributionText)}</a>`) : '';
   const socialImage = doc.data?.ogImage || doc.data?.cover || ctx.config.images?.social;
@@ -725,14 +883,14 @@ function discoveryBoundaries() {
 
 function agentFunctionMap() {
   return [
-    { id: 'write-page', purpose: 'Write current site content for a page, guide, reference, or directory', paths: ['content/pages/<id>/<locale>.md'], commands: ['pagekiln check', 'pagekiln g'] },
-    { id: 'write-post', purpose: 'Record a dated Product Note for the history, Feed, archive, and search', paths: ['content/posts/<id>/<locale>.md'], commands: ['pagekiln check', 'pagekiln g'] },
-    { id: 'change-layout', purpose: 'Change page structure or visual language', paths: ['themes/<name>/theme.yml', 'themes/<name>/theme.ts', 'themes/<name>/style.css'], commands: ['pagekiln catalog', 'pagekiln g --profile'] },
-    { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, search, or deployment settings', paths: ['config.yml'], commands: ['pagekiln check', 'pagekiln g --profile'] },
-    { id: 'discover-extension', purpose: 'Read active theme Patterns, Blocks, collections, plugin switches, contexts, and resource dependencies', paths: ['themes/<name>/theme.yml', 'themes/<name>/theme.ts', 'config.yml'], commands: ['pagekiln catalog', 'pagekiln inspect block:<id>', 'pagekiln inspect pattern:<id>', 'pagekiln inspect collection:<id>', 'pagekiln inspect plugin:<id>'] },
-    { id: 'preview', purpose: 'Open the local development server with a persistent incremental context', paths: ['src/bin/pagekiln.mjs', 'src/compiler.ts'], commands: ['pagekiln s'] },
-    { id: 'deploy', purpose: 'Build and publish dist/ using the hosting target in config.yml', paths: ['config.yml', 'dist/'], commands: ['pagekiln d --dry-run', 'pagekiln d'] },
-    { id: 'dynamic-backend', purpose: 'Add runtime business logic, secrets, writes, or webhooks', paths: ['backend/handler.ts'], commands: ['pagekiln g', 'pagekiln check'] },
+    { id: 'write-page', purpose: 'Write current site content for a page, guide, reference, or directory', paths: ['content/pages/<id>/<locale>.md'], commands: ['pageskill check', 'pageskill g'] },
+    { id: 'write-post', purpose: 'Record a dated Product Note for the history, Feed, archive, and search', paths: ['content/posts/<id>/<locale>.md'], commands: ['pageskill check', 'pageskill g'] },
+    { id: 'change-layout', purpose: 'Change page structure or visual language', paths: ['themes/<name>/theme.yml', 'themes/<name>/theme.ts', 'themes/<name>/style.css'], commands: ['pageskill catalog', 'pageskill g --profile'] },
+    { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, search, or deployment settings', paths: ['config.yml'], commands: ['pageskill check', 'pageskill g --profile'] },
+    { id: 'discover-extension', purpose: 'Read active theme Patterns, Blocks, collections, plugin switches, contexts, and resource dependencies', paths: ['themes/<name>/theme.yml', 'themes/<name>/theme.ts', 'config.yml'], commands: ['pageskill catalog', 'pageskill inspect block:<id>', 'pageskill inspect pattern:<id>', 'pageskill inspect collection:<id>', 'pageskill inspect plugin:<id>'] },
+    { id: 'preview', purpose: 'Open the local development server with a persistent incremental context', paths: ['src/bin/pageskill.mjs', 'src/compiler.ts'], commands: ['pageskill s'] },
+    { id: 'deploy', purpose: 'Build and publish dist/ using the hosting target in config.yml', paths: ['config.yml', 'dist/'], commands: ['pageskill d --dry-run', 'pageskill d'] },
+    { id: 'dynamic-backend', purpose: 'Add runtime business logic, secrets, writes, or webhooks', paths: ['backend/handler.ts'], commands: ['pageskill g', 'pageskill check'] },
     { id: 'measure-build', purpose: 'Measure a temporary content-scale fixture and preserve the local machine profile', paths: ['scripts/benchmark.mjs', 'scripts/benchmark-compare.mjs'], commands: ['npm run bench -- 100', 'npm run bench:compare -- --sizes=100 --scenario=cold'] }
   ];
 }
@@ -779,7 +937,7 @@ function catalog(ctx: BuildContext) {
     agent: {
       optional: true,
       role: 'assistive',
-      defaultCommands: ['npm install', 'pagekiln s', 'pagekiln g'],
+      defaultCommands: ['npm install', 'pageskill s', 'pageskill g'],
       ...discoveryBoundaries(),
       functionMap: agentFunctionMap()
     },
@@ -804,14 +962,13 @@ function catalog(ctx: BuildContext) {
 
 async function readJson<T>(file: string, fallback: T): Promise<T> { try { return JSON.parse(await fs.readFile(file, 'utf8')) as T; } catch { return fallback; } }
 function retainOutput(ctx: BuildContext, relative: string) {
-  const normalized = normalizePath(relative);
+  const { normalized } = outputTarget(ctx, relative);
   ctx.outputs.add(normalized);
   const hash = ctx.cache.outputHashes?.[normalized];
   if (hash) ctx.outputHashes[normalized] = hash;
 }
 async function writeIfChanged(ctx: BuildContext, relative: string, data: string | Uint8Array) {
-  const normalized = normalizePath(relative);
-  const target = path.join(ctx.out, normalized);
+  const { normalized, target } = outputTarget(ctx, relative);
   await fs.mkdir(path.dirname(target), { recursive: true });
   const incoming = typeof data === 'string' ? Buffer.from(data) : Buffer.from(data);
   const incomingHash = shortHash(incoming);
@@ -879,11 +1036,9 @@ async function processImageVariants(ctx: BuildContext, assetRoot: string) {
   const previous = ctx.cache.images || {};
   const next: Record<string, CachedImage> = {};
   await parallelFor(variants, 4, async (variant: any) => {
-    const sourceRelative = normalizePath(String(variant.source || '')).replace(/^\/+/, '');
-    const output = normalizePath(String(variant.output || '')).replace(/^\/+/, '');
-    if (!sourceRelative || !output || output.includes('..')) throw new Error('image variants require safe source and output paths');
-    const source = path.resolve(assetRoot, sourceRelative);
-    if (!source.startsWith(`${path.resolve(assetRoot)}${path.sep}`)) throw new Error(`image source escapes content/assets: ${sourceRelative}`);
+    const sourceRelative = safeRelativePath(variant.source || '', 'image source path');
+    const output = safeRelativePath(variant.output || '', 'image output path');
+    const source = containedPath(assetRoot, sourceRelative, 'image source path');
     const input = await fs.readFile(source);
     const params = {
       width: variant.width ? Number(variant.width) : undefined,
@@ -898,7 +1053,7 @@ async function processImageVariants(ctx: BuildContext, assetRoot: string) {
     const cached = previous[key];
     if (cached?.hash === hash) {
       try {
-        await fs.access(path.join(ctx.out, output));
+        await fs.access(outputTarget(ctx, output).target);
         retainOutput(ctx, output);
         next[key] = cached;
         ctx.profile.imageCacheHits += 1;
@@ -929,40 +1084,44 @@ async function copyThemeAndAssets(ctx: BuildContext) {
     await writeIfChanged(ctx, output, await fs.readFile(file));
   }
   await processImageVariants(ctx, assetRoot);
-  const themeRoot = path.join(ctx.root, 'themes', ctx.config.theme?.name || 'default');
-  const themeOutputRoot = `assets/theme/${ctx.config.theme?.name || 'default'}`;
-  await fs.rm(path.join(ctx.out, themeOutputRoot), { recursive: true, force: true });
+  const themeName = configuredThemeName(ctx.config);
+  const themeRoot = containedPath(path.join(ctx.root, 'themes'), themeName, 'theme directory');
+  const themeOutputRoot = `assets/theme/${themeName}`;
+  await fs.rm(outputTarget(ctx, themeOutputRoot).target, { recursive: true, force: true });
   const fingerprint = String(ctx.theme.__fingerprint || RENDERER_VERSION).slice(0, 12);
-  const styleFile = ctx.theme.style || 'style.css';
-  const selectedPreset = ctx.theme.presets?.[ctx.config.theme?.preset || 'aurora'];
-  const presetStyles = Array.isArray(selectedPreset?.styles) ? selectedPreset.styles : [];
-  const styleFiles = [...new Set([styleFile, ...(Array.isArray(ctx.theme.styles) ? ctx.theme.styles : []), ...presetStyles])];
+  const styleBundle = themeStyleBundle(ctx);
   const styleParts: string[] = [];
-  for (const style of styleFiles) { try { styleParts.push(await fs.readFile(path.join(themeRoot, style), 'utf8')); } catch { /* optional theme style */ } }
-  if (styleParts.length) await writeIfChanged(ctx, `${themeOutputRoot}/${versionedThemeAsset(styleFile, fingerprint)}`, minifyCss(styleParts.join('\n')));
+  for (const relative of styleBundle.styleFiles) {
+    try {
+      styleParts.push(ctx.themeStyleSources.get(relative) ?? await fs.readFile(containedPath(themeRoot, relative, 'theme stylesheet path'), 'utf8'));
+    } catch { /* optional theme style */ }
+  }
+  if (styleParts.length) await writeIfChanged(ctx, `${themeOutputRoot}/${versionedThemeAsset(styleBundle.styleFile, fingerprint)}`, minifyCss(styleParts.join('\n')));
   const usedPatterns = new Set(ctx.docs.map(doc => doc.pattern));
   const dependencyFiles = new Set<string>();
   for (const file of [
     ...(Array.isArray(ctx.theme.scripts) ? ctx.theme.scripts : []),
     ...(pluginEnabled(ctx, 'privacyConsent') && ctx.theme.plugins?.privacyConsent?.script ? [ctx.theme.plugins.privacyConsent.script] : []),
     ...(ctx.theme.plugins?.search?.enabled !== false && ctx.theme.plugins?.search?.script ? [ctx.theme.plugins.search.script] : [])
-  ]) dependencyFiles.add(normalizePath(String(file)));
+  ]) dependencyFiles.add(safeRelativePath(file, 'theme resource path'));
   for (const pattern of usedPatterns) {
-    for (const file of [...(ctx.themeDefinition.patterns[pattern]?.resources?.styles || []), ...(ctx.themeDefinition.patterns[pattern]?.resources?.scripts || []), ...(Array.isArray(ctx.theme.patternStyles?.[pattern]) ? ctx.theme.patternStyles[pattern] : [])]) dependencyFiles.add(normalizePath(String(file)));
+    for (const file of [...(ctx.themeDefinition.patterns[pattern]?.resources?.styles || []), ...(ctx.themeDefinition.patterns[pattern]?.resources?.scripts || []), ...(Array.isArray(ctx.theme.patternStyles?.[pattern]) ? ctx.theme.patternStyles[pattern] : [])]) dependencyFiles.add(safeRelativePath(file, 'Pattern resource path'));
   }
   for (const doc of ctx.docs) for (const block of doc.blockNames.length ? doc.blockNames : ctx.cache.documents[doc.source]?.blocks || []) {
-    for (const file of [...(ctx.themeDefinition.blocks[block]?.resources?.styles || []), ...(ctx.themeDefinition.blocks[block]?.resources?.scripts || []), ...(Array.isArray(ctx.theme.blockStyles?.[block]) ? ctx.theme.blockStyles[block] : []), ...(Array.isArray(ctx.theme.blockScripts?.[block]) ? ctx.theme.blockScripts[block] : [])]) dependencyFiles.add(normalizePath(String(file)));
+    for (const file of [...(ctx.themeDefinition.blocks[block]?.resources?.styles || []), ...(ctx.themeDefinition.blocks[block]?.resources?.scripts || []), ...(Array.isArray(ctx.theme.blockStyles?.[block]) ? ctx.theme.blockStyles[block] : []), ...(Array.isArray(ctx.theme.blockScripts?.[block]) ? ctx.theme.blockScripts[block] : [])]) dependencyFiles.add(safeRelativePath(file, 'Block resource path'));
   }
   for (const relative of dependencyFiles) {
-    if (relative.includes('..') || path.isAbsolute(relative) || styleFiles.includes(relative)) continue;
-    const source = await fs.readFile(path.join(themeRoot, relative), 'utf8');
+    if (styleBundle.bundled.has(relative)) continue;
     const extension = path.extname(relative).toLowerCase();
+    const source = extension === '.css'
+      ? (ctx.themeStyleSources.get(relative) ?? await fs.readFile(containedPath(themeRoot, relative, 'theme resource path'), 'utf8'))
+      : await fs.readFile(containedPath(themeRoot, relative, 'theme resource path'), 'utf8');
     const output = `${themeOutputRoot}/${versionedThemeAsset(relative, fingerprint)}`;
     await writeIfChanged(ctx, output, extension === '.css' ? minifyCss(source) : source);
   }
   await writeIfChanged(ctx, 'AGENTS.md', await fs.readFile(path.join(ctx.root, 'AGENTS.md'), 'utf8').catch(() => ''));
   const locale = ctx.config.defaultLocale || 'en';
-  const siteName = localizedValue(ctx.config.siteName, locale, 'Pagekiln');
+  const siteName = localizedValue(ctx.config.siteName, locale, 'Pageskill');
   const manifestIcons = [
     ctx.config.icons?.icon192 ? { src: String(ctx.config.icons.icon192), sizes: '192x192', type: 'image/png' } : null,
     ctx.config.icons?.icon512 ? { src: String(ctx.config.icons.icon512), sizes: '512x512', type: 'image/png' } : null
@@ -973,7 +1132,7 @@ async function copyThemeAndAssets(ctx: BuildContext) {
 async function removeLegacyOutputs(ctx: BuildContext) {
   const legacyFiles = ['icon-192.png', 'icon-512.png', 'icon-source.png', 'og-default.png', 'og-default.jpg', 'og-default-source.png'];
   for (const file of legacyFiles) {
-    try { await fs.rm(path.join(ctx.out, file)); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
+    try { await fs.rm(outputTarget(ctx, file).target); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
   }
 }
 
@@ -992,7 +1151,7 @@ async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
   const integrations = privacyIntegrations(settings, baseCategories);
   await writeIfChanged(ctx, '.well-known/agent.json', JSON.stringify({
     version: 1,
-    site: { name: localizedValue(ctx.config.siteName, locale, 'Pagekiln'), defaultLocale: locale, locales: ctx.config.activeLocales || [locale] },
+    site: { name: localizedValue(ctx.config.siteName, locale, 'Pageskill'), defaultLocale: locale, locales: ctx.config.activeLocales || [locale] },
     crawl: { robots: '/robots.txt', sitemap: '/sitemap.xml', llms: '/llms.txt', catalog: '/.pagekiln/catalog.json' },
     privacy: {
       audience: 'agent',
@@ -1018,7 +1177,7 @@ async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
       ...discoveryBoundaries(),
       functionMap: agentFunctionMap()
     },
-    generatedBy: { name: 'Pagekiln', version: 2, static: true, siteUrl }
+    generatedBy: { name: 'Pageskill', version: 3, static: true, siteUrl }
   }, null, 2));
 }
 function feedCollection(ctx: BuildContext): string | undefined {
@@ -1112,7 +1271,9 @@ async function writeArchives(ctx: BuildContext): Promise<string[]> {
         const coverMarkup = coverPath ? `<div class="archive-entry-cover"><img src="${safeUrl(coverPath)}" alt="" loading="lazy" decoding="async"></div>` : '';
         return `<article class="archive-entry">${coverMarkup}<p class="archive-entry-index"><time datetime="${escapeHtml(entry.date || '')}">${formatDate(entry.date, locale)}</time></p><div class="archive-entry-main"><h2><a href="${safeUrl(routeFor(ctx, entry))}">${escapeHtml(entry.title)}</a></h2>${entry.description ? `<p class="archive-entry-summary">${escapeHtml(entry.description)}</p>` : ''}</div><p class="archive-entry-action"><a href="${safeUrl(routeFor(ctx, entry))}">${escapeHtml(readLabel)} <span aria-hidden="true">↗</span></a></p></article>`;
       }).join('');
-      const pagination = `<nav class="archive-pagination" aria-label="${escapeHtml(title)}">${page > 1 ? `<a href="${page === 2 ? archiveBase : `${archiveBase}page/${page - 1}/`}">${escapeHtml(themeText(ctx, locale, 'archive.previousPage', 'Previous page'))}</a>` : '<span aria-hidden="true"></span>'}<span class="archive-page-count">${escapeHtml(pageCount)}</span>${page < pages ? `<a href="${archiveBase}page/${page + 1}/">${escapeHtml(themeText(ctx, locale, 'archive.nextPage', 'Next page'))}</a>` : '<span aria-hidden="true"></span>'}</nav>`;
+      const previousHref = page === 2 ? archiveBase : `${archiveBase}page/${page - 1}/`;
+      const nextHref = `${archiveBase}page/${page + 1}/`;
+      const pagination = `<nav class="archive-pagination" aria-label="${escapeHtml(title)}">${page > 1 ? `<a href="${safeUrl(previousHref)}">${escapeHtml(themeText(ctx, locale, 'archive.previousPage', 'Previous page'))}</a>` : '<span aria-hidden="true"></span>'}<span class="archive-page-count">${escapeHtml(pageCount)}</span>${page < pages ? `<a href="${safeUrl(nextHref)}">${escapeHtml(themeText(ctx, locale, 'archive.nextPage', 'Next page'))}</a>` : '<span aria-hidden="true"></span>'}</nav>`;
       const document: Document = { id: `archive-${collection}-${page}`, collection: 'archive', locale, source: `generated:archive:${collection}:${locale}:${page}`, title, description: themeText(ctx, locale, 'archive.description', `Published ${collection}`), pattern: 'document', date: undefined, data: { route }, markdown: '', excerpt: '', bodyLine: 1, nodes: [], directives: [], dependencyKeys: [], blockNames: [], hash: '', stat: { mtimeMs: 0, size: 0 } };
       await writeIfChanged(ctx, `${route.replace(/^\//, '')}index.html`, pageShell(ctx, document, `<section class="archive-list">${listing}</section>${pagination}`));
       routes.push(route);
@@ -1125,6 +1286,8 @@ async function writeDeployments(ctx: BuildContext) {
   if (ctx.config.deployment?.enabled === false) return;
   const locale = ctx.config.defaultLocale || 'en';
   const deployment = ctx.config.deployment && typeof ctx.config.deployment === 'object' ? ctx.config.deployment : {};
+  const publicDirectory = configuredPublicDirectory(ctx.config);
+  const publicDirectoryLiteral = JSON.stringify(publicDirectory);
   const cloudflare = deployment.cloudflare && typeof deployment.cloudflare === 'object' ? deployment.cloudflare : {};
   const workers = cloudflare.workers && typeof cloudflare.workers === 'object' ? cloudflare.workers : {};
   const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -1136,6 +1299,14 @@ async function writeDeployments(ctx: BuildContext) {
   if (!fetchRouterSource) throw new Error('compiled Fetch router is missing; run npm run compile-runtime');
   await writeIfChanged(ctx, '_pagekiln/fetch-router.js', fetchRouterSource);
   await writeIfChanged(ctx, 'server/_pagekiln/fetch-router.js', fetchRouterSource);
+  const securityRuntimeCandidates = [path.join(moduleDirectory, 'lib', 'static-security.js'), path.join(moduleDirectory, 'runtime', 'lib', 'static-security.js')];
+  let securityRuntimeSource = '';
+  for (const candidate of securityRuntimeCandidates) {
+    try { securityRuntimeSource = await fs.readFile(candidate, 'utf8'); break; } catch { /* try the other compiled runtime location */ }
+  }
+  if (!securityRuntimeSource) throw new Error('compiled static-security runtime is missing; run npm run compile-runtime');
+  await writeIfChanged(ctx, '_pagekiln/lib/static-security.js', securityRuntimeSource);
+  await writeIfChanged(ctx, 'server/_pagekiln/lib/static-security.js', securityRuntimeSource);
 
   const backendSource = path.join(ctx.root, 'backend', 'handler.ts');
   let backendEnabled = false;
@@ -1153,42 +1324,78 @@ async function writeDeployments(ctx: BuildContext) {
   }
 
   const backendImport = backendEnabled ? `import { router } from './_pagekiln/backend/handler.js';\n` : 'const router = undefined;\n';
-  const worker = `import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${backendImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: '${locale}' });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`;
+  const localeLiteral = JSON.stringify(String(locale));
+  const worker = `import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${backendImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${localeLiteral}, staticDirectory: ${publicDirectoryLiteral} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`;
   await writeIfChanged(ctx, 'cloudflare-worker.mjs', worker);
   if (backendEnabled) await writeIfChanged(ctx, '_worker.js', worker);
-  await writeIfChanged(ctx, '.assetsignore', `_worker.js\ncloudflare-worker.mjs\nvps-server.mjs\nwrangler.toml\n_pagekiln/*\n`);
+  await writeIfChanged(ctx, '.assetsignore', `_worker.js\ncloudflare-worker.mjs\nvps-server.mjs\nwrangler.toml\n_pagekiln/*\nserver/*\n.pagekiln/*\n`);
   const routes = Array.isArray(deployment.dynamicRoutes) ? deployment.dynamicRoutes.map(String) : [];
-  const workerFirst = backendEnabled ? `[ ${routes.map((route: string) => `"${route.replaceAll('"', '')}"`).join(', ')} ]` : 'false';
-  const workerName = String(workers.name || 'pagekiln-site').replaceAll('"', '');
-  const compatibilityDate = String(workers.compatibilityDate || '2026-08-10').replaceAll('"', '');
-  const accountId = cloudflare.accountId ? `account_id = "${String(cloudflare.accountId).replaceAll('"', '')}"\n` : '';
-  await writeIfChanged(ctx, 'wrangler.toml', `${accountId}name = "${workerName}"\nmain = "cloudflare-worker.mjs"\ncompatibility_date = "${compatibilityDate}"\n\n[assets]\ndirectory = "./"\nbinding = "ASSETS"\nrun_worker_first = ${workerFirst}\nhtml_handling = "auto-trailing-slash"\nnot_found_handling = "404-page"\n`);
+  const workerFirstRoutes: string[] = backendEnabled ? ['/api', '/api/*', ...routes] : routes;
+  const workerFirst = backendEnabled || routes.length ? `[ ${[...new Set<string>(workerFirstRoutes)].map(route => JSON.stringify(route)).join(', ')} ]` : 'false';
+  const workerName = String(workers.name || 'pageskill-site');
+  const compatibilityDate = String(workers.compatibilityDate || '2026-08-10');
+  const accountId = cloudflare.accountId ? `account_id = ${JSON.stringify(String(cloudflare.accountId))}\n` : '';
+  await writeIfChanged(ctx, 'wrangler.toml', `${accountId}name = ${JSON.stringify(workerName)}\nmain = "cloudflare-worker.mjs"\ncompatibility_date = ${JSON.stringify(compatibilityDate)}\n\n[assets]\ndirectory = ${JSON.stringify(`./${publicDirectory}`)}\nbinding = "ASSETS"\nrun_worker_first = ${workerFirst}\nhtml_handling = "auto-trailing-slash"\nnot_found_handling = "404-page"\n`);
   const denoBackendImport = backendEnabled ? `import { router } from './_pagekiln/backend/handler.js';\n` : 'const router = undefined;\n';
-  await writeIfChanged(ctx, 'vps-server.mjs', `import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${denoBackendImport}const runtimeEnv = new Proxy({}, { get: (_target, key) => Deno.env.get(String(key)) });\nconst fetchHandler = createSiteFetchHandler({ router });\nconst port = Number(Deno.env.get('PORT') || '8787');\nconst hostname = Deno.env.get('HOST') || '127.0.0.1';\nDeno.serve({ port, hostname }, (request, info) => fetchHandler(request, runtimeEnv, info));\nexport { fetchHandler };\n`);
+  const vpsStaticSource = `import { publicPathFromUrl, isPublicPath } from './_pagekiln/lib/static-security.js';\nconst staticRootPath = await Deno.realPath(new URL(${JSON.stringify(`./${publicDirectory}/`)}, import.meta.url));\nconst staticRoot = staticRootPath.replaceAll('\\\\', '/');\nconst staticRootPrefix = staticRoot.endsWith('/') ? staticRoot : staticRoot + '/';\nconst staticTypes = ${JSON.stringify({
+    '.css': 'text/css; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.eot': 'application/vnd.ms-fontobject',
+    '.gif': 'image/gif', '.html': 'text/html; charset=utf-8', '.ico': 'image/x-icon', '.jpeg': 'image/jpeg',
+    '.jpg': 'image/jpeg', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
+    '.md': 'text/markdown; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.pdf': 'application/pdf',
+    '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.webmanifest': 'application/manifest+json; charset=utf-8',
+    '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2', '.xml': 'application/xml; charset=utf-8'
+  })};
+function staticContentType(pathname) { const extension = pathname.slice(pathname.lastIndexOf('.')).toLowerCase(); return staticTypes[extension] || 'application/octet-stream'; }
+function staticCacheControl(pathname) { return /^\\/assets\\/(?:[^/]+\\/)*[^/]+\\.[a-f0-9]{12}\\.(?:css|js|mjs)$/i.test(pathname) ? 'public, max-age=31536000, immutable' : 'no-cache'; }
+async function fetchStaticAsset(request) {
+  const method = String(request.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') return new Response('Method Not Allowed', { status: 405, headers: { allow: 'GET, HEAD' } });
+  const decodedPath = publicPathFromUrl(request.url, { staticDirectory: ${publicDirectoryLiteral} });
+  if (!decodedPath) return new Response('Not found', { status: 404 });
+  const pathname = decodedPath === '/' || decodedPath.endsWith('/') ? decodedPath + 'index.html' : decodedPath;
+  const relative = pathname.replace(/^\\/+/, '');
+  let target;
+  try { target = await Deno.realPath(staticRootPath + '/' + relative); } catch { return new Response('Not found', { status: 404 }); }
+  const canonicalTarget = target.replaceAll('\\\\', '/');
+  if (canonicalTarget !== staticRoot && !canonicalTarget.startsWith(staticRootPrefix)) return new Response('Not found', { status: 404 });
+  const targetRelative = canonicalTarget.slice(staticRoot.length).replace(/^\\/+/, '');
+  if (!isPublicPath('/' + targetRelative, { staticDirectory: ${publicDirectoryLiteral} })) return new Response('Not found', { status: 404 });
+  let body;
+  try { body = await Deno.readFile(target); } catch { return new Response('Not found', { status: 404 }); }
+  const headers = new Headers({ 'content-type': staticContentType(pathname) });
+  headers.set('cache-control', staticCacheControl(pathname));
+  return new Response(method === 'HEAD' ? null : body, { status: 200, headers });
+}
+`;
+  await writeIfChanged(ctx, 'vps-server.mjs', `${vpsStaticSource}import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${denoBackendImport}const runtimeEnv = new Proxy({}, { get: (_target, key) => Deno.env.get(String(key)) });\nconst fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${JSON.stringify(String(locale))}, staticDirectory: ${publicDirectoryLiteral}, assets: fetchStaticAsset });\nconst port = Number(Deno.env.get('PORT') || '8787');\nconst hostname = Deno.env.get('HOST') || '127.0.0.1';\nDeno.serve({ port, hostname }, (request, info) => fetchHandler(request, runtimeEnv, info));\nexport { fetchHandler };\n`);
   const sitesBackendImport = backendEnabled ? `import { router } from './_pagekiln/backend/handler.js';\n` : 'const router = undefined;\n';
-  const sites = deployment.openaiSites && typeof deployment.openaiSites === 'object' ? deployment.openaiSites : {};
-  const staticDirectory = String(sites.staticDirectory || '').replace(/^\/+|\/+$/g, '');
-  const staticOption = staticDirectory ? `, staticDirectory: ${JSON.stringify(staticDirectory)}` : '';
-  const staticAssetsImport = staticDirectory ? `import { fetchStaticAsset } from './_pagekiln/static-assets.js';\n` : '';
-  const staticAssetsOption = staticDirectory ? ', assets: fetchStaticAsset' : '';
-  await writeIfChanged(ctx, 'server/index.js', `import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${sitesBackendImport}${staticAssetsImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: '${locale}'${staticOption}${staticAssetsOption} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`);
+  const openAiSites = hasOpenAiSitesDeployment(ctx.config);
+  const staticOption = openAiSites ? `, staticDirectory: ${publicDirectoryLiteral}` : '';
+  const staticAssetsImport = openAiSites ? `import { fetchStaticAsset } from './_pagekiln/static-assets.js';\n` : '';
+  const staticAssetsOption = openAiSites ? ', assets: fetchStaticAsset' : '';
+  await writeIfChanged(ctx, 'server/index.js', `import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${sitesBackendImport}${staticAssetsImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${localeLiteral}${staticOption}${staticAssetsOption} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`);
 }
 
 function openaiSitesStaticDirectory(ctx: BuildContext): string {
-  const deployment = ctx.config.deployment && typeof ctx.config.deployment === 'object' ? ctx.config.deployment : {};
-  const sites = deployment.openaiSites && typeof deployment.openaiSites === 'object' ? deployment.openaiSites : {};
-  return String(sites.staticDirectory || '').replace(/^\/+|\/+$/g, '');
+  return configuredStaticDirectory(ctx.config);
 }
 
 async function writeSiteStaticDirectory(ctx: BuildContext) {
-  const staticDirectory = openaiSitesStaticDirectory(ctx);
-  if (!staticDirectory || staticDirectory === 'dist') return;
-  const ignored = new Set(['.assetsignore', '_worker.js', 'cloudflare-worker.mjs', 'vps-server.mjs', 'wrangler.toml']);
+  const staticDirectory = configuredPublicDirectory(ctx.config);
+  if (!staticDirectory) return;
+  const targetPrefix = `${staticDirectory}/`;
+  // A route or asset whose URL already occupies the configured public prefix
+  // would be overwritten by the snapshot. Fail before copying any files.
+  for (const output of ctx.outputs) {
+    if (output === staticDirectory || output.startsWith(targetPrefix)) {
+      throw new Error(`config.yml: deployment.staticDirectory "${staticDirectory}" conflicts with generated output "${output}"; choose another public subdirectory`);
+    }
+  }
   const outputs = [...ctx.outputs];
   for (const output of outputs) {
-    if (!output || output.startsWith(`${staticDirectory}/`) || output.startsWith('server/') || output.startsWith('_pagekiln/') || output.startsWith('.pagekiln/') || ignored.has(output)) continue;
+    if (!output || output.startsWith(targetPrefix) || !isPublicPath(`/${output}`, { staticDirectory })) continue;
     try {
-      await writeIfChanged(ctx, `${staticDirectory}/${output}`, await fs.readFile(path.join(ctx.out, output)));
+      await writeIfChanged(ctx, `${staticDirectory}/${output}`, await fs.readFile(outputTarget(ctx, output).target));
     } catch (error: any) {
       if (error.code !== 'ENOENT') throw error;
     }
@@ -1208,19 +1415,29 @@ function staticContentType(file: string): string {
 }
 
 async function writeSiteStaticRuntime(ctx: BuildContext) {
-  const staticDirectory = openaiSitesStaticDirectory(ctx);
+  // The Sites adapter is the only consumer that needs a generated base64
+  // asset table. Mixed deployments use the public directory through ASSETS
+  // (or the Deno callback in vps-server.mjs) by default.
+  if (!hasOpenAiSitesDeployment(ctx.config)) return;
+  const staticDirectory = configuredPublicDirectory(ctx.config);
   if (!staticDirectory) return;
-  const staticRoot = staticDirectory === 'dist' ? ctx.out : path.join(ctx.out, staticDirectory);
-  const ignored = new Set(['.assetsignore', '_worker.js', 'cloudflare-worker.mjs', 'vps-server.mjs', 'wrangler.toml']);
+  const staticPrefix = `${staticDirectory}/`;
   const entries: string[] = [];
-  for (const file of await walk(staticRoot)) {
-    const relative = normalizePath(path.relative(staticRoot, file));
-    if (!relative || relative.startsWith('../')) continue;
-    if (staticDirectory === 'dist' && (ignored.has(relative) || relative.startsWith('.openai/') || relative.startsWith('.pagekiln/') || relative.startsWith('_pagekiln/') || relative.startsWith('server/') || relative.startsWith('static/'))) continue;
-    const data = (await fs.readFile(file)).toString('base64');
-    entries.push(`  ${JSON.stringify(`/${relative}`)}: [${JSON.stringify(staticContentType(file))}, ${JSON.stringify(data)}]`);
+  // Read only outputs recorded during this build. Walking the directory would
+  // re-embed stale files from a deleted page (or an untracked manual file)
+  // before the old-output cleanup below runs.
+  for (const output of [...ctx.outputs].sort()) {
+    if (!output.startsWith(staticPrefix)) continue;
+    const relative = output.slice(staticPrefix.length);
+    if (!relative) continue;
+    // Only files in the public root are embedded. Deployment metadata,
+    // generated runtimes, caches, and server code must never become assets.
+    if (!isPublicPath(`/${relative}`, { staticDirectory })) continue;
+    const data = (await fs.readFile(outputTarget(ctx, output).target)).toString('base64');
+    entries.push(`  ${JSON.stringify(`/${relative}`)}: [${JSON.stringify(staticContentType(relative))}, ${JSON.stringify(data)}]`);
   }
-  const source = `const assets = {\n${entries.join(',\n')}\n};\n\nfunction decode(value) {\n  const binary = atob(value);\n  const bytes = new Uint8Array(binary.length);\n  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);\n  return bytes;\n}\n\nfunction publicPath(pathname) {\n  const withoutDist = pathname === '/dist' ? '/' : pathname.startsWith('/dist/') ? pathname.slice(5) : pathname;\n  return withoutDist === '/' || withoutDist.endsWith('/') ? withoutDist + 'index.html' : withoutDist;\n}\n\nexport function fetchStaticAsset(request) {\n  const pathname = publicPath(new URL(request.url).pathname);\n  const asset = assets[pathname];\n  if (!asset) return new Response('Not found', { status: 404 });\n  const headers = new Headers({ 'content-type': asset[0] });\n  if (pathname.startsWith('/assets/')) headers.set('cache-control', 'public, max-age=31536000, immutable');\n  return new Response(request.method === 'HEAD' ? null : decode(asset[1]), { status: 200, headers });\n}\n`;
+  const staticDirectoryLiteral = JSON.stringify(staticDirectory);
+  const source = `import { publicPathFromUrl } from './lib/static-security.js';\n\nconst assets = {\n${entries.join(',\n')}\n};\n\nfunction decode(value) {\n  const binary = atob(value);\n  const bytes = new Uint8Array(binary.length);\n  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);\n  return bytes;\n}\n\nfunction staticCacheControl(pathname) { return /^\\/assets\\/(?:[^/]+\\/)*[^/]+\\.[a-f0-9]{12}\\.(?:css|js|mjs)$/i.test(pathname) ? 'public, max-age=31536000, immutable' : 'no-cache'; }\n\nexport function fetchStaticAsset(request) {\n  const method = String(request.method || 'GET').toUpperCase();\n  if (method !== 'GET' && method !== 'HEAD') return new Response('Method Not Allowed', { status: 405, headers: { allow: 'GET, HEAD' } });\n  const decodedPath = publicPathFromUrl(request.url, { staticDirectory: ${staticDirectoryLiteral} });\n  if (!decodedPath) return new Response('Not found', { status: 404 });\n  const pathname = decodedPath === '/' || decodedPath.endsWith('/') ? decodedPath + 'index.html' : decodedPath;\n  const asset = assets[pathname];\n  if (!asset) return new Response('Not found', { status: 404 });\n  const headers = new Headers({ 'content-type': asset[0], 'cache-control': staticCacheControl(pathname) });\n  return new Response(method === 'HEAD' ? null : decode(asset[1]), { status: 200, headers });\n}\n`;
   await writeIfChanged(ctx, 'server/_pagekiln/static-assets.js', source);
 }
 
@@ -1232,16 +1449,23 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
   const configSource = await fs.readFile(configFile, 'utf8');
   const config = parseYaml(configSource);
   assertConfigSurface(config);
-  const themeName = config.theme?.name || 'default';
-  const themeRoot = path.join(root, 'themes', themeName);
+  const themeName = configuredThemeName(config);
+  const themeRoot = containedPath(path.join(root, 'themes'), themeName, 'theme directory');
   const themeSource = await fs.readFile(path.join(themeRoot, 'theme.yml'), 'utf8').catch(() => 'name: default');
   const theme = parseYaml(themeSource);
-  const i18nRelative = String(theme.i18n || 'i18n.yml');
-  const i18nPath = path.join(themeRoot, i18nRelative);
+  const i18nRelative = safeRelativePath(theme.i18n || 'i18n.yml', 'theme i18n path');
+  const i18nPath = containedPath(themeRoot, i18nRelative, 'theme i18n path');
   const i18nSource = await fs.readFile(i18nPath, 'utf8').catch((error: any) => { if (error.code === 'ENOENT') return ''; throw error; });
   const themeI18n = i18nSource.trim() ? parseYaml(i18nSource) : {};
   const themeFiles = await walk(themeRoot, ['.yml', '.css', '.js', '.mjs', '.ts']);
-  const themeChunks = await parallelMap(themeFiles, 16, async file => `${normalizePath(path.relative(themeRoot, file))}\0${await fs.readFile(file, 'utf8')}`);
+  const themeReads = await parallelMap(themeFiles, 16, async file => ({
+    relative: normalizePath(path.relative(themeRoot, file)),
+    source: await fs.readFile(file, 'utf8')
+  }));
+  const themeChunks = themeReads.map(({ relative, source }) => `${relative}\0${source}`);
+  const themeStyleSources = new Map(themeReads
+    .filter(({ relative }) => path.extname(relative).toLowerCase() === '.css')
+    .map(({ relative, source }) => [relative, source] as const));
   const configHash = shortHash(configSource);
   const themeHash = shortHash(themeChunks.join('\0'));
   theme.__fingerprint = themeHash;
@@ -1313,7 +1537,7 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
   profile.load = duration(loadStart);
   profile.documents = docs.length;
   const byKey = new Map(docs.map(doc => [`${doc.collection}:${doc.id}:${doc.locale}`, doc]));
-  return { root, out: path.join(root, 'dist'), config, theme, themeI18n, themeDefinition, docs, byKey, routes: new Map(), cache, profile, outputs: new Set(), diagnostics: [], configHash, themeHash, assetHash, contentRoots, imageCache: {}, outputHashes: {}, collectionIndex: new Map(), translationIndex: new Map(), documentPositions: new Map(), tagIndex: new Map(), markdownCache: new Map(), sourceParseCache };
+  return { root, out: path.join(root, 'dist'), config, theme, themeI18n, themeDefinition, docs, byKey, routes: new Map(), cache, profile, outputs: new Set(), diagnostics: [], configHash, themeHash, assetHash, contentRoots, imageCache: {}, outputHashes: {}, collectionIndex: new Map(), translationIndex: new Map(), documentPositions: new Map(), tagIndex: new Map(), markdownCache: new Map(), sourceParseCache, themeStyleSources };
 }
 
 export async function refreshContext(ctx: BuildContext, changedFiles: string[] = []): Promise<BuildContext> {
@@ -1525,9 +1749,13 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   await writeLlms(ctx, siteUrl);
   await writeIfChanged(ctx, '.pagekiln/catalog.json', JSON.stringify(catalog(ctx), null, 2)); await writeDeployments(ctx); await copyThemeAndAssets(ctx); await writeSiteStaticDirectory(ctx); await writeSiteStaticRuntime(ctx); ctx.profile.assets = duration(assetStart);
   const previousOutputs = new Set(ctx.cache.outputs || []); const writeStart = performance.now();
-  for (const old of previousOutputs) if (!ctx.outputs.has(old)) { const target = path.join(ctx.out, old); try { await fs.rm(target); } catch (error: any) { if (error.code !== 'ENOENT') throw error; } }
+  for (const old of previousOutputs) {
+    const { normalized, target } = outputTarget(ctx, old);
+    if (ctx.outputs.has(normalized)) continue;
+    try { await fs.rm(target); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
+  }
   if (openaiSitesStaticDirectory(ctx) === 'dist') {
-    const legacyStaticDirectory = path.join(ctx.out, 'static');
+    const legacyStaticDirectory = outputTarget(ctx, 'static').target;
     await fs.rm(legacyStaticDirectory, { recursive: true, force: true });
   }
   ctx.profile.write = duration(writeStart);

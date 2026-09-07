@@ -5,6 +5,7 @@ import { BookOpen, ChartLine, Cookie, FileText, Globe, Layers, Map, Palette, Roc
 
 const featureIcons = [FileText, BookOpen, Layers, Rocket, Palette, Globe, ChartLine] as const;
 const pipelineIcons = [FileText, Settings2, Layers, Rocket] as const;
+const learningPathSteps = ['start', 'settings', 'markdown', 'first-content', 'cookies', 'customize'] as const;
 
 function iconAttribute(value: string | number): string {
   return String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
@@ -66,6 +67,18 @@ function compilerBoardSteps(nodes: MarkdownNode[], context: ThemeRenderContext):
   return groupedContent(nodes, context).map((content, index) => `<article class="compiler-board-step board-step-${index + 1}"><span class="board-step-index">${String(index + 1).padStart(2, '0')}</span><span class="board-step-icon" aria-hidden="true">${iconSvg([FileText, Settings2, Rocket][index % 3], 'ui-icon')}</span>${content}</article>`).join('');
 }
 
+function renderLearningPath(node: DirectiveNode, context: ThemeRenderContext): string {
+  validateAttrs(node, blocks['learning-path']);
+  const cards = groupedContent(node.children, context);
+  if (cards.length !== learningPathSteps.length) throw new MarkdownError('Block "learning-path" needs exactly six level-three headings with their supporting Markdown', node.position);
+  const renderedCards = cards.map((content, index) => {
+    const step = learningPathSteps[index];
+    const imageSource = context.safeUrl(`/assets/learning/${step}.png`);
+    return `<article class="learning-path-card learning-path-card-${step}"><div class="learning-path-art learning-path-art-${step}" aria-hidden="true"><img src="${imageSource}" alt="" aria-hidden="true" loading="lazy" decoding="async" width="112" height="112"></div><div class="learning-path-content">${content}</div></article>`;
+  }).join('');
+  return `<section class="block learning-path"><div class="learning-path-grid">${renderedCards}</div></section>`;
+}
+
 function markdownTable(node: DirectiveNode, message: string): { headers: string[]; rows: string[][] } {
   const lines = node.raw.replaceAll('\r', '').split('\n');
   const tableStart = lines.findIndex((line, index) => line.includes('|') && index + 1 < lines.length && lines[index + 1].split('|').filter(Boolean).every(cell => /^\s*:?-{3,}:?\s*$/.test(cell)));
@@ -87,9 +100,8 @@ function markdownTable(node: DirectiveNode, message: string): { headers: string[
 function renderToolComparison(node: DirectiveNode, context: ThemeRenderContext): string {
   validateAttrs(node, blocks['tool-comparison']);
   const table = markdownTable(node, 'Block "tool-comparison" needs a Markdown table with a decision-question column and at least two products');
-  const isChinese = context.doc.locale.startsWith('zh');
-  const label = isChinese ? '各项目官方写明的入口' : 'Authoring paths documented by each project';
-  const note = isChinese ? '同类工具单元格只引用其官方资料出现的入口；Pagekiln 一列来自本仓库。' : 'Adjacent-tool cells name entries from their official docs; the Pagekiln column comes from this repository.';
+  const label = context.translate('toolComparison.label', 'Authoring paths documented by each project');
+  const note = context.translate('toolComparison.note', 'Adjacent-tool cells name entries from their official docs; the Pageskill column comes from this repository.');
   const headers = table.headers.map((header, index) => `<th scope="col" class="${index === table.headers.length - 1 ? 'is-pagekiln' : ''}">${context.renderInline(header)}</th>`).join('');
   const rows = table.rows.map(row => `<tr>${row.map((value, index) => {
     const className = index === table.headers.length - 1 ? 'is-pagekiln' : '';
@@ -118,9 +130,8 @@ function benchmarkRows(node: DirectiveNode): { headers: string[]; rows: Array<{ 
 function renderBenchmarkChart(node: DirectiveNode, context: ThemeRenderContext): string {
   validateAttrs(node, blocks['benchmark-chart']);
   const table = benchmarkRows(node);
-  const isChinese = context.doc.locale.startsWith('zh');
-  const label = isChinese ? 'Pagekiln 本机实测：构建时间（秒）' : 'Pagekiln local measurement: build time (seconds)';
-  const note = isChinese ? '同一份自动生成 Markdown 夹具；数字保留原始测量结果，不是跨工具估算。' : 'One generated Markdown fixture; values are recorded measurements, not cross-tool estimates.';
+  const label = context.translate('benchmarkChart.label', 'Pageskill local measurement: build time (seconds)');
+  const note = context.translate('benchmarkChart.note', 'One generated Markdown fixture; values are recorded measurements, not cross-tool estimates.');
   const max = Math.max(...table.rows.flatMap(row => row.values), 1);
   const headers = table.headers.map((header, index) => `<th scope="col" class="${index === table.headers.length - 1 ? 'is-largest' : ''}">${context.renderInline(header)}</th>`).join('');
   const rows = table.rows.map(row => `<tr><th scope="row">${context.renderInline(row.label)}</th>${row.values.map((value, index) => `<td data-label="${context.escapeHtml(table.headers[index + 1])}"><div class="benchmark-value"><strong>${context.escapeHtml(value.toFixed(2))} s</strong><span class="benchmark-track"><i style="width:${(value / max * 100).toFixed(2)}%"></i></span></div></td>`).join('')}</tr>`).join('');
@@ -160,9 +171,10 @@ function postCover(post: ThemeRenderContext['doc'], context: ThemeRenderContext,
 const blocks: Record<string, ThemeBlockDefinition> = {
   hero: { name: 'hero', schema: { tone: 'string', align: 'string' }, defaults: { tone: 'default', align: 'left' }, render: (node, context) => { validateAttrs(node, blocks.hero); const tone = enumAttr(node, 'tone', ['default', 'brand', 'muted'], 'default'); const align = enumAttr(node, 'align', ['left', 'center', 'right'], 'left'); return `<section class="block hero tone-${context.escapeHtml(tone)} align-${context.escapeHtml(align)}"><span class="hero-tool-mark" aria-hidden="true">${iconSvg(Wrench, 'hero-tool-icon')}</span>${context.renderNodes(node.children)}</section>`; } },
   'feature-grid': { name: 'feature-grid', schema: { columns: 'number' }, defaults: { columns: '3' }, render: (node, context) => { validateAttrs(node, blocks['feature-grid']); const columns = numberAttr(node, 'columns', 1, 6, 3); return `<section class="block feature-grid" style="--columns:${columns}">${groupedContent(node.children, context).map((content, index) => `<article><span class="feature-icon" aria-hidden="true">${iconSvg(featureIcons[index % featureIcons.length], 'ui-icon')}</span>${content}</article>`).join('')}</section>`; } },
-  'compiler-board': { name: 'compiler-board', schema: {}, render: (node, context) => { validateAttrs(node, blocks['compiler-board']); const label = context.translate('compilerBoard', 'Pagekiln compiler model'); return `<section class="block compiler-board" aria-label="${context.escapeHtml(label)}"><div class="compiler-board-grid">${compilerBoardSteps(node.children, context)}</div></section>`; } },
+  'learning-path': { name: 'learning-path', schema: {}, contexts: ['page'], resources: { styles: ['blocks/learning-path.css'] }, render: renderLearningPath },
+  'compiler-board': { name: 'compiler-board', schema: {}, render: (node, context) => { validateAttrs(node, blocks['compiler-board']); const label = context.translate('compilerBoard', 'Pageskill compiler model'); return `<section class="block compiler-board" aria-label="${context.escapeHtml(label)}"><div class="compiler-board-grid">${compilerBoardSteps(node.children, context)}</div></section>`; } },
   metrics: { name: 'metrics', schema: {}, render: (node, context) => { validateAttrs(node, blocks.metrics); const label = context.translate('metrics', 'Measured build data'); return `<section class="block metrics" aria-label="${context.escapeHtml(label)}"><div class="metrics-grid">${groupedContent(node.children, context).map((content, index) => `<article class="metric-card"><span class="metric-index">${String(index + 1).padStart(2, '0')}</span>${content}</article>`).join('')}</div></section>`; } },
-  'tool-comparison': { name: 'tool-comparison', schema: {}, example: ':::tool-comparison\n| Decision | Tool A | Pagekiln |\n| --- | --- | --- |\n| Content entry | Markdown | GFM + Blocks |\n:::', render: renderToolComparison },
+  'tool-comparison': { name: 'tool-comparison', schema: {}, example: ':::tool-comparison\n| Decision | Tool A | Pageskill |\n| --- | --- | --- |\n| Content entry | Markdown | GFM + Blocks |\n:::', render: renderToolComparison },
   'benchmark-chart': { name: 'benchmark-chart', schema: {}, example: ':::benchmark-chart\n| Scenario | 100 docs | 1,000 docs |\n| --- | ---: | ---: |\n| Cold build | 0.20 | 0.70 |\n:::', render: renderBenchmarkChart },
   'research-matrix': { name: 'research-matrix', schema: {}, render: (node, context) => { validateAttrs(node, blocks['research-matrix']); const label = context.translate('research', 'Official-source comparison'); return `<section id="research" class="block research-matrix" aria-label="${context.escapeHtml(label)}">${context.renderNodes(node.children)}</section>`; } },
   comparison: { name: 'comparison', schema: {}, render: (node, context) => { validateAttrs(node, blocks.comparison); const cards = groupedContent(node.children, context); if (cards.length < 2) throw new MarkdownError('Block "comparison" needs at least two comparison columns; add two level-three headings with their supporting Markdown', node.position); const label = context.translate('comparison', 'Product comparison'); return `<section id="comparison" class="block comparison" aria-label="${context.escapeHtml(label)}"><div class="comparison-grid">${cards.map((content, index) => `<article class="comparison-side comparison-side-${index + 1}"><span class="comparison-index">${String(index + 1).padStart(2, '0')}</span>${content}</article>`).join('')}</div></section>`; } },

@@ -126,13 +126,16 @@ export type ThemePatternDefinition = {
   render: (content: string, context: ThemeRenderContext) => string;
 };
 
-export type PagekilnTheme = {
+export type PageskillTheme = {
   name?: string;
   blocks: Record<string, ThemeBlockDefinition>;
   patterns: Record<string, ThemePatternDefinition>;
   shell?: (context: ThemeShellContext) => string;
 };
 
-export function defineTheme(theme: PagekilnTheme): PagekilnTheme {
+/** @deprecated Use PageskillTheme. Kept as a source-compatible alias for existing themes. */
+export type PagekilnTheme = PageskillTheme;
+
+export function defineTheme(theme: PageskillTheme): PageskillTheme {
   return theme;
 }

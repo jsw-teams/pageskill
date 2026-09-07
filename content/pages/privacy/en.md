@@ -12,7 +12,7 @@ Last updated: 2026-08-10
 
 The data controller for this site is **Site Owner**.
 
-Contact: [Pagekiln repository](https://github.com/jsw-teams/pagekiln)
+Contact: [Pageskill repository](https://github.com/jsw-teams/pageskill)
 
 For supervisory-authority information, see the [European Data Protection Board directory](https://edpb.europa.eu/about-edpb/about-edpb_en). You may contact the authority competent for your residence, workplace, or the place of the alleged infringement.
 

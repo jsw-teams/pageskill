@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
+import { classifyPublicPath } from './runtime/lib/static-security.js';
 
 const TARGET_ALIASES = new Map([
   ['cf-pages', 'cloudflare-pages'],
@@ -102,12 +103,12 @@ export function normalizeTarget(value) {
 
 export function deployHelp() {
   return [
-    'Usage: pagekiln d [--dry-run]',
+    'Usage: pageskill d [--dry-run]',
     '',
     'Targets:',
-    '  cloudflare-pages   wrangler pages deploy dist --project-name <name>',
+    '  cloudflare-pages   wrangler pages deploy a filtered staging snapshot --project-name <name>',
     '  cloudflare-workers  wrangler deploy using dist/wrangler.toml',
-    '  github              git subtree push dist to a selected remote branch',
+    '  github              git subtree push the public output to a selected remote branch',
     '  vps                 scp dist/ to user@host:/remote/path',
     '  openai-sites        validate dist/, dist/server/, and .openai/hosting.json for Sites',
     '',
@@ -141,6 +142,175 @@ async function requireFile(file, message) {
   try { await fs.access(file); } catch { throw new Error(message); }
 }
 
+const STATIC_RUNTIME_NAMES = new Set([
+  'server',
+  '_pagekiln',
+  '.pagekiln',
+  '.assetsignore',
+  '_worker.js',
+  'cloudflare-worker.mjs',
+  'vps-server.mjs',
+  'wrangler.toml'
+]);
+
+function normalizedRelativePath(value, label) {
+  if (typeof value !== 'string') throw new Error(`${label} must be a relative directory.`);
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(value)) throw new Error(`${label} contains control characters.`);
+  const normalized = value.replaceAll('\\', '/');
+  if (!normalized || normalized === '.') throw new Error(`${label} must be a non-empty relative directory.`);
+  if (normalized.startsWith('/') || /^[A-Za-z]:/.test(normalized)) throw new Error(`${label} must be a relative directory.`);
+  if (normalized.split('/').some(segment => !segment || segment === '.' || segment === '..' || segment.includes(':') || /[. ]$/.test(segment))) {
+    throw new Error(`${label} must be a safe relative directory.`);
+  }
+  return normalized;
+}
+
+function staticDirectorySetting(config) {
+  const deployment = config && typeof config === 'object' ? config : {};
+  const openaiSites = deployment.openaiSites && typeof deployment.openaiSites === 'object' ? deployment.openaiSites : {};
+  const candidates = [
+    ['deployment.staticDirectory', deployment.staticDirectory],
+    ['deployment.openaiSites.staticDirectory', openaiSites.staticDirectory]
+  ];
+  for (const [label, value] of candidates) {
+    if (value === undefined || value === null || value === '') continue;
+    const normalized = normalizedRelativePath(String(value), label);
+    if (normalized.toLocaleLowerCase() === 'dist') throw new Error(`${label} cannot be "dist"; choose a public subdirectory such as public.`);
+    return { label, value: normalized };
+  }
+  return null;
+}
+
+async function isDirectory(directory) {
+  try { return (await fs.lstat(directory)).isDirectory(); } catch { return false; }
+}
+
+async function requireDirectory(directory, label) {
+  const stat = await fs.lstat(directory).catch(error => { throw new Error(`${label} does not exist: ${directory}`); });
+  if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`${label} must be a real directory: ${directory}`);
+}
+
+async function pagesStaticRoot(config, dist) {
+  const setting = staticDirectorySetting(config);
+  if (setting) {
+    const source = path.resolve(dist, setting.value);
+    const containment = path.relative(path.resolve(dist), source);
+    if (containment.startsWith('..') || path.isAbsolute(containment)) throw new Error(`${setting.label} must stay inside dist/.`);
+    if (!(await isDirectory(source))) throw new Error(`Cloudflare Pages public directory does not exist: ${path.relative(path.dirname(dist), source)}`);
+    const stat = await fs.lstat(source);
+    if (stat.isSymbolicLink()) throw new Error('Cloudflare Pages public directory must not be a symbolic link.');
+    return source;
+  }
+  const publicRoot = path.join(dist, 'public');
+  if (await isDirectory(publicRoot)) {
+    const stat = await fs.lstat(publicRoot);
+    if (stat.isSymbolicLink()) throw new Error('Cloudflare Pages public directory must not be a symbolic link.');
+    return publicRoot;
+  }
+  return dist;
+}
+
+async function copyPublicTree(sourceRoot, destinationRoot, relative = '') {
+  const entries = await fs.readdir(path.join(sourceRoot, relative), { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
+    const childRelative = relative ? `${relative}/${entry.name}` : entry.name;
+    const childSource = path.join(sourceRoot, childRelative);
+    const publicPath = `/${childRelative.replaceAll('\\', '/')}`;
+    const classification = classifyPublicPath(publicPath);
+    if (!classification.ok) continue;
+    if (entry.isDirectory()) {
+      await fs.mkdir(path.join(destinationRoot, childRelative), { recursive: true });
+      await copyPublicTree(sourceRoot, destinationRoot, childRelative);
+    } else if (entry.isFile()) {
+      const destination = path.join(destinationRoot, childRelative);
+      await fs.mkdir(path.dirname(destination), { recursive: true });
+      await fs.copyFile(childSource, destination);
+    }
+  }
+}
+
+async function copyTreeWithoutSymlinks(sourceRoot, destinationRoot) {
+  await fs.mkdir(destinationRoot, { recursive: true });
+  const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
+    const source = path.join(sourceRoot, entry.name);
+    const destination = path.join(destinationRoot, entry.name);
+    if (entry.isDirectory()) {
+      await fs.mkdir(destination, { recursive: true });
+      await copyTreeWithoutSymlinks(source, destination);
+    } else if (entry.isFile()) {
+      await fs.copyFile(source, destination);
+    }
+  }
+}
+
+async function stageCloudflarePages(root, dist, config) {
+  await requireDirectory(dist, 'Cloudflare Pages build output');
+  const sourceRoot = await pagesStaticRoot(config, dist);
+  const pageUploadRoot = path.join(root, '.pagekiln');
+  try {
+    const stat = await fs.lstat(pageUploadRoot);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error('Cloudflare Pages staging parent must be a real .pagekiln directory.');
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+    await fs.mkdir(pageUploadRoot);
+  }
+  // A fresh staging directory is populated completely before Wrangler sees it;
+  // retaining it also makes a dry-run inspectable without deleting user data.
+  const staging = await fs.mkdtemp(path.join(pageUploadRoot, 'pages-upload-'));
+  const stagingRelative = path.relative(pageUploadRoot, staging);
+  if (!stagingRelative || stagingRelative.startsWith('..') || path.isAbsolute(stagingRelative)) throw new Error('Cloudflare Pages staging path escaped .pagekiln.');
+  await copyPublicTree(sourceRoot, staging);
+
+  const workerSource = path.join(dist, '_worker.js');
+  let workerStat;
+  try { workerStat = await fs.lstat(workerSource); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (workerStat) {
+    if (workerStat.isSymbolicLink() || !workerStat.isFile() && !workerStat.isDirectory()) throw new Error('Cloudflare Pages _worker.js must be a regular file or directory.');
+    const workerDirectory = path.join(staging, '_worker.js');
+    await fs.mkdir(workerDirectory, { recursive: true });
+    if (workerStat.isFile()) await fs.copyFile(workerSource, path.join(workerDirectory, 'index.js'));
+    else await copyTreeWithoutSymlinks(workerSource, workerDirectory);
+    const runtimeSource = path.join(dist, '_pagekiln');
+    const runtimeStat = await fs.lstat(runtimeSource).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+    if (!runtimeStat || runtimeStat.isSymbolicLink() || !runtimeStat.isDirectory()) throw new Error('Cloudflare Pages _worker.js requires dist/_pagekiln runtime modules.');
+    await copyTreeWithoutSymlinks(runtimeSource, path.join(workerDirectory, '_pagekiln'));
+  }
+  return { directory: staging, sourceRoot };
+}
+
+async function validateGitHubTree(sourceRoot, relative = '', allowMetadata = false) {
+  const entries = await fs.readdir(path.join(sourceRoot, relative), { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) throw new Error(`GitHub Pages public output must not contain symbolic links: ${relative ? `${relative}/` : ''}${entry.name}`);
+    const childRelative = relative ? `${relative}/${entry.name}` : entry.name;
+    const childPath = `/${childRelative.replaceAll('\\', '/')}`;
+    const metadataDirectory = !relative && entry.name === '.pagekiln';
+    if (!allowMetadata && !metadataDirectory) {
+      const classification = classifyPublicPath(childPath);
+      if (!classification.ok) throw new Error(`GitHub Pages public output contains a private or unsafe path: ${childRelative}`);
+    }
+    if (entry.isDirectory()) await validateGitHubTree(sourceRoot, childRelative, allowMetadata || metadataDirectory);
+  }
+}
+
+async function assertGitHubStaticUpload(config, dist) {
+  await requireDirectory(dist, 'GitHub Pages build output');
+  const sourceRoot = await pagesStaticRoot(config, dist);
+  const sourceIsRoot = path.resolve(sourceRoot) === path.resolve(dist);
+  if (sourceIsRoot) {
+    const entries = await fs.readdir(dist, { withFileTypes: true });
+    const privateEntry = entries.find(entry => STATIC_RUNTIME_NAMES.has(entry.name.toLocaleLowerCase()) && entry.name.toLocaleLowerCase() !== '.pagekiln');
+    if (privateEntry) throw new Error(`GitHub Pages requires a pure static dist/; found private runtime artifact dist/${privateEntry.name}. Configure deployment.staticDirectory: public or build a static-only output before uploading.`);
+    await validateGitHubTree(dist);
+  } else {
+    await validateGitHubTree(sourceRoot);
+  }
+  return sourceRoot;
+}
+
 function commandFor(target, root, ctx, options) {
   const config = deploymentConfig(ctx);
   const cloudflare = config.cloudflare && typeof config.cloudflare === 'object' ? config.cloudflare : {};
@@ -154,7 +324,7 @@ function commandFor(target, root, ctx, options) {
     if (!project) throw new Error('Cloudflare Pages requires deployment.cloudflare.pages.project in config.yml.');
     rejectInlineCredential(cloudflare, 'deployment.cloudflare');
     const credential = secretEnvironment(cloudflare.apiTokenEnv, 'Cloudflare API token environment variable', options.dryRun);
-    const commandArgs = ['pages', 'deploy', dist, '--project-name', project];
+    const commandArgs = ['pages', 'deploy', options.pagesSource || dist, '--project-name', project];
     if (pages.branch) commandArgs.push('--branch', safeGitRef(pages.branch, 'Cloudflare Pages branch'));
     return { command: executable('wrangler'), args: commandArgs, env: credential.env, credentialEnv: credential.name, summary: `Cloudflare Pages project ${project}` };
   }
@@ -169,7 +339,7 @@ function commandFor(target, root, ctx, options) {
   if (target === 'github-pages') {
     const remote = safeGitRef(github.remote, 'Git remote');
     const branch = safeGitRef(github.branch, 'GitHub Pages branch');
-    const prefix = path.relative(root, dist).replaceAll('\\', '/') || '.';
+    const prefix = path.relative(root, options.githubSource || dist).replaceAll('\\', '/') || '.';
     rejectInlineCredential(github, 'deployment.github');
     const credential = secretEnvironment(github.tokenEnv, 'GitHub token environment variable', options.dryRun);
     const env = credential.env ? {
@@ -226,18 +396,19 @@ async function validateOpenAISites(root, dist, settings = {}, metadataPath = '.o
   let metadata;
   try { metadata = JSON.parse(await fs.readFile(file, 'utf8')); } catch (error) { throw new Error(`Cannot parse ${relative}: ${error.message}`); }
   if (!metadata || typeof metadata.project_id !== 'string' || !metadata.project_id.trim()) throw new Error(`${relative} must contain the exact Sites project_id returned by the Sites connector.`);
-  await requireFile(path.join(dist, 'server', 'index.js'), 'OpenAI Sites requires dist/server/index.js; run pagekiln g before the handoff.');
-  const rawStaticDirectory = cleanName(settings.staticDirectory, 'dist').replaceAll('\\', '/').replace(/^\/+|\/+$/g, '');
-  if (!rawStaticDirectory || rawStaticDirectory === '.' || rawStaticDirectory.split('/').includes('..')) throw new Error('deployment.openaiSites.staticDirectory must be a safe relative directory such as dist.');
-  const staticRoot = rawStaticDirectory === 'dist' ? dist : path.join(dist, rawStaticDirectory);
-  await requireFile(path.join(staticRoot, 'index.html'), `OpenAI Sites requires ${rawStaticDirectory}/index.html; run pagekiln g before the handoff.`);
+  await requireFile(path.join(dist, 'server', 'index.js'), 'OpenAI Sites requires dist/server/index.js; run pageskill g before the handoff.');
+  const rawStaticDirectory = normalizedRelativePath(String(settings.staticDirectory || 'public'), 'deployment.staticDirectory');
+  const staticRoot = path.resolve(dist, rawStaticDirectory);
+  const containment = path.relative(path.resolve(dist), staticRoot);
+  if (containment.startsWith('..') || path.isAbsolute(containment)) throw new Error('deployment.staticDirectory must stay inside dist/.');
+  await requireFile(path.join(staticRoot, 'index.html'), `OpenAI Sites requires ${rawStaticDirectory}/index.html; run pageskill g before the handoff.`);
   return { file, projectId: metadata.project_id, staticDirectory: rawStaticDirectory };
 }
 
 export async function deploy(root, ctx, args = []) {
   const config = deploymentConfig(ctx);
   const unsupportedOptions = args.filter(arg => arg !== '--dry-run');
-  if (unsupportedOptions.length) throw new Error('Deployment target and provider settings belong in config.yml; pagekiln d only accepts --dry-run.');
+  if (unsupportedOptions.length) throw new Error('Deployment target and provider settings belong in config.yml; pageskill d only accepts --dry-run.');
   const targets = configuredTargets(config);
   if (!targets.length) throw new Error(`Set deployment.targets in config.yml. Available targets: ${Object.keys(TARGET_LABELS).join(', ')}.`);
   const options = { dryRun: hasFlag(args, '--dry-run') };
@@ -245,21 +416,32 @@ export async function deploy(root, ctx, args = []) {
   await requireFile(dist, `Build output is missing: ${path.relative(root, dist) || 'dist'}`);
   const results = [];
   for (const target of targets) {
-    const action = commandFor(target, root, ctx, options);
+    let action = commandFor(target, root, ctx, options);
+    let uploadSource = target === 'github-pages' ? dist : undefined;
+    let pagesStage;
+    if (target === 'github-pages') {
+      uploadSource = await assertGitHubStaticUpload(config, dist);
+      action = commandFor(target, root, ctx, { ...options, githubSource: uploadSource });
+    } else if (target === 'cloudflare-pages') {
+      pagesStage = await stageCloudflarePages(root, dist, config);
+      action = commandFor(target, root, ctx, { ...options, pagesSource: pagesStage.directory });
+      uploadSource = pagesStage.directory;
+    }
     if (target === 'openai-sites') {
       const openaiSites = config.openaiSites && typeof config.openaiSites === 'object' ? config.openaiSites : {};
-      const sites = await validateOpenAISites(root, dist, openaiSites, cleanName(openaiSites.metadata, '.openai/hosting.json'));
+      const configuredStaticDirectory = staticDirectorySetting(config)?.value || 'public';
+      const sites = await validateOpenAISites(root, dist, { ...openaiSites, staticDirectory: configuredStaticDirectory }, cleanName(openaiSites.metadata, '.openai/hosting.json'));
       results.push({ target, label: TARGET_LABELS[target], status: 'handoff-required', projectId: sites.projectId, metadata: path.relative(root, sites.file), staticDirectory: sites.staticDirectory, dist: path.relative(root, dist) });
       continue;
     }
     if (options.dryRun) {
-      results.push({ target, label: TARGET_LABELS[target], status: 'dry-run', command: action.command, args: action.args, cwd: root, credentialEnv: action.credentialEnv || undefined, authFiles: action.authFiles?.map(file => file.path), summary: action.summary });
+      results.push({ target, label: TARGET_LABELS[target], status: 'dry-run', command: action.command, args: action.args, cwd: root, credentialEnv: action.credentialEnv || undefined, authFiles: action.authFiles?.map(file => file.path), source: uploadSource && path.relative(root, uploadSource).replaceAll('\\', '/'), summary: action.summary });
       continue;
     }
     if (target === 'github-pages') await run(executable('git'), ['rev-parse', '--is-inside-work-tree'], { cwd: root });
     if (target === 'cloudflare-workers') await requireFile(path.join(dist, 'wrangler.toml'), 'Cloudflare Workers deployment file is missing: dist/wrangler.toml');
     for (const file of action.authFiles || []) await requireFile(file.path, `${file.label} does not exist: ${file.path}`);
-    console.log(`Deploying ${path.relative(root, dist) || 'dist'} to ${action.summary}...`);
+    console.log(`Deploying ${path.relative(root, uploadSource || dist) || 'dist'} to ${action.summary}...`);
     await run(action.command, action.args, { cwd: root, env: action.env });
     results.push({ target, label: TARGET_LABELS[target], status: 'deployed', summary: action.summary });
   }

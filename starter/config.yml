@@ -3,9 +3,9 @@ defaultLocale: en
 activeLocales:
   - en
 siteName:
-  en: New Pagekiln Site
+  en: New Pageskill Site
 description:
-  en: A neutral Pagekiln starter.
+  en: A neutral Pageskill starter.
 theme:
   name: default
   nav:

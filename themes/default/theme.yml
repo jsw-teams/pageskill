@@ -17,6 +17,7 @@ patterns:
 blocks:
   - hero
   - feature-grid
+  - learning-path
   - compiler-board
   - metrics
   - tool-comparison

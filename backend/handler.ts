@@ -6,6 +6,6 @@ export const router = new Router<BackendEnvironment>();
 
 router.get('/api/health', () => Response.json({
   ok: true,
-  service: 'pagekiln',
+  service: 'pageskill',
   runtime: 'web-standard-fetch'
 }));

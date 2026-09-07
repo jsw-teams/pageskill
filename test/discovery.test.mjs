@@ -9,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 import { createContext, build, inspect } from '../src/compiler.ts';
 
 const execFile = promisify(nodeExecFile);
-const cli = fileURLToPath(new URL('../src/bin/pagekiln.mjs', import.meta.url));
+const cli = fileURLToPath(new URL('../src/bin/pageskill.mjs', import.meta.url));
+const legacyCli = fileURLToPath(new URL('../src/bin/pagekiln.mjs', import.meta.url));
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pagekiln-discovery-'));
@@ -78,9 +80,23 @@ export default {
 }
 
 async function runCli(root, ...args) {
+  return runCliWithEnv(root, {}, ...args);
+}
+
+async function runCliWithEnv(root, extraEnv, ...args) {
   return execFile(process.execPath, [cli, ...args], {
-    cwd: path.dirname(path.dirname(cli)),
-    env: { ...process.env, PAGEKILN_SITE_ROOT: root },
+    cwd: repoRoot,
+    env: { ...process.env, ...extraEnv, PAGESKILL_SITE_ROOT: root },
+    maxBuffer: 2 * 1024 * 1024
+  });
+}
+
+async function runCliFromCwd(cwd, extraEnv, ...args) {
+  const env = { ...process.env, ...extraEnv };
+  delete env.PAGESKILL_SITE_ROOT;
+  return execFile(process.execPath, [cli, ...args], {
+    cwd,
+    env,
     maxBuffer: 2 * 1024 * 1024
   });
 }
@@ -168,7 +184,7 @@ test('init copies a minimal declared-and-implemented starter that checks and bui
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pagekiln-init-'));
   try {
     const result = await runCli(root, 'init');
-    assert.match(result.stdout, /Initialized neutral Pagekiln site/);
+    assert.match(result.stdout, /Initialized neutral Pageskill site/);
     for (const relative of ['config.yml', 'content/pages/home/en.md', 'themes/default/theme.yml', 'themes/default/theme.js', 'themes/default/style.css']) {
       await fs.access(path.join(root, relative));
     }
@@ -180,5 +196,33 @@ test('init copies a minimal declared-and-implemented starter that checks and bui
     assert.match(await fs.readFile(path.join(root, 'dist/en/index.html'), 'utf8'), /Write Markdown/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('pageskill is the only CLI entry and PAGESKILL_SITE_ROOT wins without a legacy fallback', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pagekiln-cli-root-'));
+  const ignoredRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pagekiln-legacy-root-'));
+  const cwdRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pageskill-cwd-root-'));
+  try {
+    const packageManifest = JSON.parse(await fs.readFile(path.join(repoRoot, 'package.json'), 'utf8'));
+    const packageLock = JSON.parse(await fs.readFile(path.join(repoRoot, 'package-lock.json'), 'utf8'));
+    assert.deepEqual(packageManifest.bin, { pageskill: 'src/bin/pageskill.mjs' });
+    assert.deepEqual(packageLock.packages[''].bin, { pageskill: 'src/bin/pageskill.mjs' });
+    assert.equal((await runCliFromCwd(cwdRoot, {}, '--version')).stdout.trim(), packageManifest.version);
+    assert.equal((await runCliFromCwd(cwdRoot, {}, '-v')).stdout.trim(), packageManifest.version);
+
+    await runCli(root, 'init');
+    await runCliWithEnv(root, { PAGEKILN_SITE_ROOT: ignoredRoot }, 'build');
+    await fs.access(path.join(root, 'dist/en/index.html'));
+    await assert.rejects(fs.access(path.join(ignoredRoot, 'dist')), error => error?.code === 'ENOENT');
+    await assert.rejects(fs.access(legacyCli), error => error?.code === 'ENOENT');
+
+    await runCliFromCwd(cwdRoot, { PAGEKILN_SITE_ROOT: ignoredRoot }, 'init');
+    await fs.access(path.join(cwdRoot, 'config.yml'));
+    await assert.rejects(fs.access(path.join(ignoredRoot, 'config.yml')), error => error?.code === 'ENOENT');
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(ignoredRoot, { recursive: true, force: true });
+    await fs.rm(cwdRoot, { recursive: true, force: true });
   }
 });

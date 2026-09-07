@@ -43,10 +43,16 @@ messages:
     allPosts: 查看全部产品笔记
     siteMap: 站点地图
     continue: 继续阅读
-    compilerBoard: Pagekiln 编译模型
-    metrics: Pagekiln 实测构建数据
+    compilerBoard: Pageskill 编译模型
+    metrics: Pageskill 实测构建数据
     research: 官方资料能力对比
-    comparison: 页面构建器与 Pagekiln 对比
+    comparison: 页面构建器与 Pageskill 对比
+    toolComparison:
+      label: 各项目官方写明的入口
+      note: 同类工具单元格只引用其官方资料出现的入口；Pageskill 一列来自本仓库。
+    benchmarkChart:
+      label: Pageskill 本机实测：构建时间（秒）
+      note: 同一份自动生成 Markdown 夹具；数字保留原始测量结果，不是跨工具估算。
     pipeline: 编译流程
     noPosts: 暂无产品笔记
     related: 相关产品笔记
@@ -70,12 +76,12 @@ messages:
       previousPage: 上一页
       nextPage: 下一页
     shell:
-      headerNote: 把内容变成可发布的网站
+      headerNote: 发现结构，组装页面
       skipToContent: 跳至内容
       languages: 语言
       navigation: 主导航
-      footerNote: 让内容成为更持久的产品资产。
-      footerKicker: 内容编译器
+      footerNote: 用可复用结构持续交付内容。
+      footerKicker: 可复用内容编译器
       postsFeed: 产品笔记订阅
     cookieConsent:
       title: Cookie 偏好设置
@@ -93,7 +99,7 @@ messages:
       policyLabel: 隐私政策
       categories:
         - id: essential
-          provider: Pagekiln
+          provider: Pageskill
           label: 必要功能
           description: 保存你的 Cookie 选择；不用于广告或追踪。
         - id: analytics
@@ -134,10 +140,16 @@ messages:
     allPosts: 查看全部產品筆記
     siteMap: 網站地圖
     continue: 繼續閱讀
-    compilerBoard: Pagekiln 編譯模型
-    metrics: Pagekiln 實測建置資料
+    compilerBoard: Pageskill 編譯模型
+    metrics: Pageskill 實測建置資料
     research: 官方資料能力對比
-    comparison: 頁面建構器與 Pagekiln 對比
+    comparison: 頁面建構器與 Pageskill 對比
+    toolComparison:
+      label: 各專案官方文件列出的入口
+      note: 同類工具儲存格只引用其官方資料出現的入口；Pageskill 一欄來自本儲存庫。
+    benchmarkChart:
+      label: Pageskill 本機實測：建置時間（秒）
+      note: 同一份自動產生的 Markdown 夾具；數字保留原始測量結果，不是跨工具估算。
     pipeline: 編譯流程
     noPosts: 暫無產品筆記
     related: 相關產品筆記
@@ -161,12 +173,12 @@ messages:
       previousPage: 上一頁
       nextPage: 下一頁
     shell:
-      headerNote: 把內容變成可發布的網站
+      headerNote: 發現結構，組合頁面
       skipToContent: 跳至內容
       languages: 語言
       navigation: 主導覽
-      footerNote: 讓內容成為更持久的產品資產。
-      footerKicker: 內容編譯器
+      footerNote: 用可重用結構持續交付內容。
+      footerKicker: 可重用內容編譯器
       postsFeed: 產品筆記訂閱
     cookieConsent:
       title: Cookie 偏好設定
@@ -184,7 +196,7 @@ messages:
       policyLabel: 隱私政策
       categories:
         - id: essential
-          provider: Pagekiln
+          provider: Pageskill
           label: 必要功能
           description: 儲存你的 Cookie 選擇；不用於廣告或追蹤。
         - id: analytics
@@ -225,10 +237,16 @@ messages:
     allPosts: View all product notes
     siteMap: Site map
     continue: Continue
-    compilerBoard: Pagekiln compiler model
-    metrics: Measured Pagekiln build data
+    compilerBoard: Pageskill compiler model
+    metrics: Measured Pageskill build data
     research: Official-source capability comparison
-    comparison: Page builder versus Pagekiln
+    comparison: Page builder versus Pageskill
+    toolComparison:
+      label: Authoring paths documented by each project
+      note: Adjacent-tool cells name entries from their official docs; the Pageskill column comes from this repository.
+    benchmarkChart:
+      label: "Pageskill local measurement: build time (seconds)"
+      note: One generated Markdown fixture; values are recorded measurements, not cross-tool estimates.
     pipeline: Compiler pipeline
     noPosts: No product notes yet.
     related: Related product notes
@@ -252,12 +270,12 @@ messages:
       previousPage: Previous page
       nextPage: Next page
     shell:
-      headerNote: Content to publishable sites
+      headerNote: Discover structure, compose pages
       skipToContent: Skip to content
       languages: Languages
       navigation: Primary navigation
-      footerNote: Make content a durable product asset.
-      footerKicker: Content compiler
+      footerNote: Deliver content with reusable structure.
+      footerKicker: Reusable content compiler
       postsFeed: Product note feed
     cookieConsent:
       title: Cookie preferences
@@ -275,7 +293,7 @@ messages:
       policyLabel: Privacy policy
       categories:
         - id: essential
-          provider: Pagekiln
+          provider: Pageskill
           label: Essential
           description: Stores your Cookie choice; it is not used for advertising or tracking.
         - id: analytics

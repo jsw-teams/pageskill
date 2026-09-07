@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createContext, build, inspect } from '../src/compiler.ts';
 
 const execFile = promisify(nodeExecFile);
-const cli = fileURLToPath(new URL('../src/bin/pagekiln.mjs', import.meta.url));
+const cli = fileURLToPath(new URL('../src/bin/pageskill.mjs', import.meta.url));
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const THEME = `export default {
@@ -24,7 +24,7 @@ const THEME = `export default {
 async function runCli(root, ...args) {
   return execFile(process.execPath, [cli, ...args], {
     cwd: repoRoot,
-    env: { ...process.env, PAGEKILN_SITE_ROOT: root },
+    env: { ...process.env, PAGESKILL_SITE_ROOT: root },
     maxBuffer: 2 * 1024 * 1024
   });
 }
