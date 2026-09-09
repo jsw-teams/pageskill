@@ -103,6 +103,20 @@ if (root) {
       setText('small', details, option);
     });
   };
+  const updateLocaleLinks = (locale, copy) => {
+    const localePath = `/${encodeURIComponent(String(locale).replace(/^\/+|\/+$/g, ''))}`;
+    const brand = document.querySelector('.brand');
+    if (brand) brand.setAttribute('href', `${localePath}/`);
+    const skip = document.querySelector('.skip');
+    if (skip && copy.skipToContent) skip.textContent = String(copy.skipToContent);
+    const footerTools = document.querySelector('.footer-tools');
+    if (footerTools && copy.siteMap) footerTools.setAttribute('aria-label', String(copy.siteMap));
+    const policyHref = copy.privacy?.policyHref || `${localePath}/privacy/`;
+    document.querySelectorAll('.privacy-links a').forEach(link => link.setAttribute('href', policyHref));
+    document.querySelectorAll('.footer-tools .footer-tool-link').forEach(link => {
+      if (String(link.getAttribute('href') || '').includes('/privacy/')) link.setAttribute('href', policyHref);
+    });
+  };
   const applyCopy = locale => {
     const copy = config.copy?.[locale];
     if (!copy) return;
@@ -118,6 +132,7 @@ if (root) {
     setText('.language-picker-description', copy.description);
     setText('.brand-copy strong', copy.siteName);
     setText('.brand-copy small', copy.headerNote);
+    updateLocaleLinks(locale, copy);
     const footerLinks = document.querySelectorAll('.site-footer .footer-tool-link');
     setFooterLabel(footerLinks[0], copy.siteMap);
     if (copy.privacy) {
@@ -129,7 +144,7 @@ if (root) {
       card.dataset.recommended = 'true';
       const recommendation = card.querySelector('[data-language-recommended]');
       if (recommendation) {
-        recommendation.hidden = false;
+        recommendation.removeAttribute('aria-hidden');
         recommendation.textContent = copy.recommended || 'Recommended';
       }
       card.setAttribute('aria-label', `${card.querySelector('strong')?.textContent || locale} — ${copy.recommended || 'Recommended'}`);

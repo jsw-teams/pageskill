@@ -3,11 +3,20 @@ messages:
     latestPosts: 最新文章
     allPosts: 查看全部文章
     noPosts: 暂无文章
+    latestUpdates: 更新日志
+    allUpdates: 查看全部更新
+    noUpdates: 暂无更新
   zh-tw:
     latestPosts: 最新文章
     allPosts: 查看全部文章
     noPosts: 暫無文章
+    latestUpdates: 更新日誌
+    allUpdates: 查看全部更新
+    noUpdates: 暫無更新
   en:
     latestPosts: Latest articles
     allPosts: View all articles
     noPosts: No articles yet.
+    latestUpdates: Release updates
+    allUpdates: View all updates
+    noUpdates: No updates yet.

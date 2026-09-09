@@ -2,7 +2,25 @@
 
 [简体中文](CHANGELOG.zh-CN.md) · [中文 README](README.md) · [English README](README.en.md)
 
-Version labels follow `package.json`, this changelog, and the dated localized release post. This file records repository changes; an entry does not claim npm publication or deployment.
+Version labels follow `package.json`, this changelog, and the dated localized update. This file records repository changes; an entry does not claim npm publication or deployment.
+
+## 3.0.2 — 2026-09-10
+
+Pageskill 3.0.2 separates version history from tutorial content and tightens the responsive reading layout.
+
+### Changed
+
+- Added an `updates` post collection at `content/updates/<version>/<locale>.md`, with independent localized index/detail routes, archive, feed, search entries, language links, navigation, and home-page section. Moved the 3.0.0 and 3.0.1 notes without changing their dates, authors, or covers; tutorials remain in `content/posts/`.
+- Extended the existing collection-driven archive/feed and post-list mechanisms instead of introducing a second page pattern. Update relations stay within the updates collection, and generated archive pages now expose a visible heading, description, and localized links.
+- Fixed the language chooser's recommendation layout with a reserved label line and equal card heights. Article headers now align with the reading column and keep title, description, date, and author compact before the cover; mobile tables of contents start collapsed.
+- Constrained archive thumbnails to a stable 16:9 frame with `height: 100%`, `width: 100%`, and `object-fit: cover`, so source `height` attributes cannot create tall blank rows. Article covers use a stable 1200:630 frame without stretching.
+
+### Verification
+
+- `npm run g -- --profile` passed; runtime, theme, and backend compilation passed and the build reported 48 source documents.
+- The 56-file internal `href`/`src` check found no missing references. The posts Feed contains 10 items and the updates Feed contains 3, with the two collections isolated; the old post routes for 3.0.0 and 3.0.1 are absent.
+- Desktop (1280px) and mobile (390px) checks passed: language cards are 136px and share a title baseline, archive covers are 144x81, article title/date/author alignment is compact, mobile TOC starts collapsed and expands on click, and there is no horizontal overflow. The root language page matched Traditional Chinese browser preference and localized its brand and privacy links to `zh-tw`.
+- `git diff --check` passed. `npm run d -- --dry-run` exited 1 because `deployment.targets` is not configured; no deployment or npm publication was performed.
 
 ## 3.0.1 — 2026-09-09
 

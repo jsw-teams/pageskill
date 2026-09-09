@@ -60,4 +60,4 @@ This 3.0.1 pass observed the runtime/theme compiles, `npm run g` generating 45 d
 
 ## Keep the migration small
 
-Keep stable pages in `content/pages/<id>/<locale>.md` and dated articles in `content/posts/<id>/<locale>.md`. Use one ID and matching `en`, `zh-sg`, and `zh-tw` files, keep their publication `date` aligned, and add only the Frontmatter fields the article needs. Continue with [Start your site in ten minutes](/en/posts/start/) and [Put the site online](/en/posts/deploy/) for the beginner path.
+Keep stable pages in `content/pages/<id>/<locale>.md`, dated tutorials and articles in `content/posts/<id>/<locale>.md`, and version updates in `content/updates/<version>/<locale>.md`. Use one ID and matching `en`, `zh-sg`, and `zh-tw` files, keep their publication `date` aligned, and add only the Frontmatter fields the document needs. Continue with [Start your site in ten minutes](/en/posts/start/) and [Put the site online](/en/posts/deploy/) for the beginner path.

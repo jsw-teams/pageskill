@@ -34,7 +34,7 @@ type CachedDocument = { hash: string; outputs: string[]; dependencies?: string[]
 type CachedImage = { hash: string; output: string };
 type CacheManifest = { version: 2; rendererVersion?: string; configHash?: string; themeHash?: string; assetHash?: string; backendHash?: string; contentRoots?: Record<string, number>; routeCount?: number; documents: Record<string, CachedDocument>; images?: Record<string, CachedImage>; outputs: string[]; outputHashes?: Record<string, string> };
 export type BuildProfile = { discover: number; load: number; validate: number; parse: number; route: number; render: number; assets: number; write: number; total: number; documents: number; changedOutputs: number; imagesProcessed: number; imageCacheHits: number };
-const RENDERER_VERSION = '2.4.24';
+const RENDERER_VERSION = '2.4.26';
 const MAX_MARKDOWN_CACHE = 32;
 const MAX_SOURCE_PARSE_CACHE = 64;
 const LOAD_CONCURRENCY = 32;
@@ -876,7 +876,7 @@ function validateDocumentSchema(ctx: BuildContext, doc: Document) {
       ctx.diagnostics.push(`${doc.source}:1:1: frontmatter field "${key}" must be ${rule.type}; received ${schemaType(value)}`);
     }
   }
-  if (doc.collection === 'posts' && doc.data.date !== undefined && publicationTimestamp(doc.data.date) === undefined) {
+  if (isPostCollection(ctx, doc.collection) && doc.data.date !== undefined && publicationTimestamp(doc.data.date) === undefined) {
     ctx.diagnostics.push(`${doc.source}:1:1: frontmatter field "date" must be a valid ISO publication date (YYYY-MM-DD)`);
   }
 }
@@ -987,7 +987,7 @@ function validateThemeAttrs(node: DirectiveNode, definition: ThemeBlockDefinitio
 }
 
 function fallbackShell(context: ThemeShellContext): string {
-  const pageLanguages = context.doc.collection === 'posts' ? context.languageLinks : '';
+  const pageLanguages = isPostCollectionConfig(context.config, context.doc.collection) ? context.languageLinks : '';
   const languageNav = pageLanguages ? `<nav class="languages" aria-label="${context.escapeHtml(context.languageLabel)}"><span class="languages-heading" aria-hidden="true">${context.escapeHtml(context.languageLabel)}</span><div class="languages-list">${pageLanguages}</div></nav>` : '';
   const archiveCollection = String(context.config.archive?.collection || 'posts');
   const collectionKeyName = context.doc.collection === 'archive' ? archiveCollection : context.doc.collection;
@@ -1215,6 +1215,7 @@ function languagePickerCopy(ctx: BuildContext, locale: string, themeBase: string
     siteName: localizedValue(ctx.config.siteName, locale, 'Pageskill'),
     siteDescription: localizedValue(ctx.config.description, locale, ''),
     headerNote: themeText(ctx, locale, 'shell.headerNote', 'Markdown-native · static-first'),
+    skipToContent: themeText(ctx, locale, 'shell.skipToContent', locale.startsWith('zh-tw') ? '跳至內容' : locale.startsWith('zh') ? '跳至内容' : 'Skip to content'),
     siteMap: themeText(ctx, locale, 'siteMap', locale.startsWith('zh-tw') ? '網站地圖' : locale.startsWith('zh') ? '站点地图' : 'Site map'),
     privacy: {
       title: privacy.title,
@@ -1255,10 +1256,10 @@ function languagePickerMarkup(ctx: BuildContext, locale: string, scriptHref = ''
   const cards = locales.map((candidate: string) => {
     const href = safeUrl(`/${candidate}/`);
     const name = languageDisplayName(ctx, locale, candidate);
-    return `<li><a class="language-card" href="${href}" lang="${escapeHtml(candidate)}" data-locale="${escapeHtml(candidate)}"><span class="language-card-index" aria-hidden="true">${escapeHtml(String(locales.indexOf(candidate) + 1).padStart(2, '0'))}</span><strong>${escapeHtml(name)}</strong><span class="language-card-recommendation" data-language-recommended hidden></span><span class="language-card-arrow" aria-hidden="true">↗</span></a></li>`;
+    return `<li><a class="language-card" href="${href}" lang="${escapeHtml(candidate)}" data-locale="${escapeHtml(candidate)}"><span class="language-card-index" aria-hidden="true">${escapeHtml(String(locales.indexOf(candidate) + 1).padStart(2, '0'))}</span><strong>${escapeHtml(name)}</strong><span class="language-card-recommendation" data-language-recommended aria-hidden="true"></span><span class="language-card-arrow" aria-hidden="true">↗</span></a></li>`;
   }).join('');
   const script = scriptHref ? `<script type="module" src="${safeUrl(scriptHref)}"></script>` : '';
-  return `<section class="language-picker" data-language-picker data-language-copy="${escapeHtml(languageData)}" aria-labelledby="language-picker-title"><h2 id="language-picker-title">${escapeHtml(title)}</h2><p class="language-picker-description">${escapeHtml(description)}</p><ul class="language-picker-list">${cards}</ul></section>${script}`;
+  return `<section class="language-picker" data-language-picker data-language-copy="${escapeHtml(languageData)}" aria-labelledby="language-picker-title"><h1 id="language-picker-title">${escapeHtml(title)}</h1><p class="language-picker-description">${escapeHtml(description)}</p><ul class="language-picker-list">${cards}</ul></section>${script}`;
 }
 
 function notFoundMarkup(ctx: BuildContext, locale: string): string {
@@ -1326,14 +1327,16 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const navigationConfig = configuredNavigation(ctx.config);
   const navigation = Array.isArray(navigationConfig.links) ? navigationConfig.links : [];
   const currentRoute = routeFor(ctx, doc);
-  const translatedDocuments = ctx.translationIndex.get(translationKey(doc.collection, doc.id)) || [];
-  const languageLinks = translatedDocuments.map(candidate => {
+  const translatedDocuments = doc.collection === 'archive' && doc.data?.archiveCollection
+    ? (ctx.config.activeLocales || [ctx.config.defaultLocale || doc.locale]).map((locale: string) => ({ ...doc, locale, data: { ...doc.data, route: String(doc.data.route || '').replace(`/${doc.locale}/`, `/${locale}/`) } }))
+    : ctx.translationIndex.get(translationKey(doc.collection, doc.id)) || [];
+  const languageLinks = translatedDocuments.map((candidate: Document) => {
     const candidateRoute = routeFor(ctx, candidate);
     const current = candidate.locale === doc.locale ? ' aria-current="page"' : '';
     return `<a href="${safeUrl(candidateRoute)}" lang="${escapeHtml(candidate.locale)}" data-locale="${escapeHtml(candidate.locale)}"${current}>${escapeHtml(languageDisplayName(ctx, doc.locale, candidate.locale))}</a>`;
   }).join('');
-  const defaultTranslation = translatedDocuments.find(candidate => candidate.locale === (ctx.config.defaultLocale || 'en'));
-  const alternates = `${translatedDocuments.map(candidate => `<link rel="alternate" hreflang="${escapeHtml(candidate.locale)}" href="${safeUrl(`${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${routeFor(ctx, candidate)}`)}">`).join('')}${defaultTranslation ? `<link rel="alternate" hreflang="x-default" href="${safeUrl(`${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${routeFor(ctx, defaultTranslation)}`)}">` : ''}`;
+  const defaultTranslation = translatedDocuments.find((candidate: Document) => candidate.locale === (ctx.config.defaultLocale || 'en'));
+  const alternates = `${translatedDocuments.map((candidate: Document) => `<link rel="alternate" hreflang="${escapeHtml(candidate.locale)}" href="${safeUrl(`${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${routeFor(ctx, candidate)}`)}">`).join('')}${defaultTranslation ? `<link rel="alternate" hreflang="x-default" href="${safeUrl(`${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${routeFor(ctx, defaultTranslation)}`)}">` : ''}`;
   const navigationLinks = showSiteChrome ? navigation.map((item: any) => {
     const href = String(item.href || '').replace(':locale', doc.locale);
     const current = href === currentRoute ? ' aria-current="page"' : '';
@@ -1345,9 +1348,15 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
     icons.appleTouchIcon ? `<link rel="apple-touch-icon" href="${safeUrl(icons.appleTouchIcon)}">` : '',
     icons.manifest ? `<link rel="manifest" href="${safeUrl(icons.manifest)}">` : ''
   ].join('');
-  const postsFeedHref = ctx.config.feed?.enabled === false ? '' : `/${doc.locale}/feed.xml`;
-  const postsFeedLabel = themeText(ctx, doc.locale, 'shell.postsFeed', 'Posts feed');
-  const postsFeedLink = postsFeedHref ? `<link rel="alternate" type="application/rss+xml" title="${escapeHtml(siteName)} · ${escapeHtml(postsFeedLabel)}" href="${safeUrl(postsFeedHref)}">` : '';
+  const documentFeedCollection = doc.collection === 'archive'
+    ? String(doc.data?.archiveCollection || feedCollection(ctx) || '')
+    : isPostCollection(ctx, doc.collection) ? doc.collection : String(feedCollection(ctx) || '');
+  const documentFeedHref = documentFeedCollection && feedCollections(ctx).includes(documentFeedCollection)
+    ? feedRouteFor(ctx, doc.locale, documentFeedCollection)
+    : '';
+  const documentFeedLabelKey = documentFeedCollection === 'updates' ? 'shell.updatesFeed' : 'shell.postsFeed';
+  const documentFeedLabel = themeText(ctx, doc.locale, documentFeedLabelKey, documentFeedCollection === 'updates' ? 'Updates feed' : 'Posts feed');
+  const postsFeedLink = documentFeedHref ? `<link rel="alternate" type="application/rss+xml" title="${escapeHtml(siteName)} · ${escapeHtml(documentFeedLabel)}" href="${safeUrl(documentFeedHref)}">` : '';
   const brandIcon = safeUrl(icons.icon32 || icons.icon192 || '/assets/icon-192.png');
   const absoluteUrl = `${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${currentRoute}`;
   const homeHref = safeUrl(routeFor(ctx, { ...doc, id: 'home', collection: 'pages', data: {} }));
@@ -1383,6 +1392,7 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const browserScripts = themeResourcePaths([
     ...resourcePaths(themeResources(ctx), 'scripts'),
     ...genericPluginResourcePaths(ctx, 'scripts'),
+    ...(pluginEnabled(ctx, 'toc') && (doc.pattern === 'blog' || doc.directives.some(node => node.name === 'toc')) ? pluginResourcePaths(ctx, ['toc'], 'scripts') : []),
     ...doc.directives.flatMap(node => blockResourcePaths(ctx, node.name, 'scripts'))
   ], 'Theme script path');
   const scriptTags = browserScripts.map(script => `<script type="module" src="${safeUrl(themeResourceHref(ctx, themeBase, String(script)))}"></script>`).join('');
@@ -1415,7 +1425,8 @@ function discoveryBoundaries() {
 function agentFunctionMap() {
   return [
     { id: 'write-page', purpose: 'Write current site content for a page, guide, reference, or directory', paths: ['content/pages/<id>/<locale>.md'], commands: ['pageskill g'] },
-    { id: 'write-post', purpose: 'Record a dated article for the history, Feed, archive, and search', paths: ['content/posts/<id>/<locale>.md'], commands: ['pageskill g'] },
+    { id: 'write-post', purpose: 'Record a dated tutorial, article, or note for the Feed, archive, and search', paths: ['content/posts/<id>/<locale>.md'], commands: ['pageskill g'] },
+    { id: 'write-update', purpose: 'Record a version update separately from tutorials and articles', paths: ['content/updates/<version>/<locale>.md'], commands: ['pageskill g'] },
     { id: 'change-layout', purpose: 'Change page structure or visual language', paths: ['themes/<name>/index.ts', 'themes/<name>/components/', 'themes/<name>/layouts/'], commands: ['pageskill g --profile'] },
     { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, theme plugin options, or deployment settings', paths: ['config.yml', 'themes/<name>/theme.yml'], commands: ['pageskill g --profile'] },
     { id: 'discover-extension', purpose: 'Read active theme Patterns, Blocks, collections, plugin switches, contexts, and resource dependencies', paths: ['themes/<name>/index.ts', 'themes/<name>/theme.yml', 'config.yml'], commands: ['import { getCatalog, inspect } from "pageskill"'] },
@@ -1647,6 +1658,7 @@ async function copyThemeAndAssets(ctx: BuildContext) {
     ...(pluginEnabled(ctx, 'search') ? pluginResourcePaths(ctx, ['search'], 'styles') : []),
     ...(pluginEnabled(ctx, 'search') ? pluginResourcePaths(ctx, ['search'], 'scripts') : []),
     ...(pluginEnabled(ctx, 'toc') ? pluginResourcePaths(ctx, ['toc'], 'styles') : []),
+    ...(pluginEnabled(ctx, 'toc') ? pluginResourcePaths(ctx, ['toc'], 'scripts') : []),
     // The root language selector is generated by the compiler itself, so its
     // small enhancement script is copied whenever the theme declares it. It
     // is not an optional site integration and has no config switch.
@@ -1691,6 +1703,15 @@ function collectionSettings(ctx: BuildContext, collection: string): Record<strin
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function isPostCollectionConfig(config: Record<string, any>, collection: string): boolean {
+  const settings = config.content?.collections?.[collection];
+  return collection === 'posts' || Boolean(settings && typeof settings === 'object' && !Array.isArray(settings) && settings.contentType === 'post');
+}
+
+function isPostCollection(ctx: BuildContext, collection: string): boolean {
+  return isPostCollectionConfig(ctx.config, collection);
+}
+
 async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
   const settings = cookieConsentSettings(ctx);
   const locale = ctx.config.defaultLocale || 'en';
@@ -1729,11 +1750,19 @@ async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
     generatedBy: { name: 'Pageskill', version: 3, static: true, siteUrl }
   }, null, 2));
 }
-function feedCollection(ctx: BuildContext): string | undefined {
-  if (ctx.config.feed?.enabled === false) return undefined;
-  if (typeof ctx.config.feed?.collection === 'string') return String(ctx.config.feed.collection);
-  const entry = Object.entries(ctx.config.content?.collections || {}).find(([, value]) => (value as any)?.feed === true);
-  return entry?.[0];
+function feedCollections(ctx: BuildContext): string[] {
+  if (ctx.config.feed?.enabled === false) return [];
+  if (typeof ctx.config.feed?.collection === 'string' && String(ctx.config.feed.collection).trim()) return [String(ctx.config.feed.collection)];
+  return Object.entries(ctx.config.content?.collections || {})
+    .filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value) && (value as any).feed === true)
+    .map(([name]) => name);
+}
+function feedCollection(ctx: BuildContext): string | undefined { return feedCollections(ctx)[0]; }
+function feedRouteFor(ctx: BuildContext, locale: string, collection: string): string {
+  const settings = collectionSettings(ctx, collection);
+  const firstCollection = feedCollection(ctx);
+  const configured = settings.feedRoute || (collection === firstCollection ? ctx.config.feed?.route : undefined) || (collection === 'posts' ? '/:locale/feed.xml' : `/:locale/${collection}/feed.xml`);
+  return String(configured).replace(':locale', locale).replace(':collection', collection).replace(/\/{2,}/g, '/').replace(/([^:])\/\//g, '$1/');
 }
 function archiveCollections(ctx: BuildContext): string[] {
   if (ctx.config.archive?.enabled === false) return [];
@@ -1811,8 +1840,9 @@ async function writeArchives(ctx: BuildContext): Promise<string[]> {
     const pages = Math.ceil(entries.length / pageSize);
     for (let page = 1; page <= pages; page += 1) {
       const route = page === 1 ? archiveBase : `${archiveBase}page/${page}/`;
-      const title = themeText(ctx, locale, 'archive.title', collection);
-      const readLabel = themeText(ctx, locale, 'archive.continue', 'Read note');
+      const title = themeText(ctx, locale, `archive.${collection}.title`, themeText(ctx, locale, 'archive.title', collection));
+      const readLabel = themeText(ctx, locale, `archive.${collection}.continue`, themeText(ctx, locale, 'archive.continue', 'Read note'));
+      const archiveDescription = themeText(ctx, locale, `archive.${collection}.description`, themeText(ctx, locale, 'archive.description', `Published ${collection}`));
       const publishedLabel = themeText(ctx, locale, 'post.published', 'Published');
       const authorLabel = themeText(ctx, locale, 'post.author', 'Author');
       const coverAltLabel = themeText(ctx, locale, 'post.coverAlt', 'Cover image');
@@ -1821,13 +1851,14 @@ async function writeArchives(ctx: BuildContext): Promise<string[]> {
         const coverUrl = publicImageUrl(entry.data?.cover || entry.data?.ogImage);
         const coverMarkup = coverUrl ? `<div class="archive-entry-cover"><img src="${coverUrl}" alt="${escapeHtml(`${coverAltLabel}: ${entry.title}`)}" width="1200" height="630" sizes="144px" loading="lazy" decoding="async"></div>` : '';
         const author = entry.author || localizedValue(ctx.config.author, locale, 'Site Owner');
-        return `<article class="archive-entry">${coverMarkup}<p class="archive-entry-index"><span class="archive-entry-label">${escapeHtml(publishedLabel)}</span><time datetime="${escapeHtml(entry.date || '')}">${formatDate(entry.date, locale)}</time></p><div class="archive-entry-main"><h2><a href="${safeUrl(routeFor(ctx, entry))}">${escapeHtml(entry.title)}</a></h2>${entry.description ? `<p class="archive-entry-summary">${escapeHtml(entry.description)}</p>` : ''}<p class="archive-entry-author"><span class="archive-entry-label">${escapeHtml(authorLabel)}</span> ${escapeHtml(author)}</p></div><p class="archive-entry-action"><a href="${safeUrl(routeFor(ctx, entry))}">${escapeHtml(readLabel)} <span aria-hidden="true">↗</span></a></p></article>`;
+        return `<article class="archive-entry">${coverMarkup}<p class="archive-entry-index"><span class="archive-entry-label">${escapeHtml(publishedLabel)}</span><time datetime="${escapeHtml(entry.date || '')}">${formatDate(entry.date, locale)}</time></p><div class="archive-entry-main"><h2><a href="${safeUrl(routeFor(ctx, entry))}">${escapeHtml(entry.title)}</a></h2>${entry.description ? `<p class="archive-entry-summary">${escapeHtml(entry.description)}</p>` : ''}<p class="archive-entry-author"><span class="archive-entry-label">${escapeHtml(authorLabel)}</span> ${escapeHtml(author)}</p><p class="archive-entry-action"><a href="${safeUrl(routeFor(ctx, entry))}">${escapeHtml(readLabel)} <span aria-hidden="true">↗</span></a></p></div></article>`;
       }).join('');
       const previousHref = page === 2 ? archiveBase : `${archiveBase}page/${page - 1}/`;
       const nextHref = `${archiveBase}page/${page + 1}/`;
       const pagination = `<nav class="archive-pagination" aria-label="${escapeHtml(title)}">${page > 1 ? `<a href="${safeUrl(previousHref)}">${escapeHtml(themeText(ctx, locale, 'archive.previousPage', 'Previous page'))}</a>` : '<span aria-hidden="true"></span>'}<span class="archive-page-count">${escapeHtml(pageCount)}</span>${page < pages ? `<a href="${safeUrl(nextHref)}">${escapeHtml(themeText(ctx, locale, 'archive.nextPage', 'Next page'))}</a>` : '<span aria-hidden="true"></span>'}</nav>`;
-      const document: Document = { id: `archive-${collection}-${page}`, collection: 'archive', locale, source: `generated:archive:${collection}:${locale}:${page}`, title, description: themeText(ctx, locale, 'archive.description', `Published ${collection}`), pattern: 'document', date: undefined, data: { route }, markdown: '', excerpt: '', bodyLine: 1, nodes: [], directives: [], dependencyKeys: [], blockNames: [], hash: '', stat: { mtimeMs: 0, size: 0 } };
-      await writeIfChanged(ctx, `${route.replace(/^\//, '')}index.html`, pageShell(ctx, document, `<section class="archive-list">${listing}</section>${pagination}`));
+      const document: Document = { id: `archive-${collection}-${page}`, collection: 'archive', locale, source: `generated:archive:${collection}:${locale}:${page}`, title, description: archiveDescription, pattern: 'document', date: undefined, data: { route, archiveCollection: collection }, markdown: '', excerpt: '', bodyLine: 1, nodes: [], directives: [], dependencyKeys: [], blockNames: [], hash: '', stat: { mtimeMs: 0, size: 0 } };
+      const archiveHeader = `<header class="archive-header"><p class="eyebrow">${escapeHtml(themeText(ctx, locale, `collections.${collection}`, collection))}</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(archiveDescription)}</p></header>`;
+      await writeIfChanged(ctx, `${route.replace(/^\//, '')}index.html`, pageShell(ctx, document, `${archiveHeader}<section class="archive-list">${listing}</section>${pagination}`));
       routes.push(route);
     }
   }
@@ -2318,8 +2349,11 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   await writeIfChanged(ctx, 'sitemap.xml', sitemap);
   for (const locale of ctx.config.activeLocales || [ctx.config.defaultLocale || 'en']) {
     await writeSearch(ctx, locale);
-    const feedCollectionName = feedCollection(ctx);
-    if (feedCollectionName && ctx.docs.some(doc => doc.collection === feedCollectionName && doc.locale === locale)) await writeIfChanged(ctx, `${locale}/feed.xml`, feedXml(ctx, locale, feedCollectionName));
+    for (const feedCollectionName of feedCollections(ctx)) {
+      if (!ctx.docs.some(doc => doc.collection === feedCollectionName && doc.locale === locale)) continue;
+      const feedRoute = feedRouteFor(ctx, locale, feedCollectionName);
+      await writeIfChanged(ctx, `${feedRoute.replace(/^\//, '')}`, feedXml(ctx, locale, feedCollectionName));
+    }
   }
   await writeLlms(ctx, siteUrl);
   await writeIfChanged(ctx, '.pagekiln/catalog.json', JSON.stringify(catalog(ctx), null, 2)); await writeDeployments(ctx); await copyThemeAndAssets(ctx); await writeSiteStaticDirectory(ctx); await writeSiteStaticRuntime(ctx); ctx.profile.assets = duration(assetStart);
@@ -2427,14 +2461,14 @@ export async function inspect(ctx: BuildContext, query = '') {
 
   const namespace = rawQuery.slice(0, separator).trim().toLowerCase();
   const id = rawQuery.slice(separator + 1).trim();
-  const availableNamespaces = ['block', 'pattern', 'collection', 'plugin', 'page', 'post'];
+  const availableNamespaces = ['block', 'pattern', 'collection', 'plugin', 'page', 'post', 'update'];
   if (!availableNamespaces.includes(namespace)) {
     throw new InspectError('INSPECT_INVALID_QUERY', `Unsupported inspect namespace "${namespace}".`, { query: rawQuery, allowedNamespaces: availableNamespaces });
   }
   if (!id) throw new InspectError('INSPECT_INVALID_QUERY', `Inspect namespace "${namespace}" requires an id.`, { query: rawQuery, allowedNamespaces: availableNamespaces });
 
-  if (namespace === 'page' || namespace === 'post') {
-    const collection = namespace === 'page' ? 'pages' : 'posts';
+  if (namespace === 'page' || namespace === 'post' || namespace === 'update') {
+    const collection = namespace === 'page' ? 'pages' : namespace === 'update' ? 'updates' : 'posts';
     return inspectContent(ctx, rawQuery, collection, id);
   }
 

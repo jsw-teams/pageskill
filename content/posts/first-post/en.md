@@ -6,7 +6,7 @@ date: 2026-09-07
 
 # Publish your first article
 
-Tutorials, notes, and product records can all live under `content/posts/`, and these articles need a date. A fixed About or contact page belongs under `content/pages/` and does not need `date`; the three languages share one directory name so readers can switch between article versions.
+Tutorials, notes, and product articles can live under `content/posts/`, and these articles need a date. Put version updates in `content/updates/` so the [update archive](/en/updates/) remains separate from tutorials. A fixed About or contact page belongs under `content/pages/` and does not need `date`; the three languages share one directory name so readers can switch between article versions.
 
 ## 1. Create the article directory
 

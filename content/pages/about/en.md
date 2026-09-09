@@ -19,4 +19,4 @@ Themes provide reusable article structures, styles, and Blocks. Start with the c
 | `npm run s` | Starts a persistent preview; press `Ctrl+C` to stop it. |
 | `npm run d` | Publishes the configured target. |
 
-The current home page is under `content/pages/home/`; tutorials, blogs, and release notes are under `content/posts/`. The privacy policy has the fixed route `/:locale/privacy/`. Start with [Start your site in ten minutes](/en/posts/start/).
+The current home page is under `content/pages/home/`; tutorials, blogs, and product articles are under `content/posts/`, while version updates live under `content/updates/` and the [update archive](/en/updates/). The privacy policy has the fixed route `/:locale/privacy/`. Start with [Start your site in ten minutes](/en/posts/start/).

@@ -60,4 +60,4 @@ npm run d -- --dry-run
 
 ## 保持遷移最小
 
-穩定頁面放在 `content/pages/<id>/<locale>.md`，帶日期的文章放在 `content/posts/<id>/<locale>.md`。使用同一個 ID 和對應的 `en`、`zh-sg`、`zh-tw` 檔案，讓發佈日期 `date` 保持一致，只為文章需要的欄位補 Frontmatter。新手路徑可以繼續閱讀[十分鐘開始你的網站](/zh-tw/posts/start/)和[把網站放到網路上](/zh-tw/posts/deploy/)。
+穩定頁面放在 `content/pages/<id>/<locale>.md`，帶日期的教學和文章放在 `content/posts/<id>/<locale>.md`，版本更新放在 `content/updates/<version>/<locale>.md`。使用同一個 ID 和對應的 `en`、`zh-sg`、`zh-tw` 檔案，讓發佈日期 `date` 保持一致，只為文件需要的欄位補 Frontmatter。新手路徑可以繼續閱讀[十分鐘開始你的網站](/zh-tw/posts/start/)和[把網站放到網路上](/zh-tw/posts/deploy/)。

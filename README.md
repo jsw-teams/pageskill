@@ -2,7 +2,7 @@
 
 [English](README.en.md) · [更新日志](CHANGELOG.zh-CN.md) · [English changelog](CHANGELOG.md)
 
-Pageskill 3.0.1 把 Markdown 文章、站点设置和主题样式生成成一个可发布的网站。先写内容，再让主题负责结构和视觉；普通站点不需要为每篇文章手写 HTML。
+Pageskill 3.0.2 把 Markdown 文章、站点设置和主题样式生成成一个可发布的网站。先写内容，再让主题负责结构和视觉；普通站点不需要为每篇文章手写 HTML。
 
 ## 十分钟开始
 
@@ -44,14 +44,15 @@ npm run d -- --dry-run
 - [把网站放到网上](content/posts/deploy/zh-sg.md)
 - [关于 Pageskill](content/pages/about/zh-sg.md)
 - [隐私说明](content/pages/privacy/zh-sg.md)
-- [3.0.1 更新：文章元数据和更安全的发布](content/posts/version-3-0-1/zh-sg.md)
-- [3.0 更新：更简单的入口](content/posts/version-3-0/zh-sg.md)
+- [3.0.2 更新：更清楚的归档与响应式阅读](content/updates/3.0.2/zh-sg.md)
+- [3.0.1 更新：文章元数据和更安全的发布](content/updates/3.0.1/zh-sg.md)
+- [3.0 更新：更简单的入口](content/updates/3.0.0/zh-sg.md)
 
 英文和繁体中文版本与每篇文章放在同一个目录。
 
 ## 内容和源码放在哪里
 
-- `content/pages/<id>/<locale>.md` 保存稳定页面，例如首页、About 和隐私政策；它们不需要 `date`，由 pages collection 提供默认页面样式。新手教程、博客、产品记录和版本文章放在 `content/posts/<id>/<locale>.md`，每篇文章都要有有效的 ISO `date`；可选 `author` 和 `cover` 分别用于作者和封面，省略作者时回退到 `config.yml` 的站点作者，路由是 `/:locale/posts/<id>/`。本地封面放在 `content/assets/`，Frontmatter 使用 `assets/<path>` 或 `/assets/<path>`。
+- `content/pages/<id>/<locale>.md` 保存稳定页面，例如首页、About 和隐私政策；它们不需要 `date`，由 pages collection 提供默认页面样式。新手教程、博客和产品记录放在 `content/posts/<id>/<locale>.md`，版本更新放在 `content/updates/<version>/<locale>.md`；这两类文档都要有有效的 ISO `date`。可选 `author` 和 `cover` 分别用于作者和封面，省略作者时回退到 `config.yml` 的站点作者；教程路由是 `/:locale/posts/<id>/`，更新路由是 `/:locale/updates/<version>/`。本地封面放在 `content/assets/`，Frontmatter 使用 `assets/<path>` 或 `/assets/<path>`。
 - `config.yml` 保存站点名称、语言、导航、路由、隐私政策/控制者、图片和发布目标等设置；`theme.name` 选择主题，不放浏览器脚本或 HTML 代码。主题插件的实例选项和开关集中在 `themes/<name>/theme.yml`。
 - `themes/<name>/` 负责样式、文章结构和可复用 Block。根目录的 `index.ts` 只组装 `components/index.ts`、`layouts/index.ts` 和 `plugins/index.ts`；站点 shell 在 `layouts/site/`，共享辅助函数在 `components/shared/`，文章关系属于文章组件，组件在 `components/<id>/`，插件在 `plugins/<id>/`，各模块自带 `index.ts` 以及需要的 CSS、JS、`messages.yml`。插件定义代码保留 `schema`、`implementation`、`resources`、本地化 messages 和 `defaults`；`theme.yml` 只提供经过 schema 白名单校验的插件选项，不再选择主题名称。个人可以直接复用主题，Agent 也可以按同一契约扩展；文章不需要复制 HTML。
 - `backend/handler.ts` 负责动态业务、写入、webhook 和运行时秘密。用现有 `router.get(...)`、`router.post(...)` 或 `router.all(...)` 注册任意路径；运行时匹配返回 `Response` 或未匹配的 `null`，生成入口不需要在 `config.yml` 逐条重复 `dynamicRoutes`。有 backend 时生成的 Worker/Pages/VPS 入口会对所有路径先运行 Router，并设置 `run_worker_first = true`；未知路径再交给公开静态资源，而未匹配的 `/api` 保持 404。API 错误和鉴权响应保持 API 响应，不回退到静态页面。公开静态快照位于 `dist/public`；构建/生成会把服务端嵌套 ESM 留在私有边界，每个公开 CSS/JS 资源独立使用内容 hash，未变化资源继续保留原 URL 和缓存身份。

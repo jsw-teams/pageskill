@@ -91,8 +91,8 @@ export function postCoverImage(post: ThemeRenderContext['doc'], context: ThemeRe
   return `<figure class="post-cover"><img src="${cover}" alt="${alt}" width="1200" height="630" sizes="(max-width: 760px) 100vw, 1000px" loading="eager" fetchpriority="high" decoding="async"></figure>`;
 }
 
-export function postCover(post: ThemeRenderContext['doc'], context: ThemeRenderContext, index?: number): string {
-  const markerLabel = context.translate('collections.posts', 'Articles');
+export function postCover(post: ThemeRenderContext['doc'], context: ThemeRenderContext, index?: number, collection = 'posts'): string {
+  const markerLabel = context.translate(`collections.${collection}`, collection === 'updates' ? 'Updates' : 'Articles');
   const cover = coverUrl(post.cover || post.data?.cover || post.data?.ogImage, context);
   if (!cover) return '';
   const alt = context.escapeHtml(`${context.translate('post.coverAlt', 'Cover image')}: ${post.title}`);

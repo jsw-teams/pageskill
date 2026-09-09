@@ -5,7 +5,7 @@ pattern: landing
 ---
 
 :::hero{tone="brand" align="left"}
-*Pageskill 3.0.1 · Build with articles*
+*Pageskill 3.0.2 · Build with articles*
 
 # Write your first article and build your site
 
@@ -43,6 +43,9 @@ Reuse the theme capabilities you have; when a new structure is needed, implement
 | `npm run d` | Publishes to the targets configured in `config.yml`. |
 
 :::post-list{limit="6"}
+:::
+
+:::post-list{collection="updates" limit="3"}
 :::
 
 :::cta{href="/en/posts/start/"}

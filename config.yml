@@ -31,6 +31,8 @@ navigation:
       href: /:locale/posts/
     - key: customize
       href: /:locale/posts/customize/
+    - key: updates
+      href: /:locale/updates/
   utilityLinks: []
 
 icons:
@@ -90,12 +92,13 @@ outputs:
 
 archive:
   pageSize: 50
-  collection: posts
+  collections:
+    - posts
+    - updates
 
 feed:
   title: Pageskill
   limit: 20
-  collection: posts
 
 privacy:
   controller:
@@ -123,6 +126,28 @@ content:
       route: /:locale/posts/:id/
       feed: true
       archive: true
+      archiveRoute: /:locale/posts/
+      orderBy: date:desc
+      schema:
+        title:
+          type: string
+          required: true
+        description: string
+        date:
+          type: string
+          required: true
+        author: string
+        cover: string
+        ogImage: string
+        pattern: string
+    updates:
+      contentType: post
+      pattern: blog
+      route: /:locale/updates/:id/
+      feed: true
+      feedRoute: /:locale/updates/feed.xml
+      archive: true
+      archiveRoute: /:locale/updates/
       orderBy: date:desc
       schema:
         title:

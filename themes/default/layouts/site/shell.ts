@@ -1,6 +1,6 @@
 import type { ThemeShellContext } from '../../../../src/theme-api.ts';
 import { Cookie, Map, ShieldCheck } from 'lucide';
-import { footerIcon } from '../../components/shared/index.ts';
+import { footerIcon, postAuthor } from '../../components/shared/index.ts';
 import { renderCookieConsent } from '../../plugins/cookies/index.ts';
 import { renderLanguageNav } from '../../plugins/language/index.ts';
 import { renderSearch } from '../../plugins/search/index.ts';
@@ -8,10 +8,12 @@ import { renderSearch } from '../../plugins/search/index.ts';
 export function renderShell(context: ThemeShellContext): string {
   const languageNav = renderLanguageNav(context);
   const archiveCollection = String(context.config.archive?.collection || 'posts');
-  const collectionKey = context.doc.collection === 'archive' ? archiveCollection : context.doc.collection;
+  const collectionKey = context.doc.collection === 'archive' ? String(context.doc.data?.archiveCollection || archiveCollection) : context.doc.collection;
   const collectionLabel = context.translate(`collections.${collectionKey}`, collectionKey);
   const isHomePage = context.doc.collection === 'pages' && context.doc.id === 'home';
-  const pageHeader = context.doc.source.startsWith('generated:') || isHomePage ? '' : `<header class="page-header"><p class="eyebrow">${context.escapeHtml(collectionLabel)}</p><h1>${context.escapeHtml(context.doc.title)}</h1>${context.doc.description ? `<p>${context.escapeHtml(context.doc.description)}</p>` : ''}${languageNav}</header>`;
+  const articleMeta = context.doc.pattern === 'blog' ? `<div class="post-meta page-header-meta">${context.doc.date ? `<span class="post-meta-item"><span class="post-meta-label">${context.escapeHtml(context.translate('post.published', 'Published'))}</span><time datetime="${context.escapeHtml(context.doc.date)}">${context.escapeHtml(context.formatDate(context.doc.date))}</time></span>` : ''}<span class="post-meta-item"><span class="post-meta-label">${context.escapeHtml(context.translate('post.author', 'Author'))}</span>${context.escapeHtml(postAuthor(context.doc, context))}</span></div>` : '';
+  const pageHeaderClass = context.doc.pattern === 'blog' ? 'page-header page-header-post' : 'page-header';
+  const pageHeader = context.doc.source.startsWith('generated:') || isHomePage ? '' : `<header class="${pageHeaderClass}"><p class="eyebrow">${context.escapeHtml(collectionLabel)}</p><h1>${context.escapeHtml(context.doc.title)}</h1>${context.doc.description ? `<p>${context.escapeHtml(context.doc.description)}</p>` : ''}${articleMeta}${languageNav}</header>`;
   const homeLanguageNav = isHomePage && languageNav ? `<div class="home-language-nav">${languageNav}</div>` : '';
   const primaryNav = context.navigationLinks ? `<nav class="primary-nav" aria-label="${context.escapeHtml(context.navigationLabel)}">${context.navigationLinks}</nav>` : '';
   const headerActions = `${renderSearch(context)}${primaryNav}`;

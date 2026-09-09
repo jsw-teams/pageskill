@@ -5,7 +5,7 @@ Use the repository source and its generated discovery output as the contract. Ke
 ## Boundaries
 
 - `config.yml` owns site metadata, locales, navigation, collections, routes, schemas, privacy policy/controller data, images, and deployment settings. The selected theme is `theme.name`; plugin instance options and switches belong in `themes/<name>/theme.yml`. Neither file is a CSS, HTML, browser-script, or `unsafeHtml` injection surface.
-- `content/pages/<id>/<locale>.md` owns stable pages such as the home page, About, and the privacy policy. These pages do not need `date`; the pages collection supplies the default page pattern. Tutorials, blogs, product records, and release notes belong in `content/posts/<id>/<locale>.md`; every post has a required `date`, while its collection supplies the default article pattern. `content/assets/` owns user assets.
+- `content/pages/<id>/<locale>.md` owns stable pages such as the home page, About, and the privacy policy. These pages do not need `date`; the pages collection supplies the default page pattern. Tutorials, blogs, and product records belong in `content/posts/<id>/<locale>.md`; version updates belong in `content/updates/<version>/<locale>.md`. Both post collections require a valid `date`, while their collection supplies the default article pattern. `content/assets/` owns user assets.
 - `themes/<name>/theme.yml`, the thin root `index.ts` entry, and each module directory own reusable Patterns, Blocks, shell markup, visual behavior, localized UI copy, icons, search, and Cookie presentation. The entry assembles `components/index.ts`, `layouts/index.ts`, and `plugins/index.ts`; site shell code lives under `layouts/site/`, shared helpers under `components/shared/`, article relations under their article component, and each module carries its own `index.ts`, CSS, JS, and `messages.yml`. Plugin definitions in code retain `schema`, `implementation`, `resources`, localized messages, and `defaults`; `theme.yml` supplies only whitelisted plugin options. Do not add a theme name selector to `theme.yml`.
 - `backend/handler.ts` is the source for dynamic business logic, secrets, writes, and webhooks.
 - `src/` owns the compiler, CLI, libraries, Fetch router, and theme contract. Never hand-edit `src/runtime/`, `.pagekiln/`, or `dist/`; they are generated.
@@ -20,7 +20,7 @@ The public CLI has three daily commands:
 
 For the source repository, clone the repository, run `npm install`, then use `npm run g` to compile the runtime, theme, and backend before generating the site in place. Continue editing that cloned site; do not create a second site directory or an initialization flow.
 
-Do not teach or reintroduce retired command entry points. The beginner path should link to the dated articles under `content/posts/` and use only `g`, `s`, and `d`.
+Do not teach or reintroduce retired command entry points. The beginner path should link to the dated tutorials under `content/posts/`, and version history should link to `content/updates/`; use only `g`, `s`, and `d`.
 
 ## Discovery and reuse
 
@@ -46,7 +46,7 @@ Reuse the existing `privacyConsent` plugin. Optional categories default to false
 
 Change content in Markdown, visual behavior in the theme, site settings in `config.yml`, and dynamic behavior in `backend/handler.ts`. Remove overlapping dead files when a replacement is complete; do not keep duplicate mechanisms for hypothetical consumers. Preserve `.pagekiln/` and `_pagekiln` compatibility and the existing Cookie consent storage key.
 
-Keep the SemVer in `package.json` and `package-lock.json` synchronized with `CHANGELOG.md`, `CHANGELOG.zh-CN.md`, and a dated localized post when a release changes. The current release is 3.0.1; do not create a separate 4.0 note for this content reorganization. Keep migration steps and the actual compile, generate/profile, local-preview, and deployment dry-run commands in the release post without claiming results that have not been observed.
+Keep the SemVer in `package.json` and `package-lock.json` synchronized with `CHANGELOG.md`, `CHANGELOG.zh-CN.md`, and a dated localized update under `content/updates/` when a release changes. The current release is 3.0.2; do not create a separate 4.0 note for this content reorganization. Keep migration steps and the actual compile, generate/profile, local-preview, and deployment dry-run commands in the release update without claiming results that have not been observed.
 
 ## Verification
 

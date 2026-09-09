@@ -5,7 +5,7 @@ pattern: landing
 ---
 
 :::hero{tone="brand" align="left"}
-*Pageskill 3.0.1 · 用文章搭站*
+*Pageskill 3.0.2 · 用文章搭站*
 
 # 写下第一篇文章，搭好你的网站
 
@@ -43,6 +43,9 @@ Pageskill 把 Markdown 文章、站点设置和样式组装成一个网站。你
 | `npm run d` | 按 `config.yml` 中的目标发布网站。 |
 
 :::post-list{limit="6"}
+:::
+
+:::post-list{collection="updates" limit="3"}
 :::
 
 :::cta{href="/zh-sg/posts/start/"}

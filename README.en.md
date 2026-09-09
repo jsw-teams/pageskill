@@ -2,7 +2,7 @@
 
 [简体中文](README.md) · [中文 changelog](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md)
 
-Pageskill 3.0.1 turns Markdown articles, site settings, and theme styles into a publishable website. Write the content first, then let the theme provide structure and visual behavior; ordinary sites do not need hand-written HTML for every article.
+Pageskill 3.0.2 turns Markdown articles, site settings, and theme styles into a publishable website. Write the content first, then let the theme provide structure and visual behavior; ordinary sites do not need hand-written HTML for every article.
 
 ## Start in ten minutes
 
@@ -44,14 +44,15 @@ Read these short articles in order:
 - [Put the site online](content/posts/deploy/en.md)
 - [About Pageskill](content/pages/about/en.md)
 - [Privacy policy](content/pages/privacy/en.md)
-- [3.0.1 update: article metadata and safer publishing](content/posts/version-3-0-1/en.md)
-- [3.0 update: a simpler entry](content/posts/version-3-0/en.md)
+- [3.0.2 update: clearer archives and responsive reading](content/updates/3.0.2/en.md)
+- [3.0.1 update: article metadata and safer publishing](content/updates/3.0.1/en.md)
+- [3.0 update: a simpler entry](content/updates/3.0.0/en.md)
 
 The Simplified Chinese and Traditional Chinese versions sit beside each English article.
 
 ## Where content and source code live
 
-- `content/pages/<id>/<locale>.md` stores stable pages such as the home page, About, and the privacy policy. These pages do not need `date`; the pages collection supplies the default page pattern. Tutorials, blogs, product records, and release notes live in `content/posts/<id>/<locale>.md`; every article requires a valid ISO `date`, while optional `author` and `cover` fields control its author and cover. A missing author falls back to the site author in `config.yml`; local covers live under `content/assets/` and use `assets/<path>` or `/assets/<path>` in Frontmatter, and the route is `/:locale/posts/<id>/`.
+- `content/pages/<id>/<locale>.md` stores stable pages such as the home page, About, and the privacy policy. These pages do not need `date`; the pages collection supplies the default page pattern. Tutorials, blogs, and product records live in `content/posts/<id>/<locale>.md`, while version updates live in `content/updates/<version>/<locale>.md`; both document types require a valid ISO `date`. Optional `author` and `cover` fields control the author and cover. A missing author falls back to the site author in `config.yml`; local covers live under `content/assets/` and use `assets/<path>` or `/assets/<path>` in Frontmatter. Tutorial routes are `/:locale/posts/<id>/`, and update routes are `/:locale/updates/<version>/`.
 - `config.yml` stores site names, languages, navigation, routes, privacy/controller data, images, and deployment targets; `theme.name` selects the theme. It is not a browser-script or HTML injection surface. Plugin instance options and switches belong together in `themes/<name>/theme.yml`.
 - `themes/<name>/` owns styles, article structures, and reusable Blocks. The root `index.ts` only assembles `components/index.ts`, `layouts/index.ts`, and `plugins/index.ts`; the site shell lives in `layouts/site/`, shared helpers in `components/shared/`, article relations beside their article component, components in `components/<id>/`, and plugins in `plugins/<id>/`, with each module carrying its `index.ts` plus the CSS, JS, and `messages.yml` it needs. Plugin definitions keep their code-owned `schema`, `implementation`, `resources`, localized messages, and `defaults`; `theme.yml` supplies only schema-whitelisted plugin options and no longer selects the theme name. People can reuse the theme directly, and Agents can extend it under the same contract; articles never need copied HTML.
 - `backend/handler.ts` owns dynamic business logic, writes, webhooks, and runtime secrets. Register any path with the existing `router.get(...)`, `router.post(...)`, or `router.all(...)` methods; runtime matching returns a `Response` or `null` when nothing matches, so generation does not need a per-route `dynamicRoutes` list in `config.yml`. When a backend is present, generated Worker/Pages/VPS entrypoints run the Router first for every pathname and set `run_worker_first = true`; unknown paths then fall through to public assets, while an unmatched `/api` stays 404. API errors and authorization responses remain API responses and do not fall back to static pages. The public static snapshot is `dist/public`; build/generation keeps nested server-side ESM inside the private boundary, and each public CSS/JS resource gets its own content hash so unchanged assets keep their URL and cache identity.

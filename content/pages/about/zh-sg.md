@@ -19,4 +19,4 @@ Pageskill 把 Markdown 文章、站点设置和主题样式生成成一个可发
 | `npm run s` | 启动持续预览，按 `Ctrl+C` 停止。 |
 | `npm run d` | 按设置好的目标发布。 |
 
-当前首页在 `content/pages/home/`；教程、博客和版本记录在 `content/posts/`。隐私政策是固定入口 `/:locale/privacy/`。先从[十分钟开始你的站点](/zh-sg/posts/start/)开始。
+当前首页在 `content/pages/home/`；教程、博客和产品文章在 `content/posts/`，版本更新则放在 `content/updates/`，可查看[更新归档](/zh-sg/updates/)。隐私政策是固定入口 `/:locale/privacy/`。先从[十分钟开始你的站点](/zh-sg/posts/start/)开始。

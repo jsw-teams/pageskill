@@ -1,6 +1,6 @@
 {
   "name": "pageskill",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "Pageskill: discover reusable Patterns, Blocks, and schemas, then compile localized websites with static pages and same-origin APIs from Markdown and configuration.",
   "license": "MIT",
   "type": "module",

@@ -36,7 +36,7 @@ export const tocBlock: ThemeBlockDefinition = {
 
 export const plugin: ThemePluginDefinition = {
   implementation: 'plugins/toc/index.ts',
-  resources: { styles: ['plugins/toc/style.css'] },
+  resources: { styles: ['plugins/toc/style.css'], scripts: ['plugins/toc/script.js'] },
   i18n: 'plugins/toc/messages.yml',
   defaults: { enabled: true, maxDepth: 3 },
   schema: {
