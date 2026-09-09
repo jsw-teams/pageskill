@@ -15,8 +15,8 @@ Themes provide reusable article structures, styles, and Blocks. Start with the c
 
 | Command | Does |
 | --- | --- |
-| `pageskill g` | Validates and generates public files. |
-| `pageskill s` | Starts a persistent preview; press `Ctrl+C` to stop it. |
-| `pageskill d` | Publishes the configured target. |
+| `npm run g` | Validates and generates public files. |
+| `npm run s` | Starts a persistent preview; press `Ctrl+C` to stop it. |
+| `npm run d` | Publishes the configured target. |
 
 The current home page is under `content/pages/home/`; tutorials, blogs, and release notes are under `content/posts/`. The privacy policy has the fixed route `/:locale/privacy/`. Start with [Start your site in ten minutes](/en/posts/start/).

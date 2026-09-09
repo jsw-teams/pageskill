@@ -4,38 +4,60 @@
 
 Version labels follow `package.json`, this changelog, and the dated localized release post. This file records repository changes; an entry does not claim npm publication or deployment.
 
+## 3.0.1 — 2026-09-09
+
+Pageskill 3.0.1 is a patch release on the 3.0 line. It folds the current compiler, content, and publishing corrections into one documented release without changing existing article publication dates.
+
+### Changed
+
+- Kept site metadata, navigation, collection schemas, privacy/controller data, images, and deployment settings in `config.yml`; the theme entry and module-owned UI/resources remain in `themes/default/`, while plugin instance options stay in `theme.yml`.
+- Hardened the incremental workflow: backend and nested theme generations use isolated private runtimes, public CSS/JS resources keep independent content hashes, and the persistent preview's SSE reload path remains valid after source changes.
+- Kept runtime routing source-backed: generated Worker/Pages/VPS entrypoints run the Fetch Router first, unmatched `/api` requests stay 404, and static output remains under `dist/public` while private deployment files stay outside that public snapshot.
+- Made post ordering use valid ISO publication dates, newest first, with deterministic ID order for same-day articles. Existing dates remain unchanged; an invalid post date now fails validation instead of silently sorting as a current article.
+- Added optional post `author` and `cover` Frontmatter through the collection schema, document/cache mapping, article page, post list, and archive. Authors fall back to the localized site author; covers accept safe local asset paths or HTTPS URLs, carry alt/dimensions/loading metadata, and disappear cleanly when omitted.
+- Refreshed the three-language content path and Cloudflare Pages guidance. Git integration builds with `npm run g` and publishes only `dist/public`; a same-package backend uses the configured CLI target and `npm run d` staging path. The retired `npm run build` alias and whole-`dist` publishing are not part of the contract.
+
+### Verification
+
+- Observed locally for this release: `npm run compile-runtime`, `npm run compile-theme`, and `npm run g` (including the backend compile), generating 42 documents; targeted checks confirmed newest-first and same-day ordering, stable title/summary/date/author separation, cover rendering and fallback, localized labels, no duplicate post title, and rejection of an unsafe cover URL.
+- No npm publication or Cloudflare deployment is claimed here. The deleted legacy `test/` tree remains deleted. `npm run d -- --dry-run` was also run and correctly refused with `Set deployment.targets in config.yml` because this checkout has no deployment target; configure one and rerun it before `npm run d`.
+
 ## 3.0.0 — 2026-09-07
 
 Pageskill 3.0.0 keeps the 3.0 version line and makes the first site easier to start.
 
 ### Changed
 
-- Reduced the public daily CLI workflow to `pageskill g`, `pageskill s`, and `pageskill d`. `g` validates and generates, `s` keeps a preview running, and `d` publishes configured targets. The source repository uses `npm run g` to compile and generate, followed by `npm link`; a new site is copied from `starter`.
+- Reduced the public daily CLI workflow to `pageskill g`, `pageskill s`, and `pageskill d`. `g` validates and generates, `s` keeps a preview running, and `d` publishes configured targets. A new site starts by cloning this repository, running `npm install` and `npm run g`, then editing the clone in place.
 - Reorganized the current content tree. Stable pages keep the three-language home, About, and privacy policy. Tutorials, ordinary blog writing, and product records now live under `content/posts/<id>/<locale>.md`, keep the required `date`, and use locale post routes. Retired long guide and development page copies and the older prompt note were removed from the current tree without redirect shadows; their history remains in Git and this changelog.
-- Rewrote the localized beginner path around eight short posts: start, site settings, Markdown, first article, Cookie choices, theme customization, deployment, and this 3.0 note. The privacy policy is a stable page; each tutorial post gives steps, a smallest useful example, an expected result, a common trap, and a next link.
+- Rewrote the localized beginner path around short posts for starting, site settings, Markdown, the first article, Cookie choices, theme customization, search, the table of contents, plugin development, deployment, and this 3.0 note. The privacy policy is a stable page; each tutorial post gives steps, a smallest useful example, an expected result, a common trap, and a next link.
 - Refreshed the home learning path with six reusable bear illustrations and links to the first six steps. The visual change is content and theme work; no benchmark or performance claim is implied.
-- Kept the existing static/public boundary: `dist/public` is the public snapshot, `backend/handler.ts` holds dynamic logic and runtime secrets, and same-origin APIs run at the service boundary. `config.yml` remains a data and settings entry point.
-- Kept the existing Cookie plugin. Optional categories default to false, trusted `gatedScripts` belong in `theme.yml`, and withdrawing consent cannot undo a script action that already happened. The policy entry is the stable page route `/:locale/privacy/`.
+- Kept the existing static/public boundary: `dist/public` is the public snapshot, `backend/handler.ts` holds dynamic logic and runtime secrets, and same-origin APIs run at the service boundary. Backend paths use the existing `router.get(...)`, `router.post(...)`, and `router.all(...)` methods; runtime matching returns a `Response` or `null`, so generation does not need a per-route `dynamicRoutes` list in `config.yml`. Generated Worker/Pages/VPS entrypoints run the Router first for every pathname and set `run_worker_first = true`; unknown paths fall through to public assets, while unmatched `/api` paths remain 404. API errors and authorization responses do not fall back to static output. Build/generation keeps nested server-side ESM inside the private boundary, and persistent `pageskill s` rebuilds nested theme TypeScript in a fresh private runtime; each public CSS/JS resource has an independent content hash, so unchanged assets retain their URLs and cache identity. `config.yml` remains a data and settings entry point.
+- Kept the existing Cookie plugin. Optional categories default to false, and trusted `gatedScripts` are declared by the plugin's code-owned `defaults` and schema in `themes/<name>/plugins/cookies/index.ts`; theme instance options live in `themes/<name>/theme.yml`, while site config keeps policy/controller data. Withdrawing consent cannot undo a script action that already happened. The policy entry is the stable page route `/:locale/privacy/`.
 - Fixed the Cookie prompt and footer layout. The language chooser prefers a visitor's manual choice before falling back to browser language, while locale URLs stay unchanged.
+- Simplified the theme contract: `themes/<name>/index.ts` assembles exported capabilities, `layouts/site/` owns the shell, shared helpers live in `components/shared/`, article relations live with the article layout/component, plugin directories carry their own styles, scripts, and `messages.yml`, and `theme.yml` keeps schema-validated plugin instance data and switches. A person or Agent can reuse one extension across pages without copying HTML.
+- Added practical localized articles for local search, article tables of contents, and developing one reusable plugin. They describe the source paths and commands that are present in the current theme contract.
 - Advanced authors can read generated `dist/.pagekiln/catalog.json` and `dist/.well-known/agent.json`, or use internal `getCatalog`/`inspect` integrations; these discovery details stay out of the beginner path.
 
 ### Migration
 
-1. Keep the source repository and site as separate directories. Run `npm run g` and `npm link` in the source repository, then copy `starter` for a new site.
-2. Move tutorials and blog notes to `content/posts/<id>/` with `en.md`, `zh-sg.md`, and `zh-tw.md` where translations are offered. Add the required ISO date and keep one id across locales.
+1. Clone the repository, run `npm install`, then run `npm run g`; keep editing the cloned site in place.
+2. Keep stable pages under `content/pages/<id>/<locale>.md` without a date. Put tutorials, blog notes, product records, and release notes under `content/posts/<id>/<locale>.md` with the required ISO date and one id across locales.
 3. Update the Cookie policy setting to `/:locale/privacy/` and replace the example contact and service details with real values.
-4. From the site directory, run `pageskill g`, keep `pageskill s` for local preview, and run `pageskill d` only after configuring a deployment target.
+4. For source checks, run the compile commands, `npm run g -- --profile`, and `npm run s`; use `npm run d -- --dry-run` for deployment verification and run `npm run d` only when the configured target is ready.
 
 ### Verification workflow
 
 Routine checks use a dry run for deployment; the real publish command is reserved for a ready target:
 
 ```text
+npm run compile-runtime
+npm run compile-theme
+npm run compile-backend
 npm run g
-npm test
-pageskill g
-pageskill s
-pageskill d --dry-run
+npm run g -- --profile
+npm run s
+npm run d -- --dry-run
 ```
 
 Run `pageskill d` only when the site is ready for the actual publish.

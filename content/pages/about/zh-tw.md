@@ -15,8 +15,8 @@ Pageskill 把 Markdown 文章、網站設定和主題樣式產生成一個可發
 
 | 指令 | 用途 |
 | --- | --- |
-| `pageskill g` | 自動驗證並產生公開檔案。 |
-| `pageskill s` | 啟動持續預覽，按 `Ctrl+C` 停止。 |
-| `pageskill d` | 依照設定好的目標發佈。 |
+| `npm run g` | 自動驗證並產生公開檔案。 |
+| `npm run s` | 啟動持續預覽，按 `Ctrl+C` 停止。 |
+| `npm run d` | 依照設定好的目標發佈。 |
 
 目前首頁在 `content/pages/home/`；教學、部落格和版本記錄在 `content/posts/`。隱私政策是固定入口 `/:locale/privacy/`。先從[十分鐘開始你的網站](/zh-tw/posts/start/)開始。

@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 
 import { createContext, refreshContext, build, check } from '../runtime/compiler.js';
+import { createSiteFetchHandler } from '../runtime/fetch-router.js';
 import { promises as fs } from 'node:fs';
 import { watch } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { deploy, deployHelp } from '../deploy.mjs';
 import { classifyPublicUrl, publicPathFromUrl } from '../runtime/lib/static-security.js';
 
@@ -184,6 +187,148 @@ async function readPublicOutput(ctx, relative) {
   }
 }
 
+function runTypeScriptCompiler(projectFile, outDirectory, label) {
+  const compiler = path.join(root, 'node_modules', 'typescript', 'bin', 'tsc');
+  return new Promise(async (resolve, reject) => {
+    try { await fs.access(compiler); } catch { reject(new Error(`${label} compiler is missing; run npm install first.`)); return; }
+    const child = spawn(process.execPath, [compiler, '-p', path.join(root, projectFile), '--outDir', outDirectory], {
+      cwd: root,
+      shell: false,
+      stdio: 'inherit'
+    });
+    child.once('error', error => reject(new Error(`${label} compiler failed to start: ${error.message}`)));
+    child.once('close', code => code === 0 ? resolve() : reject(new Error(`${label} compiler exited with code ${code}`)));
+  });
+}
+
+async function compileGeneratedProject(projectFile, outputDirectory, label) {
+  const cacheRoot = path.join(root, '.pagekiln');
+  const output = path.join(root, outputDirectory);
+  const token = `${process.pid}-${Date.now()}`;
+  const temporary = path.join(cacheRoot, `${path.basename(outputDirectory)}-next-${token}`);
+  const backup = path.join(cacheRoot, `${path.basename(outputDirectory)}-previous-${token}`);
+  await fs.mkdir(cacheRoot, { recursive: true });
+  await fs.rm(temporary, { recursive: true, force: true });
+  try {
+    await runTypeScriptCompiler(projectFile, temporary, label);
+  } catch (error) {
+    await fs.rm(temporary, { recursive: true, force: true });
+    throw error;
+  }
+  let movedExisting = false;
+  try {
+    await fs.rename(output, backup);
+    movedExisting = true;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      await fs.rm(temporary, { recursive: true, force: true });
+      throw error;
+    }
+  }
+  try {
+    await fs.rename(temporary, output);
+  } catch (error) {
+    if (movedExisting) await fs.rename(backup, output).catch(() => {});
+    await fs.rm(temporary, { recursive: true, force: true });
+    throw error;
+  }
+  if (movedExisting) await fs.rm(backup, { recursive: true, force: true });
+}
+
+async function filesUnder(directory) {
+  const files = [];
+  const visit = async current => {
+    for (const entry of await fs.readdir(current, { withFileTypes: true })) {
+      const file = path.join(current, entry.name);
+      if (entry.isDirectory()) await visit(file);
+      else files.push(file);
+    }
+  };
+  await visit(directory);
+  return files;
+}
+
+function moduleGenerationSpecifier(specifier, generation) {
+  const hash = specifier.indexOf('#');
+  const query = hash >= 0 ? specifier.slice(0, hash) : specifier;
+  const fragment = hash >= 0 ? specifier.slice(hash) : '';
+  return query + (query.includes('?') ? '&' : '?') + 'pageskill=' + generation + fragment;
+}
+
+function rewriteBackendModuleImports(source, generation) {
+  const rewrite = (full, prefix, quote, specifier) => {
+    if (!specifier.startsWith('./') && !specifier.startsWith('../')) return full;
+    return prefix + quote + moduleGenerationSpecifier(specifier, generation) + quote;
+  };
+  let rewritten = source.replace(/(\bfrom\s*)(['"])([^'"]+)\2/g, rewrite);
+  rewritten = rewritten.replace(/(\bimport\s*)(['"])([^'"]+)\2/g, rewrite);
+  return rewritten.replace(/(\bimport\s*\(\s*)(['"])([^'"]+)\2/g, rewrite);
+}
+
+async function prepareBackendGeneration(generation) {
+  const runtimeRoot = path.join(root, '.pagekiln', 'backend-runtime');
+  const generationRoot = path.join(root, '.pagekiln', 'backend-generations', generation);
+  await fs.rm(generationRoot, { recursive: true, force: true });
+  await fs.cp(runtimeRoot, generationRoot, { recursive: true });
+  for (const file of await filesUnder(generationRoot)) {
+    const extension = path.extname(file).toLowerCase();
+    if (extension !== '.js' && extension !== '.mjs') continue;
+    const source = await fs.readFile(file, 'utf8');
+    await fs.writeFile(file, rewriteBackendModuleImports(source, generation));
+  }
+  return path.join(generationRoot, 'backend', 'handler.js');
+}
+
+async function loadPreviewRouter(ctx) {
+  if (ctx.config?.deployment?.backend === false) return undefined;
+  try { await fs.access(path.join(root, 'backend', 'handler.ts')); } catch { return undefined; }
+  const entry = path.join(root, '.pagekiln', 'backend-runtime', 'backend', 'handler.js');
+  try { await fs.access(entry); } catch { throw new Error('backend/handler.ts exists but its JavaScript runtime is missing; run npm run compile-backend'); }
+  const generation = Date.now().toString(36) + '-' + Math.random().toString(16).slice(2);
+  const generationEntry = await prepareBackendGeneration(generation);
+  const loaded = await import(pathToFileURL(generationEntry).href + '?pageskill=' + generation);
+  if (!loaded.router || typeof loaded.router.match !== 'function') throw new Error('backend/handler.ts must export a Router as "router"');
+  return loaded.router;
+}
+
+async function localAssetResponse(ctx, request, liveReloadScript) {
+  const result = await outputPath(ctx, request.url);
+  if (!result.file) return new Response(result.status === 400 ? 'Bad request' : 'Not found', { status: result.status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
+  try {
+    const data = await fs.readFile(result.file);
+    const headers = { 'content-type': contentType(result.file), 'cache-control': 'no-store' };
+    if (request.method === 'HEAD') return new Response(null, { status: 200, headers });
+    if (result.file.endsWith('.html')) {
+      const html = data.toString();
+      const liveHtml = html.includes('</body>') ? html.replace('</body>', `${liveReloadScript}</body>`) : `${html}${liveReloadScript}`;
+      return new Response(liveHtml, { status: 200, headers });
+    }
+    return new Response(data, { status: 200, headers });
+  } catch {
+    const data = await readPublicOutput(ctx, '404.html');
+    return data
+      ? new Response(request.method === 'HEAD' ? null : data, { status: 404, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } })
+      : new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
+  }
+}
+
+function localFetchRequest(request, port) {
+  const method = String(request.method || 'GET').toUpperCase();
+  const init = { method, headers: new Headers(request.headers) };
+  if (method !== 'GET' && method !== 'HEAD') {
+    init.body = request;
+    init.duplex = 'half';
+  }
+  return new Request(new URL(request.url || '/', `http://127.0.0.1:${port}`), init);
+}
+
+async function writeFetchResponse(response, nodeResponse) {
+  const headers = {};
+  response.headers.forEach((value, key) => { headers[key] = value; });
+  nodeResponse.writeHead(response.status, headers);
+  nodeResponse.end(Buffer.from(await response.arrayBuffer()));
+}
+
 async function develop(port) {
   let ctx = await createContext(root);
   await build(ctx);
@@ -192,7 +337,14 @@ async function develop(port) {
   const changedFiles = new Set();
   const liveClients = new Set();
   const liveReloadScript = `<script>(()=>{const source=new EventSource('/__pagekiln/live');source.onmessage=()=>location.reload()})()</script>`;
-  const notifyReload = () => { for (const client of liveClients) { try { client.write('data: reload\\n\\n'); } catch { liveClients.delete(client); } } };
+  let backendRouter = await loadPreviewRouter(ctx);
+  let fetchHandler = createSiteFetchHandler({
+    router: backendRouter,
+    defaultLocale: String(ctx.config.defaultLocale || 'en'),
+    staticDirectory: staticDirectory(ctx),
+    assets: request => localAssetResponse(ctx, request, liveReloadScript)
+  });
+  const notifyReload = () => { for (const client of liveClients) { try { client.write('data: reload\n\n'); } catch { liveClients.delete(client); } } };
   const flush = async () => {
     if (building) return;
     building = true;
@@ -201,8 +353,17 @@ async function develop(port) {
         const changes = [...changedFiles];
         changedFiles.clear();
         try {
+          if (changes.some(file => { const value = String(file).toLocaleLowerCase(); return value.startsWith('themes/') && value.endsWith('.ts'); })) await compileGeneratedProject('tsconfig.theme.json', '.pagekiln/theme-runtime', 'Theme');
+          if (changes.some(file => { const value = String(file).toLocaleLowerCase(); return value.startsWith('backend/') && value.endsWith('.ts'); })) await compileGeneratedProject('tsconfig.backend.json', '.pagekiln/backend-runtime', 'Backend');
           await refreshContext(ctx, changes);
           await build(ctx);
+          backendRouter = await loadPreviewRouter(ctx);
+          fetchHandler = createSiteFetchHandler({
+            router: backendRouter,
+            defaultLocale: String(ctx.config.defaultLocale || 'en'),
+            staticDirectory: staticDirectory(ctx),
+            assets: request => localAssetResponse(ctx, request, liveReloadScript)
+          });
           notifyReload();
           console.log(`Rebuilt ${ctx.docs.length} documents (${changes.length} changed files) in ${Math.round(ctx.profile.total)}ms`);
         } catch (error) {
@@ -224,7 +385,7 @@ async function develop(port) {
     const absolute = path.isAbsolute(candidate) ? candidate : path.join(root, candidate);
     const relative = path.relative(root, absolute).replaceAll('\\', '/');
     if (!relative || relative.startsWith('../') || ['dist/', '.pagekiln/', 'node_modules/', 'src/runtime/'].some(prefix => relative.startsWith(prefix))) return;
-    if (relative === 'config.yml' || relative === 'AGENTS.md' || relative.startsWith('content/') || relative.startsWith('themes/')) rebuild(relative);
+    if (relative === 'config.yml' || relative === 'AGENTS.md' || relative.startsWith('content/') || relative.startsWith('themes/') || relative.startsWith('backend/')) rebuild(relative);
   });
   const server = createServer(async (request, response) => {
     let requestUrl;
@@ -236,41 +397,17 @@ async function develop(port) {
     }
     if (requestUrl.pathname === '/__pagekiln/live') {
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', connection: 'keep-alive' });
-      response.write(': connected\\n\\n');
+      response.write(': connected\n\n');
       liveClients.add(response);
       request.on('close', () => liveClients.delete(response));
       return;
     }
-    const result = await outputPath(ctx, request.url || '/');
-    if (!result.file) {
-      response.writeHead(result.status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
-      response.end(result.status === 400 ? 'Bad request' : 'Not found');
-      return;
-    }
-    if (request.method !== 'GET' && request.method !== 'HEAD') {
-      response.writeHead(405, { allow: 'GET, HEAD', 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
-      response.end('Method not allowed');
-      return;
-    }
     try {
-      const data = await fs.readFile(result.file);
-      response.writeHead(200, { 'content-type': contentType(result.file), 'cache-control': 'no-store' });
-      if (request.method === 'HEAD') { response.end(); return; }
-      if (result.file.endsWith('.html')) {
-        const html = data.toString();
-        const liveHtml = html.includes('</body>') ? html.replace('</body>', `${liveReloadScript}</body>`) : `${html}${liveReloadScript}`;
-        response.end(Buffer.from(liveHtml));
-      } else response.end(data);
-    } catch {
-      const data = await readPublicOutput(ctx, '404.html');
-      if (data) {
-        response.writeHead(404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-        if (request.method === 'HEAD') response.end();
-        else response.end(data);
-      } else {
-        response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
-        response.end('Not found');
-      }
+      await writeFetchResponse(await fetchHandler(localFetchRequest(request, port), new Proxy({}, { get: (_target, key) => process.env[String(key)] }), undefined), response);
+    } catch (error) {
+      console.error(error);
+      response.writeHead(500, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+      response.end('Internal server error');
     }
   });
   server.on('close', () => { watcher.close(); for (const client of liveClients) client.end(); liveClients.clear(); });

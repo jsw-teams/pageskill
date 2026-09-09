@@ -18,28 +18,20 @@ author:
   en: Site Owner
 theme:
   name: default
-  nav:
-    links:
-      - key: home
-        href: /:locale/
-      - key: about
-        href: /:locale/about/
-      - key: start
-        href: /:locale/posts/start/
-      - key: posts
-        href: /:locale/posts/
-      - key: customize
-        href: /:locale/posts/customize/
-    utilityLinks: []
 
-# Site configuration selects built-in capabilities; markup, CSS, and browser code stay in the theme.
-plugins:
-  search:
-    enabled: true
-    provider: Pageskill
-  privacyConsent:
-    enabled: true
-    provider: Pageskill
+navigation:
+  links:
+    - key: home
+      href: /:locale/
+    - key: about
+      href: /:locale/about/
+    - key: start
+      href: /:locale/posts/start/
+    - key: posts
+      href: /:locale/posts/
+    - key: customize
+      href: /:locale/posts/customize/
+  utilityLinks: []
 
 icons:
   favicon: /favicon.ico
@@ -93,11 +85,6 @@ llms:
     enabled: true
     shardSize: 250
 
-search:
-  enabled: true
-  maxResults: 8
-  shardSize: 500
-
 outputs:
   markdownMirrors: true
 
@@ -116,24 +103,8 @@ privacy:
     contactUrl: https://github.com/jsw-teams/pageskill
     supervisoryAuthorityUrl: https://edpb.europa.eu/about-edpb/about-edpb_en
   cookieConsent:
-    enabled: true
     policyRoute: /:locale/privacy/
     agentRoute: /.well-known/agent.json
-    storage: cookie
-    retentionDays: 365
-    categories:
-      - id: essential
-        required: true
-        default: true
-        retentionDays: 365
-      - id: analytics
-        required: false
-        default: false
-        retentionDays: 0
-      - id: advertising
-        required: false
-        default: false
-        retentionDays: 0
 content:
   collections:
     pages:
@@ -161,6 +132,7 @@ content:
         date:
           type: string
           required: true
+        author: string
         cover: string
         ogImage: string
         pattern: string
@@ -188,5 +160,3 @@ deployment:
     identityFile: null
     publicKeyFile: null
   backend: true
-  dynamicRoutes:
-    - /api/health

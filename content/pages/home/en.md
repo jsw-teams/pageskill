@@ -5,18 +5,18 @@ pattern: landing
 ---
 
 :::hero{tone="brand" align="left"}
-*Pageskill 3.0 · Build with articles*
+*Pageskill 3.0.1 · Build with articles*
 
 # Write your first article and build your site
 
-Pageskill turns Markdown articles, site settings, and styles into a website. Copy `starter` first, then adapt the content to your project; when you need dynamic behavior, pages and same-origin APIs still keep a clear boundary.
+Pageskill turns Markdown articles, site settings, and styles into a website. Clone the repository, generate it in place, and adapt the content to your project; when you need dynamic behavior, pages and same-origin APIs still keep a clear boundary.
 
 [Start in ten minutes](/en/posts/start/) [Browse all tutorials](/en/posts/)
 :::
 
 :::learning-path
 ### [Start](/en/posts/start/)
-Install Pageskill from the source repository, copy `starter`, and generate your first home page.
+Clone the source repository, run `npm install` and `npm run g`, then edit your first home page in place.
 
 ### [Site settings](/en/posts/site-settings/)
 Change the site name, languages, and navigation; settings hold data, not code.
@@ -38,9 +38,9 @@ Reuse the theme capabilities you have; when a new structure is needed, implement
 
 | Command | Does |
 | --- | --- |
-| `pageskill g` | Validates and generates public static files in `dist/public`. |
-| `pageskill s` | Starts a persistent preview; press `Ctrl+C` to stop it, or keep editing in another terminal. |
-| `pageskill d` | Publishes to the targets configured in `config.yml`. |
+| `npm run g` | Validates and generates public static files in `dist/public`. |
+| `npm run s` | Starts a persistent preview; press `Ctrl+C` to stop it, or keep editing in another terminal. |
+| `npm run d` | Publishes to the targets configured in `config.yml`. |
 
 :::post-list{limit="6"}
 :::

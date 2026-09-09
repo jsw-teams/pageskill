@@ -4,9 +4,9 @@ Use the repository source and its generated discovery output as the contract. Ke
 
 ## Boundaries
 
-- `config.yml` owns site metadata, locales, navigation, collections, routes, schemas, privacy, search, images, and deployment settings. It stores data and switches; it is not a CSS, HTML, browser-script, or `unsafeHtml` injection surface.
+- `config.yml` owns site metadata, locales, navigation, collections, routes, schemas, privacy policy/controller data, images, and deployment settings. The selected theme is `theme.name`; plugin instance options and switches belong in `themes/<name>/theme.yml`. Neither file is a CSS, HTML, browser-script, or `unsafeHtml` injection surface.
 - `content/pages/<id>/<locale>.md` owns stable pages such as the home page, About, and the privacy policy. These pages do not need `date`; the pages collection supplies the default page pattern. Tutorials, blogs, product records, and release notes belong in `content/posts/<id>/<locale>.md`; every post has a required `date`, while its collection supplies the default article pattern. `content/assets/` owns user assets.
-- `themes/<name>/theme.yml`, `i18n.yml`, theme modules, styles, and theme resources own reusable Patterns, Blocks, shell markup, visual behavior, localized UI copy, icons, search, and Cookie presentation. Keep declarations aligned with the exported theme capability.
+- `themes/<name>/theme.yml`, the thin root `index.ts` entry, and each module directory own reusable Patterns, Blocks, shell markup, visual behavior, localized UI copy, icons, search, and Cookie presentation. The entry assembles `components/index.ts`, `layouts/index.ts`, and `plugins/index.ts`; site shell code lives under `layouts/site/`, shared helpers under `components/shared/`, article relations under their article component, and each module carries its own `index.ts`, CSS, JS, and `messages.yml`. Plugin definitions in code retain `schema`, `implementation`, `resources`, localized messages, and `defaults`; `theme.yml` supplies only whitelisted plugin options. Do not add a theme name selector to `theme.yml`.
 - `backend/handler.ts` is the source for dynamic business logic, secrets, writes, and webhooks.
 - `src/` owns the compiler, CLI, libraries, Fetch router, and theme contract. Never hand-edit `src/runtime/`, `.pagekiln/`, or `dist/`; they are generated.
 
@@ -15,10 +15,10 @@ Use the repository source and its generated discovery output as the contract. Ke
 The public CLI has three daily commands:
 
 - `pageskill g` automatically validates source content and generates the public snapshot in `dist/public`.
-- `pageskill s` keeps a local preview running. Press `Ctrl+C` to stop it; another terminal can continue editing and run `pageskill g` again.
+- `pageskill s` keeps a local preview running, watches nested theme TypeScript modules and backend changes, and rebuilds a fresh private runtime before reloading. Press `Ctrl+C` to stop it; another terminal can continue editing and run `pageskill g` again.
 - `pageskill d` publishes the targets declared in `config.yml`.
 
-For the source repository, `npm run g` compiles the runtime, theme, and backend before generating the repository site; run `npm link` once to expose `pageskill` to a copied site. A new site starts by copying `starter`, not by asking the CLI to initialize a project. Keep the source repository and the site directory conceptually separate.
+For the source repository, clone the repository, run `npm install`, then use `npm run g` to compile the runtime, theme, and backend before generating the site in place. Continue editing that cloned site; do not create a second site directory or an initialization flow.
 
 Do not teach or reintroduce retired command entry points. The beginner path should link to the dated articles under `content/posts/` and use only `g`, `s`, and `d`.
 
@@ -30,7 +30,7 @@ Reuse existing Patterns, Blocks, schemas, plugins, and resources before adding c
 
 ## Content and localization
 
-Keep `zh-sg`, `zh-tw`, and `en` pages and articles semantically synchronized. Use the same id for page translations and the same post id and `date` for article translations, link tutorial steps through `/:locale/posts/<id>/`, and keep UI copy in the theme `i18n.yml`. Verify language links, `lang`, `hreflang`, fallback behavior, and both page and article routes after content changes.
+Keep `zh-sg`, `zh-tw`, and `en` pages and articles semantically synchronized. Use the same id for page translations and the same post id and `date` for article translations, link tutorial steps through `/:locale/posts/<id>/`, and keep UI copy beside its owning module in that module's `messages.yml`. Verify language links, `lang`, `hreflang`, fallback behavior, and both page and article routes after content changes.
 
 Use Markdown, Frontmatter, and short Block attributes for content. A Frontmatter `date` is required for every post, including tutorials and ordinary blog writing; stable pages such as About and privacy do not need it. Keep code examples minimal and runnable. Do not preserve retired guide or development page copies as redirect shadows when the content tree intentionally removes them.
 
@@ -38,27 +38,29 @@ Use Markdown, Frontmatter, and short Block attributes for content. A Frontmatter
 
 Escape text and attributes, use `safeUrl` for links, and keep untrusted content out of `unsafeHtml`. Search, form, and URL values are data: insert them with text APIs or equivalent safe DOM APIs, never `innerHTML` or `eval`. Configuration is data, not a code entry point.
 
-Static page bodies are generated ahead of time. The public snapshot lives in `dist/public`; `backend/handler.ts` stays private and serves same-origin APIs at runtime. Do not import backend code during generation to discover routes or read secrets. New dynamic endpoints validate input and implement their own identity, authorization, CSRF, and failure handling.
+Static page bodies are generated ahead of time. The public snapshot lives in `dist/public`; `backend/handler.ts` stays private and serves same-origin APIs at runtime. Register any route with the existing `router.get(...)`, `router.post(...)`, or `router.all(...)` methods: runtime matching returns a `Response` when a route handles the request or `null` when no route matches, so generation does not require a per-route `dynamicRoutes` list in `config.yml`. With a backend, generated Worker/Pages/VPS entrypoints run the router first for every pathname and configure Worker assets with `run_worker_first = true`; unknown paths then fall through to public assets, while an unmatched `/api` request remains a 404. API errors and authorization responses stay API responses and do not fall back to static output. Build and generation keep nested server-side ESM inside the private build/runtime boundary; each public CSS/JS resource is content-fingerprinted independently, so unchanged assets retain their URL and cache identity. Do not import backend code during generation to discover routes or read secrets. New dynamic endpoints validate input and implement their own identity, authorization, CSRF, and failure handling.
 
-Reuse the existing `privacyConsent` plugin. Optional categories default to false, and trusted `gatedScripts` belong only in `theme.yml`. Protocol checking does not prove that a third-party script is safe. Withdrawing consent prevents later loads but cannot undo work a script already performed.
+Reuse the existing `privacyConsent` plugin. Optional categories default to false, and trusted `gatedScripts` are declared by the theme plugin defaults/schema and may be configured in `themes/<name>/theme.yml`; site config stores policy/controller data and stable policy routes. Protocol checking does not prove that a third-party script is safe. Withdrawing consent prevents later loads but cannot undo work a script already performed.
 
 ## Change and release discipline
 
 Change content in Markdown, visual behavior in the theme, site settings in `config.yml`, and dynamic behavior in `backend/handler.ts`. Remove overlapping dead files when a replacement is complete; do not keep duplicate mechanisms for hypothetical consumers. Preserve `.pagekiln/` and `_pagekiln` compatibility and the existing Cookie consent storage key.
 
-Keep the SemVer in `package.json` and `package-lock.json` synchronized with `CHANGELOG.md`, `CHANGELOG.zh-CN.md`, and a dated localized post when a release changes. The current release remains 3.0.0; do not create a separate 4.0 note for this content reorganization. Keep migration steps and planned verification commands in the release post without claiming results that have not been observed.
+Keep the SemVer in `package.json` and `package-lock.json` synchronized with `CHANGELOG.md`, `CHANGELOG.zh-CN.md`, and a dated localized post when a release changes. The current release is 3.0.1; do not create a separate 4.0 note for this content reorganization. Keep migration steps and the actual compile, generate/profile, local-preview, and deployment dry-run commands in the release post without claiming results that have not been observed.
 
 ## Verification
 
 For a source or content change, use the smallest relevant checks and report actual results:
 
 ```text
+npm run compile-runtime
+npm run compile-theme
+npm run compile-backend
 npm run g
-npm test
-pageskill g
-pageskill s
-pageskill d --dry-run
+npm run g -- --profile
+npm run s
+npm run d -- --dry-run
 git diff --check
 ```
 
-`pageskill s` is a persistent process, so stop it after interactive verification. Use `pageskill d --dry-run` for routine deployment verification; run `pageskill d` only when the user has asked for publishing and the configured target is ready. Do not invent build, deployment, accessibility, or browser results.
+`npm run s` is a persistent process, so stop it after interactive verification. Use `npm run d -- --dry-run` for routine deployment verification; run `npm run d` only when the user has asked for publishing and the configured target is ready. Do not invent build, deployment, accessibility, or browser results.

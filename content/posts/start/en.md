@@ -1,14 +1,14 @@
 ---
 title: Start your site in ten minutes
-description: Install Pageskill from the source repository, copy starter, and generate a site ready for your articles.
+description: Clone Pageskill, generate the site in place, and start editing your own pages and articles.
 date: 2026-09-07
 ---
 
 # Start your site in ten minutes
 
-The Pageskill source repository and the site you publish are two different things. Compile the CLI in the source repository, then copy `starter` as your new site.
+The cloned Pageskill repository is the site you can edit and publish. Keep your content, settings, theme, and generated files in this one working directory.
 
-## 1. Install Pageskill
+## 1. Clone and install
 
 In a terminal with Git and Node.js 22 or newer, run:
 
@@ -16,31 +16,27 @@ In a terminal with Git and Node.js 22 or newer, run:
 git clone https://github.com/jsw-teams/pageskill.git
 Set-Location pageskill
 npm install
+```
+
+## 2. Generate the cloned site
+
+```powershell
 npm run g
-npm link
 ```
 
-`npm run g` compiles the source before generating the repository site. `npm link` makes the `pageskill` command available from other directories.
+`npm run g` compiles the runtime, theme, and backend, then validates and generates this repository. The source tree is now the site you edit.
 
-## 2. Copy starter
+## 3. Edit the site in place
 
-Leave the source repository and copy a clean starting point:
+Change `content/pages/home/<locale>.md` for the home page, `content/posts/<id>/<locale>.md` for dated articles, and `config.yml` for site data and switches. Reuse the theme capabilities before adding a new extension.
+
+## 4. Open the preview
 
 ```powershell
-Copy-Item -Recurse starter ..\my-site
-Set-Location ..\my-site
-pageskill g
+npm run s
 ```
 
-You now have a site with one home page. Edit `my-site` from here; the source repository supplies the CLI and theme capabilities.
-
-## 3. Open the preview
-
-```powershell
-pageskill s
-```
-
-Open the local address shown in the terminal. The preview keeps running; press `Ctrl+C` to stop it, or edit in another terminal and run `pageskill g` again.
+Open the local address shown in the terminal. The preview keeps running; press `Ctrl+C` to stop it, or edit in another terminal and run `npm run g` again.
 
 ## Expected result
 
@@ -48,8 +44,8 @@ The home page opens, static files are under `dist/public`, and `content/pages/ho
 
 ## Common trap
 
-If `pageskill` is not found, you probably have not run `npm link` in the source repository, or the current terminal has an old PATH. Open a new terminal, then run `pageskill g` from the new site.
+If generation fails before the content is read, run `npm install` again from the cloned repository and check that Node.js is version 22 or newer. Do not edit generated files under `dist/` or `.pagekiln/`.
 
 ## Next step
 
-Read [Change the name and navigation](/en/posts/site-settings/) to give the site its own identity.
+Read [Change the name and navigation](/en/posts/site-settings/) to give the cloned site its own identity.

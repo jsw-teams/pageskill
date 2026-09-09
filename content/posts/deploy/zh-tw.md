@@ -23,25 +23,63 @@ deployment:
 
 Token 或 SSH 金鑰放在本機環境和金鑰檔案，不要寫進 `config.yml`、文章或公開目錄。
 
-## 2. 先產生公開檔案
+## 2. 設定 Cloudflare Pages Git 整合（僅靜態）
+
+如果 Cloudflare Pages 從 Git 建置這個專案，在專案根目錄的控制台使用以下值：
+
+```text
+建置命令：npm run g
+建置輸出目錄：dist/public
+```
+
+`npm run build` 不是 Pageskill 指令，不要為了相容控制台而新增別名。`dist/public` 是公開快照，裡面只有產生頁面、資源、Feed 和網站地圖。不要把輸出目錄設成 `dist`；私有建置根目錄還可能包含 `_pagekiln/`、`server/`、`.pagekiln/`、`_worker.js` 和其他部署檔案，直接發佈整個 `dist/` 可能暴露 backend 程式碼或私有執行時檔案。
+
+這條 Git 整合路徑只發佈靜態內容，不會自動把 `backend/handler.ts` 打包成同一個 Pages Worker。如果網站不需要執行時 API，可以按需設定 `deployment.backend: false`；輸出目錄仍必須是 `dist/public`。
+
+## 3. 先產生公開檔案
 
 ```powershell
-pageskill g
+npm run g
 ```
 
 查看 `dist/public`，確認首頁、文章、資源和網站地圖都在裡面。需要 API 的網站還要準備同一個服務的後端執行時。
 
-## 3. 發佈
+## 4. 先查看發佈計畫
+
+先執行安全檢查：
 
 ```powershell
-pageskill d
+npm run d -- --dry-run
 ```
 
-Pageskill 會依照 `deployment.targets` 執行目標。發佈後從目標網域開啟首頁和一篇文章，再呼叫你自己的同源 API 路徑確認伺服器邊界。
+查看目標和來源檔案路徑；這個指令不會上傳檔案。
+
+## 5. 準備好後發佈
+
+```powershell
+npm run d
+```
+
+只有目標準備好時才執行 `npm run d`。Pageskill 會依照 `deployment.targets` 執行目標。發佈後從目標網域開啟首頁和一篇文章，再呼叫你自己的同源 API 路徑確認伺服器邊界。
+
+如果 Pages 專案必須在同一次部署中包含 backend，不要把 Git 整合的輸出目錄改成 `dist`。請設定 CLI 目標，讓 `npm run d` 負責打包：
+
+```yaml
+deployment:
+  targets:
+    - cloudflare-pages
+  backend: true
+  cloudflare:
+    apiTokenEnv: CLOUDFLARE_API_TOKEN
+    pages:
+      project: your-pages-project
+```
+
+把 `CLOUDFLARE_API_TOKEN` 放在部署環境中，然後先執行 `npm run d -- --dry-run`，確認結果後再執行 `npm run d`。CLI 會產生 `dist`，把公開目錄複製到暫存的 `.pagekiln/pages-upload-*`，再把產生的 `_worker.js` 和私有 `_pagekiln` 執行時放進這個上傳目錄。Pages 上傳的是這個暫存目錄，而不是私有的 `dist/` 根目錄，因此 backend 和公開資源可以一起工作，又不會把私有建置檔案當成靜態資源。現有 Git 整合不會自動執行這一步；把控制台輸出目錄改成 `dist` 不是安全的解決方法。
 
 ## 成功結果
 
-託管平台接收了 `dist/public`，公開 URL 可以開啟產生頁面；私有的 Worker、server 檔案和秘密沒有進入靜態快照。
+靜態 Git 整合接收 `dist/public` 並開啟產生頁面；CLI Pages 目標接收上面所述的過濾後 Worker 包，私有 Worker、server 檔案和秘密不會進入公開快照。
 
 ## 常見問題
 

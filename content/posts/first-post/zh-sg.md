@@ -23,6 +23,8 @@ New-Item -ItemType Directory content\posts\hello-site
 title: 我的网站上线了
 description: 记录第一次发布。
 date: 2026-09-07
+author: Site Owner
+cover: assets/og-default-product.webp
 ---
 
 # 我的网站上线了
@@ -36,11 +38,13 @@ date: 2026-09-07
 
 其他语言只需翻译标题、说明和正文，保留相同的 `date` 和目录名；文章集合会提供默认样式。
 
+`author` 是普通文字；省略它时，会使用 `config.yml` 里对应语言的 `author`。`cover` 是可选的：把源图片放在 `content/assets/`，在 Frontmatter 写公开路径 `assets/<路径>`（或 `/assets/<路径>`）。仓库现有的 `assets/og-default-product.webp` 是当前的小熊图片；生成后位于 `dist/public/assets/`。没有 `cover` 的文章不会被强行加上统一封面，危险 URL 协议也会被拒绝。
+
 ## 2. 生成并打开
 
 ```powershell
-pageskill g
-pageskill s
+npm run g
+npm run s
 ```
 
 打开 `/zh-sg/posts/hello-site/`，再从文章内的语言链接查看另外两个版本。

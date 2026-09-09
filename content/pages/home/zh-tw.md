@@ -5,18 +5,18 @@ pattern: landing
 ---
 
 :::hero{tone="brand" align="left"}
-*Pageskill 3.0 · 用文章搭站*
+*Pageskill 3.0.1 · 用文章搭站*
 
 # 寫下第一篇文章，搭好你的網站
 
-Pageskill 把 Markdown 文章、網站設定和樣式組合成一個網站。你可以先複製 `starter`，再依照自己的內容修改；需要動態功能時，頁面和同源 API 仍然各自保持清楚的邊界。
+Pageskill 把 Markdown 文章、網站設定和樣式組合成一個網站。你可以先複製儲存庫、在原目錄產生，再依照自己的內容修改；需要動態功能時，頁面和同源 API 仍然各自保持清楚的邊界。
 
 [十分鐘開始](/zh-tw/posts/start/) [查看全部教學](/zh-tw/posts/)
 :::
 
 :::learning-path
 ### [開始](/zh-tw/posts/start/)
-從原始碼儲存庫安裝 Pageskill，複製 `starter`，產生第一個首頁。
+複製原始碼儲存庫，執行 `npm install` 和 `npm run g`，再直接修改第一個首頁。
 
 ### [網站設定](/zh-tw/posts/site-settings/)
 修改網站名稱、語言和導覽；設定檔只放資料，不放程式碼。
@@ -38,9 +38,9 @@ Pageskill 把 Markdown 文章、網站設定和樣式組合成一個網站。你
 
 | 指令 | 用途 |
 | --- | --- |
-| `pageskill g` | 自動驗證並產生公開靜態檔案到 `dist/public`。 |
-| `pageskill s` | 啟動持續預覽；按 `Ctrl+C` 停止，也可以在另一個終端機繼續編輯。 |
-| `pageskill d` | 依照 `config.yml` 中的目標發佈網站。 |
+| `npm run g` | 自動驗證並產生公開靜態檔案到 `dist/public`。 |
+| `npm run s` | 啟動持續預覽；按 `Ctrl+C` 停止，也可以在另一個終端機繼續編輯。 |
+| `npm run d` | 依照 `config.yml` 中的目標發佈網站。 |
 
 :::post-list{limit="6"}
 :::

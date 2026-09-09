@@ -1,58 +1,55 @@
 ---
-title: 更換樣式，或讓 Agent 幫你改
-description: 複製主題一次，先修改顏色和間距；需要新結構時，把它做成可重複使用的能力。
+title: 換樣式，或讓 Agent 幫你改
+description: 直接修改模組化主題，重用元件，讓一次改動作用到每個頁面。
 date: 2026-09-07
 ---
 
-# 更換樣式，或讓 Agent 幫你改
+# 換樣式，或讓 Agent 幫你改
 
-樣式決定顏色、字型和間距。主題還可以提供可重複使用的文章結構。個人可以直接編輯這些檔案，也可以把目標、範圍和成功頁面交給 Agent。
+樣式決定顏色、字型和間距。主題是模組化的：薄入口負責組裝布局、元件、外掛和 shell。你可以自己改，也可以給 Agent 一個目標、範圍和應成功的頁面。
 
-## 1. 複製一份主題
+## 1. 選擇主題
 
-在網站根目錄複製預設主題，為副本換一個名稱：
-
-```powershell
-Copy-Item -Recurse themes\default themes\journal
-```
-
-編輯 `themes/journal/theme.yml`，把 `name` 改成 `journal`；再在 `config.yml` 選擇它：
+網站在 `config.yml` 中選擇主題：
 
 ```yaml
 theme:
-  name: journal
+  name: default
 ```
 
-## 2. 先改一個顏色
+目前主題把外掛選項放在 `themes/default/theme.yml`，並使用負責組裝的薄入口 `themes/default/index.ts`；`theme.yml` 不選擇主題名稱。
 
-開啟 `themes/journal/style.css`，修改現有的 CSS 變數：
+## 2. 先改一個共用樣式
+
+共用 shell 樣式放在 `themes/default/layouts/site/style.css`，在這裡改現有變數：
 
 ```css
 :root {
-  --color-brand: #8b4f2f;
-  --color-paper: #fffaf1;
+  --green: #6b3d2e;
+  --gold: #d99a32;
 }
 ```
 
-保留主題已有的結構和資源宣告，先執行產生確認變化，再繼續調整。
+元件專屬樣式放在元件旁邊，例如 `themes/default/components/learning-path/style.css`。外掛樣式放在自己的 `themes/default/plugins/<id>/style.css`。
 
-## 3. 需要新結構時做一次
+## 3. 重用或增加一次能力
 
-如果現有 Block 不夠，在主題模組中實作一個可重用 Block，並在 `theme.yml` 登記。頁面文章只寫 Markdown 和短屬性，不把 HTML 複製到每篇文章。
+先在 Markdown 中使用已有 Block，再考慮寫程式碼。如果缺少元件，把 `index.ts`、可選的 `style.css` 和 `messages.yml` 放在 `themes/default/components/<id>/`，再把模組加入 `components/index.ts`。保留 `index.ts` 的統一組裝，共用輔助函式放在 `components/shared/`，不要把標記複製到每篇文章。
 
 ```powershell
-pageskill g
-pageskill s
+npm run compile-theme
+npm run g
+npm run s
 ```
 
 ## 成功結果
 
-同一份主題副本會影響網站中所有使用它的文章；重新產生後，顏色或新 Block 會在每個目標頁面一致出現。
+顏色或元件改動會穩定出現在使用目前主題的每個頁面。按 `Ctrl+C` 後才會結束持續預覽。
 
 ## 常見問題
 
-只修改 `config.yml` 裡的樣式名稱不會產生視覺變化；名稱、主題資料夾和 `theme.yml` 必須一致。不要直接修改產生的 `dist/` 檔案。
+只改 `config.yml` 只能選擇主題，不會自動產生新的視覺資源。實作、CSS、腳本和 messages 要和模組放在一起，也不要修改產生的 `dist/` 檔案。
 
 ## 下一步
 
-閱讀[把網站放到網路上](/zh-tw/posts/deploy/)，確認公開目錄和同源 API 的部署邊界。
+當能力需要共用瀏覽器行為或同意後載入時，閱讀[開發一個可重用外掛](/zh-tw/posts/plugins/)。

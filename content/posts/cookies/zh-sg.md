@@ -1,61 +1,88 @@
 ---
 title: Cookie 选择：先问访客再加载
-description: 复用已有 Cookie 插件，让可选服务默认关闭并在同意后才运行。
+description: 启用 Cookie 插件，让可选类别默认关闭，并检查撤回同意的行为。
 date: 2026-09-07
 ---
 
 # Cookie 选择：先问访客再加载
 
-Cookie 同意是站点的访客选择。Pageskill 已有 `privacyConsent` 插件；可选类别默认关闭，访客同意后才会加载对应服务。
+Cookie 同意是访客的选择。Pageskill 可以让可选服务默认关闭，访客同意后才加载；撤回选择后不再加载后续脚本。
 
-## 1. 打开现成插件
+## 1. 启用现成插件
 
-在站点的 `config.yml` 保留插件和政策入口：
+把插件选项放在 `themes/default/theme.yml`，把稳定政策入口留在 `config.yml`：
 
 ```yaml
+# themes/default/theme.yml
 plugins:
   privacyConsent:
     enabled: true
+
+# config.yml
 privacy:
   cookieConsent:
-    enabled: true
     policyRoute: /:locale/privacy/
 ```
 
-政策页面放在 `content/pages/privacy/`，并准备三个语言版本。必要类别可以工作；分析和广告类别应保持 `default: false`。
+在每个启用语言的 `content/pages/privacy/` 下准备政策页面。
 
-## 2. 只在主题里登记可信脚本
+默认实现是 `themes/default/plugins/cookies/` 模块；它的 `index.ts`、CSS、脚本和 messages 放在一起。
 
-如果确实要加载可选脚本，把来源和类别写在主题 `theme.yml` 的 `gatedScripts`，由站点维护者审阅：
+## 2. 让可选类别保持关闭
+
+在 `themes/default/theme.yml` 中让必要存储使用 `essential`，可选类别设置 `default: false`：
 
 ```yaml
 plugins:
   privacyConsent:
-    enabled: true
-    gatedScripts:
-      - src: https://analytics.example/script.js
-        category: analytics
+    categories:
+      - id: essential
+        required: true
+        default: true
+      - id: analytics
+        required: false
+        default: false
+      - id: advertising
+        required: false
+        default: false
 ```
 
-脚本来源是受信配置，不是访客输入。撤回同意会阻止后续加载，但不能撤销脚本已经执行过的动作。
+站点服务的 ID 等实例数据放在 `config.yml`。不要把服务 ID 写进文章，也不要默认打开可选类别。
 
-## 3. 生成并查看提示
+## 3. 登记受信脚本
+
+需要在同意后才加载的脚本，放在主题插件中，不要放进站点配置。在 `themes/default/plugins/cookies/index.ts` 的现有 `plugin` 导出中加入：
+
+```ts
+// 在现有 plugin 导出中加入这个属性。
+defaults: {
+  gatedScripts: [{ src: 'plugins/cookies/analytics.js', category: 'analytics' }]
+}
+```
+
+`gatedScripts` 要留在主题拥有的 `defaults` 中；政策/控制者资料放在 `config.yml`，插件选项放在 `theme.yml`。
+
+在 `themes/default/plugins/cookies/analytics.js` 创建并审查这个文件。相对 `src` 从主题根目录解析，生成后位于带指纹的 `/assets/theme/default/` 下。
+
+类别必须是可选类别。加入前先检查脚本来源和用途；同意检查不会让未知的第三方脚本自动安全。
+
+## 4. 检查三种状态
 
 ```powershell
-pageskill g
-pageskill s
+npm run g
+npm run s
 ```
 
-在无选择、同意可选类别和撤回三种状态下查看页面；确认政策链接和语言版本可达。
+用全新的浏览器会话确认访客未选择前不会加载可选脚本。接受分析类别后确认脚本加载，再打开 Cookie 设置，保存“仅必要项”，确认后续加载会停止。
 
 ## 成功结果
 
-首次访问时可选脚本没有运行；访客明确同意后才加载，页脚仍能打开政策和 Cookie 设置。
+必要功能立即工作；可选类别默认关闭，只有明确同意后才加载，页脚仍可打开政策页和 Cookie 设置。
 
 ## 常见坑
 
-不要把脚本 URL 写进文章正文，也不要把可选类别的默认值设为同意。`theme.yml` 的可信清单和插件开关要同时存在。
+撤回同意会阻止后续加载，但不能撤销脚本已经完成的工作。不要把脚本 URL 藏在 Markdown 中，不要用必要类别承载分析，也不要在每篇文章重复配置插件。
 
 ## 下一步
 
-读[换样式，或让 Agent 帮你改](/zh-sg/posts/customize/)，学习如何复制一次主题能力。
+Cookie 流程稳定后，阅读[让访客搜到页面和文章](/zh-sg/posts/search/)。

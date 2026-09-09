@@ -7,6 +7,7 @@ date: 2026-09-07
 # 改成你的名字和导航
 
 `config.yml` 是设置文件：它保存站点数据和开关，不执行代码。先改名称和导航，其他设置以后再加。
+文章没有在 Frontmatter 写作者时，会使用对应语言的 `author`；发布前请把 `Site Owner` 换成真实的站点作者。
 
 ## 1. 打开设置文件
 
@@ -27,21 +28,25 @@ description:
   zh-sg: 写下我的文章。
   zh-tw: 寫下我的文章。
   en: Notes from my work.
+author:
+  zh-sg: Site Owner
+  zh-tw: Site Owner
+  en: Site Owner
 ```
 
 ## 2. 改导航
 
-在同一个文件的 `theme.nav.links` 下放公开入口：
+在同一个文件的 `navigation.links` 下放公开入口：
 
 ```yaml
 theme:
   name: default
-  nav:
-    links:
-      - key: home
-        href: /:locale/
-      - key: posts
-        href: /:locale/posts/
+navigation:
+  links:
+    - key: home
+      href: /:locale/
+    - key: posts
+      href: /:locale/posts/
 ```
 
 `:locale` 会在生成时换成 `zh-sg`、`zh-tw` 或 `en`。不要把访客输入拼进设置文件。
@@ -49,8 +54,8 @@ theme:
 ## 3. 生成并预览
 
 ```powershell
-pageskill g
-pageskill s
+npm run g
+npm run s
 ```
 
 打开三个语言首页和文章入口，确认名称、语言链接和导航都正确。

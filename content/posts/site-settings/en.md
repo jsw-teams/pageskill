@@ -7,6 +7,7 @@ date: 2026-09-07
 # Change the name and navigation
 
 `config.yml` is a settings file: it stores site data and switches, and it does not run code. Change the name and navigation first; add other settings later.
+The localized `author` value is the default for articles that do not set their own Frontmatter author; replace `Site Owner` with the real site owner before publishing.
 
 ## 1. Open the settings file
 
@@ -27,21 +28,25 @@ description:
   zh-sg: 写下我的文章。
   zh-tw: 寫下我的文章。
   en: Notes from my work.
+author:
+  zh-sg: Site Owner
+  zh-tw: Site Owner
+  en: Site Owner
 ```
 
 ## 2. Change the navigation
 
-Add public entries under `theme.nav.links` in the same file:
+Add public entries under `navigation.links` in the same file:
 
 ```yaml
 theme:
   name: default
-  nav:
-    links:
-      - key: home
-        href: /:locale/
-      - key: posts
-        href: /:locale/posts/
+navigation:
+  links:
+    - key: home
+      href: /:locale/
+    - key: posts
+      href: /:locale/posts/
 ```
 
 `:locale` is replaced with `zh-sg`, `zh-tw`, or `en` during generation. Do not splice visitor input into the settings file.
@@ -49,8 +54,8 @@ theme:
 ## 3. Generate and preview
 
 ```powershell
-pageskill g
-pageskill s
+npm run g
+npm run s
 ```
 
 Open the home page and article entry in all three languages. Check the name, language links, and navigation.

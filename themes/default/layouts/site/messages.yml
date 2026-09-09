@@ -1,0 +1,108 @@
+fallbackLocale: en
+locales:
+  zh-sg:
+    label: 简体中文
+    htmlLang: zh-CN
+    dateLocale: zh-CN
+  zh-tw:
+    label: 繁體中文
+    htmlLang: zh-TW
+    dateLocale: zh-TW
+  en:
+    label: English
+    htmlLang: en
+    dateLocale: en-US
+messages:
+  zh-sg:
+    navigation:
+      home: 首页
+      about: 关于
+      start: 开始使用
+      posts: 文章
+      customize: 自定义
+    collections:
+      pages: 页面
+      posts: 文章
+    continue: 阅读文章
+    siteMap: 站点地图
+    notFound:
+      title: 这页没有找到
+      description: 地址可能已更新。返回首页，或从开始使用继续查找内容。
+      home: 返回首页
+      guide: 打开开始使用
+    archive:
+      title: 文章归档
+      description: 按日期整理 Pageskill 的学习内容与更新
+      continue: 阅读文章
+      previousPage: 上一页
+      nextPage: 下一页
+    shell:
+      headerNote: 学习、编写、发布
+      skipToContent: 跳至内容
+      languages: 语言
+      navigation: 主导航
+      footerNote: 用清晰步骤把 Markdown 变成网站。
+      footerKicker: Pageskill 学习站
+      postsFeed: 文章订阅
+  zh-tw:
+    navigation:
+      home: 首頁
+      about: 關於
+      start: 開始使用
+      posts: 文章
+      customize: 自訂
+    collections:
+      pages: 頁面
+      posts: 文章
+    continue: 閱讀文章
+    siteMap: 網站地圖
+    notFound:
+      title: 找不到這個頁面
+      description: 網址可能已更新。返回首頁，或從開始使用繼續尋找內容。
+      home: 返回首頁
+      guide: 開啟開始使用
+    archive:
+      title: 文章彙整
+      description: 按日期整理 Pageskill 的學習內容與更新
+      continue: 閱讀文章
+      previousPage: 上一頁
+      nextPage: 下一頁
+    shell:
+      headerNote: 學習、編寫、發布
+      skipToContent: 跳至內容
+      languages: 語言
+      navigation: 主導覽
+      footerNote: 用清楚步驟把 Markdown 變成網站。
+      footerKicker: Pageskill 學習站
+      postsFeed: 文章訂閱
+  en:
+    navigation:
+      home: Home
+      about: About
+      start: Get started
+      posts: Articles
+      customize: Customize
+    collections:
+      pages: Pages
+      posts: Articles
+    continue: Read article
+    siteMap: Site map
+    notFound:
+      title: This page is not here
+      description: The address may have changed. Return home or continue through the getting-started articles.
+      home: Back to home
+      guide: Open getting started
+    archive:
+      title: Article archive
+      description: Dated Pageskill learning notes and updates
+      continue: Read article
+      previousPage: Previous page
+      nextPage: Next page
+    shell:
+      headerNote: Learn, write, publish
+      skipToContent: Skip to content
+      languages: Languages
+      navigation: Primary navigation
+      footerNote: Turn Markdown into a site with clear steps.
+      footerKicker: Pageskill learning site
+      postsFeed: Article feed

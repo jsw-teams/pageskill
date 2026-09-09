@@ -1,6 +1,6 @@
 {
   "name": "pageskill",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Pageskill: discover reusable Patterns, Blocks, and schemas, then compile localized websites with static pages and same-origin APIs from Markdown and configuration.",
   "license": "MIT",
   "type": "module",
@@ -25,7 +25,6 @@
     "backend/",
     "content/",
     "src/",
-    "starter/",
     "themes/",
     "tsconfig.json",
     "tsconfig.emit.json",
@@ -53,9 +52,6 @@
     "g": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/pageskill.mjs g",
     "s": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/pageskill.mjs s",
     "d": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/pageskill.mjs d",
-    "test": "node --test test/*.test.mjs",
-    "bench": "node scripts/benchmark.mjs",
-    "bench:compare": "node scripts/benchmark-compare.mjs",
     "compile-runtime": "tsc -p tsconfig.emit.json",
     "compile-backend": "tsc -p tsconfig.backend.json",
     "compile-theme": "tsc -p tsconfig.theme.json"

@@ -23,6 +23,8 @@ Create `zh-sg.md`, `zh-tw.md`, and `en.md` in that directory. Start with the Eng
 title: My site is live
 description: A note about the first publish.
 date: 2026-09-07
+author: Site Owner
+cover: assets/og-default-product.webp
 ---
 
 # My site is live
@@ -36,11 +38,13 @@ I will keep writing about the next experiment.
 
 Translate the title, description, and body in the other languages while keeping the same `date` and directory name; the article collection supplies its default pattern.
 
+`author` is plain text. Omit it when the localized `author` in `config.yml` should be used. `cover` is optional: put the source image under `content/assets/` and write its public path as `assets/<path>` (or `/assets/<path>`). The existing `assets/og-default-product.webp` is a current bear-derived image in this repository. The generator publishes it under `dist/public/assets/`; an article without `cover` simply has no cover image. Unsafe URL schemes are rejected.
+
 ## 2. Generate and open it
 
 ```powershell
-pageskill g
-pageskill s
+npm run g
+npm run s
 ```
 
 Open `/en/posts/hello-site/`, then use the language links in the article to view the other versions.

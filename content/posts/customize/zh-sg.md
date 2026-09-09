@@ -1,58 +1,55 @@
 ---
 title: 换样式，或让 Agent 帮你改
-description: 复制主题一次，先改颜色和间距；需要新结构时，把它做成可重复使用的能力。
+description: 直接修改模块化主题，复用组件，让一次改动作用到每个页面。
 date: 2026-09-07
 ---
 
 # 换样式，或让 Agent 帮你改
 
-样式决定颜色、字体和间距。主题还可以提供可重复使用的文章结构。个人可以直接编辑这些文件，也可以把目标、范围和成功页面交给 Agent。
+样式决定颜色、字体和间距。主题是模块化的：薄入口负责组装布局、组件、插件和 shell。你可以自己改，也可以给 Agent 一个目标、范围和应成功的页面。
 
-## 1. 复制一份主题
+## 1. 选择主题
 
-在站点根目录复制默认主题，给副本换一个名字：
-
-```powershell
-Copy-Item -Recurse themes\default themes\journal
-```
-
-编辑 `themes/journal/theme.yml`，把 `name` 改成 `journal`；再在 `config.yml` 里选择它：
+站点在 `config.yml` 中选择主题：
 
 ```yaml
 theme:
-  name: journal
+  name: default
 ```
 
-## 2. 先改一个颜色
+当前主题把插件选项放在 `themes/default/theme.yml`，并使用负责组装的薄入口 `themes/default/index.ts`；`theme.yml` 不选择主题名称。
 
-打开 `themes/journal/style.css`，修改现有的 CSS 变量：
+## 2. 先改一个共用样式
+
+共用 shell 样式放在 `themes/default/layouts/site/style.css`，在这里改现有变量：
 
 ```css
 :root {
-  --color-brand: #8b4f2f;
-  --color-paper: #fffaf1;
+  --green: #6b3d2e;
+  --gold: #d99a32;
 }
 ```
 
-保留主题已有的结构和资源声明，先运行生成确认变化，再继续调整。
+组件专属样式放在组件旁边，例如 `themes/default/components/learning-path/style.css`。插件样式放在自己的 `themes/default/plugins/<id>/style.css`。
 
-## 3. 需要新结构时做一次
+## 3. 复用或增加一次能力
 
-如果现有 Block 不够，在主题模块里实现一个可复用 Block，并在 `theme.yml` 登记它。页面文章只写 Markdown 和短属性，不把 HTML 复制到每篇文章。
+先在 Markdown 中使用已有 Block，再考虑写代码。如果缺少组件，把 `index.ts`、可选的 `style.css` 和 `messages.yml` 放在 `themes/default/components/<id>/`，再把模块加入 `components/index.ts`。保留 `index.ts` 的统一组装，共享辅助函数放在 `components/shared/`，不要把标记复制到每篇文章。
 
 ```powershell
-pageskill g
-pageskill s
+npm run compile-theme
+npm run g
+npm run s
 ```
 
 ## 成功结果
 
-同一个主题副本影响站点中所有使用它的文章；重新生成后，颜色或新 Block 在每个目标页面一致出现。
+颜色或组件改动会稳定出现在使用当前主题的每个页面。按 `Ctrl+C` 后才会结束持续预览。
 
 ## 常见坑
 
-只改 `config.yml` 里的样式名称不会产生视觉变化；名称、主题目录和 `theme.yml` 必须一致。不要直接改生成的 `dist/` 文件。
+只改 `config.yml` 只能选择主题，不会自动产生新的视觉资源。实现、CSS、脚本和 messages 要和模块放在一起，也不要修改生成的 `dist/` 文件。
 
 ## 下一步
 
-看[把网站放到网上](/zh-sg/posts/deploy/)，确认公开目录和同源 API 的部署边界。
+当能力需要共享浏览器行为或同意后加载时，阅读[开发一个可复用插件](/zh-sg/posts/plugins/)。

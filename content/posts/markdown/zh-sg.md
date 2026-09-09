@@ -29,7 +29,7 @@ date: 2026-09-07
 - 留一个链接
 
 ```text
-pageskill g
+npm run g
 ```
 ````
 
@@ -38,8 +38,8 @@ pageskill g
 ## 2. 生成并查看
 
 ```powershell
-pageskill g
-pageskill s
+npm run g
+npm run s
 ```
 
 打开 `/zh-sg/posts/hello/`，确认标题、段落和代码块都按文章结构显示。

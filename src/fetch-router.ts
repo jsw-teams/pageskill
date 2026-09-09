@@ -138,6 +138,18 @@ function isSelfRedirect(request: Request, response: Response): boolean {
   }
 }
 
+function isBackendNamespace(pathname: string): boolean {
+  return pathname === '/api' || pathname.startsWith('/api/');
+}
+
+function notFoundResponse(method: string): Response {
+  const response = new Response('Not found', {
+    status: 404,
+    headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }
+  });
+  return method === 'HEAD' ? new Response(null, response) : response;
+}
+
 export function createSiteFetchHandler<Environment = Record<string, unknown>, ExecutionContext = unknown>(
   options: SiteFetchOptions<Environment, ExecutionContext> = {}
 ) {
@@ -155,6 +167,10 @@ export function createSiteFetchHandler<Environment = Record<string, unknown>, Ex
       });
       return method === 'HEAD' ? new Response(null, response) : response;
     }
+    // `/api` is the reserved same-origin backend namespace. Once Router.match
+    // returns null, never let an accidentally similarly named static file
+    // answer the request. Other paths may still fall through to assets.
+    if (isBackendNamespace(security.pathname)) return notFoundResponse(method);
     if (method !== 'GET' && method !== 'HEAD') {
       return new Response('Method not allowed', {
         status: 405,
@@ -179,7 +195,6 @@ export function createSiteFetchHandler<Environment = Record<string, unknown>, Ex
       }
       return method === 'HEAD' ? new Response(null, response) : response;
     }
-    const response = new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
-    return method === 'HEAD' ? new Response(null, response) : response;
+    return notFoundResponse(method);
   };
 }

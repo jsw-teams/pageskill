@@ -1,0 +1,13 @@
+messages:
+  zh-sg:
+    latestPosts: 最新文章
+    allPosts: 查看全部文章
+    noPosts: 暂无文章
+  zh-tw:
+    latestPosts: 最新文章
+    allPosts: 查看全部文章
+    noPosts: 暫無文章
+  en:
+    latestPosts: Latest articles
+    allPosts: View all articles
+    noPosts: No articles yet.

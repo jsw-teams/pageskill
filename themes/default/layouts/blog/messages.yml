@@ -1,0 +1,25 @@
+messages:
+  zh-sg:
+    post:
+      published: 发布于
+      author: 作者
+      coverAlt: 封面图片
+    related: 相关文章
+    previous: 较新文章
+    next: 较早文章
+  zh-tw:
+    post:
+      published: 發布於
+      author: 作者
+      coverAlt: 封面圖片
+    related: 相關文章
+    previous: 較新文章
+    next: 較早文章
+  en:
+    post:
+      published: Published
+      author: Author
+      coverAlt: Cover image
+    related: Related articles
+    previous: Newer article
+    next: Older article

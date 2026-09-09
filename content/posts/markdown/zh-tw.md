@@ -29,7 +29,7 @@ date: 2026-09-07
 - 留一個連結
 
 ```text
-pageskill g
+npm run g
 ```
 ````
 
@@ -38,8 +38,8 @@ pageskill g
 ## 2. 產生並查看
 
 ```powershell
-pageskill g
-pageskill s
+npm run g
+npm run s
 ```
 
 開啟 `/zh-tw/posts/hello/`，確認標題、段落和程式碼區塊都依文章結構顯示。

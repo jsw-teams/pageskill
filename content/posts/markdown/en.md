@@ -29,7 +29,7 @@ Today I finished one small goal.
 - Keep one useful link
 
 ```text
-pageskill g
+npm run g
 ```
 ````
 
@@ -38,8 +38,8 @@ Use `#` for the title and `##` for a section; use `-` for a list and three backt
 ## 2. Generate and view it
 
 ```powershell
-pageskill g
-pageskill s
+npm run g
+npm run s
 ```
 
 Open `/en/posts/hello/` and check that the title, paragraphs, and code block follow the article structure.

@@ -1,0 +1,25 @@
+messages:
+  zh-sg:
+    languageNames:
+      zh-sg: 简体中文
+      zh-tw: 繁體中文
+      en: English
+    languagePicker:
+      title: 选择网站语言
+      description: 选择网站版本；语言名称保留该语言的自称。
+  zh-tw:
+    languageNames:
+      zh-sg: 简体中文
+      zh-tw: 繁體中文
+      en: English
+    languagePicker:
+      title: 選擇網站語言
+      description: 選擇網站版本；語言名稱保留該語言的自稱。
+  en:
+    languageNames:
+      zh-sg: 简体中文
+      zh-tw: 繁體中文
+      en: English
+    languagePicker:
+      title: Choose a site language
+      description: Choose a site version; each language name stays in its own language.

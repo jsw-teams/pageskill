@@ -1,32 +1,30 @@
-name: default
-module: theme.ts
-style: style.css
-i18n: i18n.yml
-scripts:
-  - scripts/language-picker.js
 plugins:
+  language:
+    enabled: true
   search:
     enabled: true
-    script: scripts/search.js
+    provider: Pageskill
+    maxResults: 8
+    shardSize: 500
+  toc:
+    enabled: true
+    maxDepth: 3
   privacyConsent:
     enabled: true
-    script: scripts/cookie-consent.js
-patterns:
-  - blog
-  - document
-  - docs
-  - landing
-blocks:
-  - hero
-  - feature-grid
-  - learning-path
-  - compiler-board
-  - metrics
-  - tool-comparison
-  - benchmark-chart
-  - research-matrix
-  - comparison
-  - pipeline
-  - post-list
-  - toc
-  - cta
+    provider: Pageskill
+    storage: cookie
+    retentionDays: 365
+    categories:
+      - id: essential
+        required: true
+        default: true
+        retentionDays: 365
+      - id: analytics
+        required: false
+        default: false
+        retentionDays: 0
+      - id: advertising
+        required: false
+        default: false
+        retentionDays: 0
+    gatedScripts: []

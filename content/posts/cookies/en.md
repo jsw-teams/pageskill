@@ -1,61 +1,88 @@
 ---
 title: "Cookie choices: ask before loading"
-description: Reuse the existing Cookie plugin so optional services start disabled and run only after consent.
+description: Enable the Cookie plugin, keep optional categories off, and check withdrawal behavior.
 date: 2026-09-07
 ---
 
 # Cookie choices: ask before loading
 
-Cookie consent is a visitor choice. Pageskill already provides the `privacyConsent` plugin; optional categories start disabled and load their services only after a visitor agrees.
+Cookie consent is a visitor choice. Pageskill can keep optional services off until a visitor agrees, then stop later loads when that choice is withdrawn.
 
-## 1. Keep the provided plugin
+## 1. Enable the existing plugin
 
-Keep the plugin and policy entry in the site `config.yml`:
+Keep the plugin option in `themes/default/theme.yml` and the stable policy route in `config.yml`:
 
 ```yaml
+# themes/default/theme.yml
 plugins:
   privacyConsent:
     enabled: true
+
+# config.yml
 privacy:
   cookieConsent:
-    enabled: true
     policyRoute: /:locale/privacy/
 ```
 
-Put the policy page under `content/pages/privacy/` and prepare all three languages. Essential features can run; analytics and advertising should keep `default: false`.
+Put the policy page under `content/pages/privacy/` in every active locale.
 
-## 2. Register trusted scripts only in the theme
+The default implementation is the `themes/default/plugins/cookies/` module; its `index.ts`, CSS, script, and messages stay together.
 
-When an optional script is truly needed, put its source and category in `gatedScripts` in the theme `theme.yml`, where the site maintainer can review it:
+## 2. Keep optional categories off
+
+In `themes/default/theme.yml`, use `essential` for required storage and set optional categories to `default: false`:
 
 ```yaml
 plugins:
   privacyConsent:
-    enabled: true
-    gatedScripts:
-      - src: https://analytics.example/script.js
-        category: analytics
+    categories:
+      - id: essential
+        required: true
+        default: true
+      - id: analytics
+        required: false
+        default: false
+      - id: advertising
+        required: false
+        default: false
 ```
 
-The script source is trusted configuration, not visitor input. Withdrawal stops later loads, but it cannot undo an action a script already performed.
+Site integrations belong in `config.yml` as data. Do not put a provider ID in an article or turn an optional category on by default.
 
-## 3. Generate and check the prompt
+## 3. Register a trusted script
+
+A script that should load only after consent belongs in the trusted theme plugin, not site config. Add it to the existing `plugin` export in `themes/default/plugins/cookies/index.ts`:
+
+```ts
+// Add this property to the existing plugin export.
+defaults: {
+  gatedScripts: [{ src: 'plugins/cookies/analytics.js', category: 'analytics' }]
+}
+```
+
+Keep `gatedScripts` in this theme-owned `defaults` object. Keep policy/controller data in `config.yml`, and keep plugin options in `theme.yml`.
+
+Create the reviewed file at `themes/default/plugins/cookies/analytics.js`. A relative `src` is resolved from the theme root and emitted under `/assets/theme/default/` with a fingerprint.
+
+The category must be optional. Review the source and purpose before adding it; the consent check does not make an unknown third-party script safe.
+
+## 4. Check all three states
 
 ```powershell
-pageskill g
-pageskill s
+npm run g
+npm run s
 ```
 
-View the site with no choice, with an optional category accepted, and after withdrawal. Check that the policy and language links work.
+In a fresh browser session, confirm that no optional script loads before a choice. Accept analytics and confirm its script loads. Open Cookie settings again, save “essential only”, and confirm later loads stop.
 
 ## Expected result
 
-Optional scripts do not run on the first visit. They load only after an explicit choice, and the footer still opens the policy and Cookie settings.
+Required features work immediately. Optional categories start disabled, load only after an affirmative choice, and the footer opens both the policy page and Cookie settings.
 
 ## Common trap
 
-Do not put a script URL in article text or make an optional category accepted by default. The trusted `theme.yml` list and the plugin switch must agree.
+Withdrawal prevents future loads but cannot undo work a script already performed. Do not hide a script URL in Markdown, use a required category for analytics, or duplicate the plugin in every article.
 
 ## Next step
 
-Read [Change the style, or ask an Agent](/en/posts/customize/) to make one reusable theme change.
+Read [Let visitors search pages and articles](/en/posts/search/) when the consent flow is stable.

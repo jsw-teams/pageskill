@@ -1,0 +1,13 @@
+messages:
+  zh-sg:
+    toc:
+      title: 页面目录
+      onThisPage: 本页内容
+  zh-tw:
+    toc:
+      title: 頁面目錄
+      onThisPage: 本頁內容
+  en:
+    toc:
+      title: Table of contents
+      onThisPage: On this page

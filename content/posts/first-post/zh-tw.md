@@ -23,6 +23,8 @@ New-Item -ItemType Directory content\posts\hello-site
 title: 我的網站上線了
 description: 記錄第一次發佈。
 date: 2026-09-07
+author: Site Owner
+cover: assets/og-default-product.webp
 ---
 
 # 我的網站上線了
@@ -36,11 +38,13 @@ date: 2026-09-07
 
 其他語言只要翻譯標題、說明和正文，保留相同的 `date` 和資料夾名稱；文章集合會提供預設樣式。
 
+`author` 是普通文字；省略它時，會使用 `config.yml` 對應語言的 `author`。`cover` 是可選的：把來源圖片放在 `content/assets/`，在 Frontmatter 寫公開路徑 `assets/<路徑>`（或 `/assets/<路徑>`）。儲存庫現有的 `assets/og-default-product.webp` 是目前的小熊圖片；產生後位於 `dist/public/assets/`。沒有 `cover` 的文章不會被強行加上同一張封面，危險 URL 協定也會被拒絕。
+
 ## 2. 產生並開啟
 
 ```powershell
-pageskill g
-pageskill s
+npm run g
+npm run s
 ```
 
 開啟 `/zh-tw/posts/hello-site/`，再從文章內的語言連結查看另外兩個版本。

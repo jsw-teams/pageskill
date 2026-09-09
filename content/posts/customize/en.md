@@ -1,58 +1,55 @@
 ---
 title: Change the style, or ask an Agent
-description: Copy a theme once, tune its color and spacing, and make new structure reusable.
+description: Edit the modular theme directly, reuse components, and make one shared change for every page.
 date: 2026-09-07
 ---
 
 # Change the style, or ask an Agent
 
-Styles set color, type, and spacing. A theme can also provide reusable article structures. Edit these files yourself, or give an Agent a target, a scope, and the page that should succeed.
+Styles set color, type, and spacing. The theme is modular: the thin entry assembles layouts, components, plugins, and the shell. Edit it yourself, or give an Agent a target, a scope, and the page that should succeed.
 
-## 1. Copy a theme
+## 1. Select the theme
 
-From the site root, copy the default theme and give the copy a name:
-
-```powershell
-Copy-Item -Recurse themes\default themes\journal
-```
-
-Edit `themes/journal/theme.yml` and change `name` to `journal`. Select it in `config.yml`:
+The site chooses a theme in `config.yml`:
 
 ```yaml
 theme:
-  name: journal
+  name: default
 ```
 
-## 2. Change one color first
+The active theme keeps plugin options in `themes/default/theme.yml` and uses the thin `themes/default/index.ts` assembly entry. `theme.yml` does not select the theme name.
 
-Open `themes/journal/style.css` and change an existing CSS variable:
+## 2. Change one shared style
+
+Shared shell CSS lives in `themes/default/layouts/site/style.css`. Change an existing variable there:
 
 ```css
 :root {
-  --color-brand: #8b4f2f;
-  --color-paper: #fffaf1;
+  --green: #6b3d2e;
+  --gold: #d99a32;
 }
 ```
 
-Keep the theme's existing structure and resource declarations. Generate once to see the change before tuning more.
+A component-specific change belongs beside that component, such as `themes/default/components/learning-path/style.css`. A plugin's style belongs in its own `themes/default/plugins/<id>/style.css`.
 
-## 3. Make new structure once
+## 3. Reuse or add one capability
 
-When the existing Blocks are not enough, implement one reusable Block in the theme module and register it in `theme.yml`. Articles keep writing Markdown and short attributes instead of copying HTML into every file.
+Use an existing Block in Markdown before adding code. If a component is missing, put its `index.ts`, optional `style.css`, and `messages.yml` in `themes/default/components/<id>/`, then add its module to `components/index.ts`. Keep the shared assembly in `index.ts`; put shared helpers in `components/shared/` and do not copy markup into each article.
 
 ```powershell
-pageskill g
-pageskill s
+npm run compile-theme
+npm run g
+npm run s
 ```
 
 ## Expected result
 
-The copied theme affects every article that selects it. After generation, the new color or Block appears consistently on each target page.
+The color or component change appears consistently on every page that uses the active theme. The local preview keeps running until you press `Ctrl+C`.
 
 ## Common trap
 
-Changing only the style name in `config.yml` does not change the visual output. The name, theme directory, and `theme.yml` must agree. Do not edit generated `dist/` files.
+Changing only `config.yml` changes which theme is selected; it does not create a new visual resource. Keep implementation, CSS, scripts, and messages with their module, and never edit generated `dist/` files.
 
 ## Next step
 
-Read [Put the site online](/en/posts/deploy/) to keep the public directory and same-origin API boundary clear.
+Read [Develop a reusable plugin](/en/posts/plugins/) when the capability needs shared browser behavior or consent-aware loading.

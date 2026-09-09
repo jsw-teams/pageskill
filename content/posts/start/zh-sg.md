@@ -1,14 +1,14 @@
 ---
 title: 十分钟开始你的站点
-description: 从源码仓库安装 Pageskill，复制 starter，并生成一个可以继续写文章的网站。
+description: 克隆 Pageskill，在原目录生成网站，然后开始修改页面和文章。
 date: 2026-09-07
 ---
 
 # 十分钟开始你的站点
 
-Pageskill 的源码仓库和你要发布的站点是两件事。先在源码仓库编译 CLI，再复制 `starter` 作为新站。
+克隆下来的 Pageskill 仓库就是可以修改和发布的站点。内容、设置、主题和生成文件都留在这个工作目录中。
 
-## 1. 安装 Pageskill
+## 1. 克隆并安装
 
 在可以使用 Git、Node.js 22 或更新版本的终端执行：
 
@@ -16,31 +16,27 @@ Pageskill 的源码仓库和你要发布的站点是两件事。先在源码仓�
 git clone https://github.com/jsw-teams/pageskill.git
 Set-Location pageskill
 npm install
+```
+
+## 2. 生成克隆的站点
+
+```powershell
 npm run g
-npm link
 ```
 
-`npm run g` 会先编译源码，再生成仓库自己的站点；`npm link` 让 `pageskill` 命令可以在其他目录使用。
+`npm run g` 会先编译运行时、主题和 backend，再校验并生成这个仓库。现在直接修改源码树即可。
 
-## 2. 复制 starter
+## 3. 直接修改站点
 
-离开源码仓库，复制一个干净的起点：
+首页改 `content/pages/home/<locale>.md`，带日期的文章改 `content/posts/<id>/<locale>.md`，站点数据和开关改 `config.yml`。先复用主题已有能力，再增加新的扩展。
+
+## 4. 打开预览
 
 ```powershell
-Copy-Item -Recurse starter ..\my-site
-Set-Location ..\my-site
-pageskill g
+npm run s
 ```
 
-你现在有了一个只含首页的站点。以后修改的是 `my-site`，源码仓库负责提供 CLI 和主题能力。
-
-## 3. 打开预览
-
-```powershell
-pageskill s
-```
-
-在浏览器打开终端显示的本地地址。预览会持续运行；按 `Ctrl+C` 停止，也可以另开终端继续修改并再次运行 `pageskill g`。
+在浏览器打开终端显示的本地地址。预览会持续运行；按 `Ctrl+C` 停止，也可以另开终端继续修改并再次运行 `npm run g`。
 
 ## 成功结果
 
@@ -48,8 +44,8 @@ pageskill s
 
 ## 常见坑
 
-如果 `pageskill` 找不到，通常是还没有在源码仓库运行 `npm link`，或当前终端没有刷新 PATH。重新打开终端后，再从新站目录运行 `pageskill g`。
+如果生成在读取内容前失败，请在克隆的仓库中再次运行 `npm install`，并确认 Node.js 是 22 或更高版本。不要修改 `dist/` 或 `.pagekiln/` 下的生成文件。
 
 ## 下一步
 
-去看[改成你的名字和导航](/zh-sg/posts/site-settings/)，先把站点身份换成自己的。
+去看[改成你的名字和导航](/zh-sg/posts/site-settings/)，先把克隆的站点身份换成自己的。
