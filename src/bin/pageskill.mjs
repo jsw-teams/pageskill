@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { createContext, refreshContext, build, check } from '../runtime/compiler.js';
+import { createContext, refreshContext, build, check, siteDiscoveryOptions } from '../runtime/compiler.js';
 import { createSiteFetchHandler } from '../runtime/fetch-router.js';
 import { promises as fs } from 'node:fs';
 import { watch } from 'node:fs';
@@ -82,6 +82,11 @@ function parseDeployArgs(values) {
 }
 
 function contentType(file) {
+  // The RFC 9727 API catalog has no filename extension, so keep its
+  // renderer-selected media type in the local preview as well.
+  const normalized = String(file).replaceAll('\\', '/');
+  if (normalized.endsWith('/.well-known/api-catalog')) return 'application/linkset+json; charset=utf-8';
+  if (normalized.endsWith('/.well-known/oauth-protected-resource') || normalized.endsWith('/.well-known/oauth-authorization-server')) return 'application/json; charset=utf-8';
   const extension = path.extname(file).toLowerCase();
   return ({
     '.html': 'text/html; charset=utf-8',
@@ -342,6 +347,7 @@ async function develop(port) {
     router: backendRouter,
     defaultLocale: String(ctx.config.defaultLocale || 'en'),
     staticDirectory: staticDirectory(ctx),
+    discovery: siteDiscoveryOptions(ctx),
     assets: request => localAssetResponse(ctx, request, liveReloadScript)
   });
   const notifyReload = () => { for (const client of liveClients) { try { client.write('data: reload\n\n'); } catch { liveClients.delete(client); } } };
@@ -362,6 +368,7 @@ async function develop(port) {
             router: backendRouter,
             defaultLocale: String(ctx.config.defaultLocale || 'en'),
             staticDirectory: staticDirectory(ctx),
+            discovery: siteDiscoveryOptions(ctx),
             assets: request => localAssetResponse(ctx, request, liveReloadScript)
           });
           notifyReload();

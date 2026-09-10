@@ -82,6 +82,43 @@ robots:
     - userAgent: "*"
       allow:
         - /
+  # The renderer copies this policy to robots.txt and response headers.
+  contentSignals:
+    ai-train: "no"
+    search: "yes"
+    ai-input: "yes"
+
+# Public agent metadata is generated from these switches and the outputs that
+# the renderer actually produced. Authentication, MCP, and DNS records remain
+# opt-in because this site does not provide those services by default.
+agentDiscovery:
+  # The renderer creates Markdown mirrors and the runtime negotiates them.
+  markdown:
+    enabled: true
+  apiCatalog:
+    enabled: true
+    # Only list endpoints that the backend really serves.
+    entries:
+      - endpoint: /api/health
+        title: Pageskill health API
+        description: Read-only runtime health information for this site.
+        status: /api/health
+  ard:
+    enabled: true
+    # Optional query lists are read by the ARD renderer when supplied.
+  skills:
+    enabled: true
+    name: pageskill-authoring
+    title: Pageskill authoring
+    # Skill description and sections are derived from the registered capability map.
+  auth:
+    enabled: false
+  mcp:
+    enabled: false
+  webmcp:
+    enabled: false
+  dnsAid:
+    enabled: false
 
 llms:
   title: Pageskill

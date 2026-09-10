@@ -5,6 +5,7 @@ messages:
       placeholder: 搜索页面和内容
       submitLabel: 搜索
       noResultsLabel: 没有找到匹配内容
+      errorLabel: 搜索索引暂时不可用。
       resultLabel: 搜索结果
       hitTitle: 标题命中
       hitDescription: 摘要命中
@@ -18,6 +19,7 @@ messages:
       placeholder: 搜尋頁面和內容
       submitLabel: 搜尋
       noResultsLabel: 沒有找到符合內容
+      errorLabel: 搜尋索引暫時無法使用。
       resultLabel: 搜尋結果
       hitTitle: 標題命中
       hitDescription: 摘要命中
@@ -31,6 +33,7 @@ messages:
       placeholder: Search pages and posts
       submitLabel: Search
       noResultsLabel: No matching content.
+      errorLabel: Search is temporarily unavailable.
       resultLabel: Search results
       hitTitle: Title match
       hitDescription: Summary match

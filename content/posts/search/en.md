@@ -19,9 +19,15 @@ plugins:
     enabled: true
     maxResults: 8
     shardSize: 500
+    copy:
+      zh-sg:
+        # Copy overrides are data; missing keys inherit messages.yml.
+        placeholder: Search this site
 ```
 
 `maxResults` limits the visible list. `shardSize` controls how the generated index is split; leave it at the default until the site is large.
+
+The `copy` map is optional and can be only partly translated. Keep language activation and fallback in `config.yml`; do not add a language switch to the search plugin. Change the module only when the behavior or schema itself needs a code change.
 
 The active theme's search module lives in `themes/default/plugins/search/`; its `index.ts`, script, style, and messages stay together. You only change the module when the default search behavior needs a theme change.
 

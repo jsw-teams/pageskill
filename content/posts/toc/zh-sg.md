@@ -41,6 +41,19 @@ npm run s
 
 默认 `toc` 插件在 `themes/default/plugins/toc/`；Block、样式和 messages 是一个可复用模块。在 `themes/default/theme.yml` 的 `plugins.toc` 下设置开关和目录深度。
 
+```yaml
+plugins:
+  toc:
+    enabled: true
+    maxDepth: 4
+    copy:
+      zh-sg:
+        # 只写已翻译的文案，其余标签从 messages.yml 回退。
+        title: 本页目录
+```
+
+语言启用仍在 `config.yml`；`copy` 只修改文案，不会再建立一套语言系统。
+
 ## 成功结果
 
 目录链接会指向生成的章节 ID。点选链接会跳到章节；目录收起或窄屏时，内容仍然可以阅读。

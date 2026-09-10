@@ -1,15 +1,15 @@
 ---
-title: 我們如何構建外掛：以 Cookie 選擇器為例
-description: 從 Cookie 選擇器的行為約定和模組檔案開始，學習安全渲染、主題設定和部分翻譯的處理方式。
+title: 我們如何構建外掛
+description: 以 Cookie 選擇器作為參考，學習行為約定、安全渲染、主題設定和部分翻譯的處理方式。
 date: 2026-09-07
 category: tutorial
 ---
 
-# 我們如何構建外掛：以 Cookie 選擇器為例
+# 我們如何構建外掛
 
 Cookie 選擇器是我們構建可重用外掛時的參考實作。它把訪客介面、瀏覽器狀態、可選腳本、本地化訊息和政策連結組合起來，同時不需要每個 post 重複 HTML。
 
-我們借鑑 Cookie 政策產生器的一項透明展示思路：把類別、提供者、保存期限和同意要求放在一起，方便訪客檢視。選擇器仍然只是同意控制，不是法律建議或政策產生器。經過審核的政策繼續用 Markdown 維護。
+我們以 Cookie 選擇器作為參考，並借鑑 [Cookie 政策產生器](https://www.toolszone.net/zh/tools/cookie-policy-generator) 的透明展示思路：把類別、提供者、保存期限和同意要求放在一起，方便訪客檢視。這裡只借鑑展示方式；選擇器仍然只是同意控制，不是法律建議或政策產生器。經過審核的政策繼續用 Markdown 維護。
 
 ## 1. 先定義行為約定
 
@@ -39,7 +39,7 @@ themes/default/plugins/cookies/
 
 ## 3. 在程式碼中登記能力
 
-外掛定義由程式碼擁有。它負責登記能力、資源、本地化訊息、預設值和實例資料形狀，不包含本站的服務 ID 或啟用選擇。以下是實際定義的精簡示例：
+外掛定義由程式碼擁有。它負責登記能力、資源、本地化訊息、預設值、固定的 provider 適配器和實例資料形狀，不包含本站帳戶值或啟用選擇。以下是實際定義的精簡示例：
 
 ```ts
 import type { ThemePluginDefinition } from '../../../../src/theme-api.ts';
@@ -47,6 +47,7 @@ import type { ThemePluginDefinition } from '../../../../src/theme-api.ts';
 export const plugin: ThemePluginDefinition = {
   implementation: 'plugins/cookies/index.ts',
   resources: {
+    // 程式碼登記資源歸屬；網站實例資料留在 theme.yml。
     styles: ['plugins/cookies/style.css'],
     scripts: ['plugins/cookies/script.js']
   },
@@ -59,13 +60,33 @@ export const plugin: ThemePluginDefinition = {
       { id: 'security', required: false, default: false },
       { id: 'social', required: false, default: false }
     ],
-    integrations: {},
+    integrations: [
+      { provider: 'google-analytics', enabled: false, measurementId: '', category: 'analytics' },
+      { provider: 'google-ads', enabled: false, tagId: '', category: 'advertising' }
+    ],
     gatedScripts: []
   },
   schema: {
+    // schema 只描述資料，不接受可執行的 provider 程式碼。
     enabled: { type: 'boolean' },
     categories: { type: 'array' },
-    integrations: { type: 'object', additionalProperties: true },
+    integrations: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          provider: { type: 'string', required: true },
+          enabled: { type: 'boolean' },
+          category: { type: 'string' },
+          measurementId: { type: 'string' },
+          tagId: { type: 'string' },
+          token: { type: 'string' },
+          siteSignature: { type: 'string' },
+          siteKey: { type: 'string' }
+        }
+      }
+    },
     gatedScripts: { type: 'array' }
   }
 };
@@ -83,9 +104,9 @@ import { plugin as toc } from './toc/index.ts';
 export const plugins = { chrome, search, toc, privacyConsent: cookies, language };
 ```
 
-真實 schema 會描述 Google Analytics、Google Ads、Cloudflare Web Analytics、百度統計、驗證碼和 X 的內建欄位，同時允許未來主題模組增加其他 provider 和 provider 專屬欄位。未知資料在程式碼登記對應渲染器之前不會產生作用；設定永遠不是可執行程式碼。
+真實 schema 描述的是 provider 實例陣列。內建 provider 值是 `google-analytics`、`google-ads`、`cloudflare-web-analytics`、`baidu-tongji`、`recaptcha`、`hcaptcha`、`turnstile` 和 `x-for-websites`。這些是程式碼擁有的適配器名稱，不是網站憑空生成的 ID。未知項目和額外欄位在主題模組登記對應行為之前保持惰性；設定永遠不是可執行程式碼。
 
-## 4. 分離實例資料和網站資料
+## 4. 在主題資料中使用真實 provider 識別
 
 目前主題在設定檔中設定外掛實例。可選類別只有在明確接入並審核過的服務後才開啟：
 
@@ -115,30 +136,45 @@ plugins:
         default: false
         retentionDays: 0
     integrations:
-      googleAnalytics:
+      - provider: google-analytics
         enabled: false
-        measurementId: ''
+        measurementId: '' # GA4 值，例如 G-XXXXXXXXXX
         category: analytics
-      googleAds:
+      - provider: google-ads
         enabled: false
-        conversionId: ''
+        tagId: '' # Google tag 值，例如 AW-XXXXXXXXXX 或 GT-XXXXXXXX
         category: advertising
-      cloudflareWebAnalytics:
+      - provider: cloudflare-web-analytics
         enabled: false
-        token: ''
+        token: '' # Cloudflare beacon 程式碼中的 token
         category: analytics
-      captcha:
-        - enabled: false
-          platform: turnstile
-          siteKey: ''
-          category: security
-      x:
+      - provider: baidu-tongji
+        enabled: false
+        siteSignature: '' # hm.baidu.com/hm.js? 後面的值
+        category: analytics
+      - provider: recaptcha
+        enabled: false
+        siteKey: ''
+        category: security
+      - provider: hcaptcha
+        enabled: false
+        siteKey: ''
+        category: security
+      - provider: turnstile
+        enabled: false
+        siteKey: ''
+        category: security
+      - provider: x-for-websites
         enabled: false
         category: social
     gatedScripts: []
 ```
 
-內建映射是明確的：Google Analytics 使用 `analytics`，Google Ads 使用 `advertising`，Cloudflare Web Analytics 使用 `analytics`，驗證碼使用 `security`，X 嵌入使用 `social`。只有在審核提供者條款、隱私說明、保存期限和 CSP 後，才把 `enabled` 改為 `true`。驗證碼平台支援 `recaptcha`、`hcaptcha` 和 `turnstile`；腳本會在同意後載入，頁面可使用普通的 `.g-recaptcha`、`.h-captcha` 或 `.cf-turnstile` 標記。驗證碼 site key 是公開識別；secret key 和伺服器端 token 驗證必須留在 `backend/handler.ts` 或其他私有服務中。
+這些欄位跟隨 provider 實際的網頁接入約定：[Google Analytics measurement ID](https://support.google.com/analytics/answer/12270356) 使用 `G-...`；Google Ads 的 `tagId` 使用 Ads 顯示的 Google tag 識別，例如 `AW-...` 或 `GT-...`，不是自造的 `conversionId`。外掛使用 Google 的 basic consent mode：選擇前阻止 tag，選擇後傳遞文件規定的 `analytics_storage`、`ad_storage`、`ad_user_data` 和 `ad_personalization` 狀態。外掛只負責初始化帶同意狀態的 Google tag，不會憑空建立轉換事件或 label。[Cloudflare Web Analytics](https://developers.cloudflare.com/web-analytics/get-started/) 提供 beacon `token`，[百度統計](https://tongji.baidu.com/web/help/article?id=219) 提供 `hm.js?` 後的 `siteSignature`。如果 Cloudflare proxy 或 Pages 自動注入 Web Analytics，請關閉那條獨立注入路徑，否則它會繞過此選擇器。`category` 是網站隱私政策分類，不是 provider ID。
+
+只有在審核 provider 條款、隱私說明、保存期限和 CSP 後，才把 `enabled` 改為 `true`。驗證碼適配器使用 [reCAPTCHA](https://developers.google.com/recaptcha/docs/display)、[hCaptcha](https://docs.hcaptcha.com/) 和 [Turnstile](https://developers.cloudflare.com/turnstile/get-started/) 的官方腳本與標記。它們的 `siteKey` 可以公開；secret key 和伺服器端 token 驗證必須留在 `backend/handler.ts` 或其他私有服務中。X 適配器沒有帳戶 ID：只有頁面存在 X 標記並且訪客同意後，才按 [X for Websites](https://help.x.com/en/using-x/embed-x-feed) 的方式載入官方 widget 資源。
+
+並非每個整合都是字面意義上的 Cookie。Cloudflare Web Analytics 主要使用 beacon token，Turnstile 執行挑戰，X widget 執行時可能接收請求或 Cookie 資訊。應依據 provider 當前說明填寫類別和保存期限，不要宣稱所有可選 provider 都會寫入同一種 Cookie。
 
 X 整合按需載入：同意後，只有頁面存在 X/Twitter 嵌入標記時才載入 `platform.x.com/widgets.js`。選擇前不會載入社交嵌入。其他 provider 專屬欄位可以保留在主題設定中供未來程式碼使用，但不會僅因寫入設定就發起網路請求。
 
@@ -158,11 +194,12 @@ privacy:
 `renderCookieConsent` 根據經過驗證的 context 生成固定的彈窗和橫幅。動態值遵循兩條不同規則：
 
 ```ts
+// 文字和 URL 使用不同的安全渲染路徑。
 const label = context.escapeHtml(category.label);
 const href = context.safeUrl(privacy.policyHref);
 ```
 
-標籤和中繼資料作為文字轉義；政策連結和受同意控制的腳本 URL 經過 `safeUrl`，不安全協定會被拒絕。內建 provider 的 URL 固定在已登記的瀏覽器實作中，服務 ID 和 token 只作為資料處理。瀏覽器腳本使用 DOM API 建立元素，並且只在同意後載入可選資源。外掛介面沒有 `innerHTML`、`eval`、任意屬性或設定注入的標記。
+標籤和中繼資料作為文字轉義；政策連結和受同意控制的腳本 URL 經過 `safeUrl`，不安全協定會被拒絕。內建 provider 的 URL 固定在已登記的瀏覽器實作中，canonical provider 名稱和公開 token/key 只作為資料處理。瀏覽器腳本使用 DOM API 建立元素，並且只在同意後載入可選資源。外掛介面沒有 `innerHTML`、`eval`、任意屬性或設定注入的標記。
 
 提供者和保存期限會直接顯示在選擇器中，幫助訪客理解類別用途；法律政策仍然是人工審核的頁面，而不是悄悄產生的法律文字。
 

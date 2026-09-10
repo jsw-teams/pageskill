@@ -9,7 +9,7 @@ This fixed policy page explains how the site handles information needed to serve
 
 ## What we process
 
-The site processes only what it needs to serve pages, save a Cookie choice, and run services after consent. Optional analytics, advertising, human-verification, or social-embed services do not run without a visitor's choice.
+The site processes only what it needs to serve pages, save a Cookie choice, and run services after consent. Optional analytics, advertising, human-verification, or social-embed services do not run without a visitor's choice. Provider instances are configured in the theme from the provider's own public measurement ID, token, or site key; the site owner must name the active service and its real data flow here when one is enabled.
 
 ## Cookie choices
 
@@ -17,7 +17,7 @@ Essential Cookies save your choice; analytics, advertising, human-verification, 
 
 ## Retention
 
-The essential choice lasts up to 365 days. Optional categories stay off without consent; follow each third-party service's policy for its own retention rules, including analytics, advertising, CAPTCHA, or X embeds when configured.
+The essential choice lasts up to 365 days. Optional categories stay off without consent; follow each third-party service's policy for its own retention and request behavior, including analytics, advertising, CAPTCHA, or X embeds when configured. The selector's category and display retention are not a promise that every provider creates a Cookie or retains data for the same period.
 
 ## Contact
 

@@ -34,7 +34,9 @@ type CachedDocument = { hash: string; outputs: string[]; dependencies?: string[]
 type CachedImage = { hash: string; output: string };
 type CacheManifest = { version: 2; rendererVersion?: string; configHash?: string; themeHash?: string; assetHash?: string; backendHash?: string; contentRoots?: Record<string, number>; routeCount?: number; documents: Record<string, CachedDocument>; images?: Record<string, CachedImage>; outputs: string[]; outputHashes?: Record<string, string> };
 export type BuildProfile = { discover: number; load: number; validate: number; parse: number; route: number; render: number; assets: number; write: number; total: number; documents: number; changedOutputs: number; imagesProcessed: number; imageCacheHits: number };
-const RENDERER_VERSION = '2.4.27';
+// Increment this whenever compiler output semantics change so an existing
+// incremental cache cannot preserve a discovery file rendered by old code.
+const RENDERER_VERSION = '2.4.30';
 const MAX_MARKDOWN_CACHE = 32;
 const MAX_SOURCE_PARSE_CACHE = 64;
 const LOAD_CONCURRENCY = 32;
@@ -243,6 +245,27 @@ function themeText(ctx: BuildContext, locale: string, key: string, fallback: str
   return value === undefined || value === null || value === '' || typeof value === 'object' ? fallback : String(value);
 }
 
+/**
+ * Read a locale-keyed copy override from a plugin instance in theme.yml.
+ * Fallback values are merged first, so a new locale can override only the
+ * labels it has translated while the remaining labels stay usable.
+ */
+function themePluginCopy(ctx: BuildContext, pluginName: string, locale: string): Record<string, any> {
+  const configured = themePluginSettings(ctx, pluginName).copy;
+  if (!isRecord(configured)) return {};
+  let merged: Record<string, any> = {};
+  for (const candidate of [...localeCandidates(locale, fallbackLocaleFor(ctx))].reverse()) {
+    if (isRecord(configured[candidate])) merged = mergeLocaleValue(merged, configured[candidate]);
+  }
+  return merged;
+}
+
+/** Return one safe string override; renderers still escape the final value. */
+function themePluginText(ctx: BuildContext, pluginName: string, locale: string, key: string): string | undefined {
+  const value = nestedValue(themePluginCopy(ctx, pluginName, locale), key);
+  return value === undefined || value === null || value === '' || typeof value === 'object' ? undefined : String(value);
+}
+
 const DEFAULT_LANGUAGE_NAMES: Record<string, string> = {
   'zh-sg': '简体中文',
   'zh-tw': '繁體中文',
@@ -441,6 +464,77 @@ function legacyThemePluginSettings(config: Record<string, any>, name: string): R
   return values;
 }
 
+// These aliases only migrate the pre-3.0.2 object-shaped setting. New theme
+// files use the provider names and identifiers from each provider's own web
+// integration contract, so an account-specific value is never confused with
+// a Pageskill-generated ID.
+const PRIVACY_PROVIDER_ALIASES: Record<string, string> = {
+  googleAnalytics: 'google-analytics',
+  'google-analytics': 'google-analytics',
+  googleAds: 'google-ads',
+  'google-ads': 'google-ads',
+  cloudflareWebAnalytics: 'cloudflare-web-analytics',
+  'cloudflare-web-analytics': 'cloudflare-web-analytics',
+  baiduTongji: 'baidu-tongji',
+  'baidu-tongji': 'baidu-tongji',
+  x: 'x-for-websites',
+  'x-for-websites': 'x-for-websites',
+  recaptcha: 'recaptcha',
+  hcaptcha: 'hcaptcha',
+  turnstile: 'turnstile'
+};
+
+function canonicalPrivacyProvider(value: unknown): string {
+  const source = String(value || '').trim();
+  if (!source) return '';
+  const alias = PRIVACY_PROVIDER_ALIASES[source] || PRIVACY_PROVIDER_ALIASES[source.toLowerCase()];
+  if (alias) return alias;
+  // Unknown providers remain inert data until a theme module registers them.
+  return source.toLowerCase().replace(/[^a-z0-9.-]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function normalizePrivacyIntegrations(value: unknown): Array<Record<string, any>> {
+  const normalize = (raw: unknown, fallbackProvider = ''): Record<string, any> | null => {
+    if (!isRecord(raw)) return null;
+    const candidate = raw.provider === 'captcha' ? raw.platform : raw.provider || raw.platform || fallbackProvider;
+    const provider = canonicalPrivacyProvider(candidate);
+    if (!provider) return null;
+    const normalized: Record<string, any> = { ...raw, provider };
+    // Preserve the old object-shaped configuration during migration while
+    // translating names that had been too generic for the real web contract.
+    if (provider === 'google-ads') {
+      if (normalized.tagId === undefined && normalized.conversionId !== undefined) normalized.tagId = normalized.conversionId;
+      delete normalized.conversionId;
+    }
+    if (provider === 'baidu-tongji') {
+      if (normalized.siteSignature === undefined && normalized.siteId !== undefined) normalized.siteSignature = normalized.siteId;
+      delete normalized.siteId;
+    }
+    if (provider === 'recaptcha' || provider === 'hcaptcha' || provider === 'turnstile') delete normalized.platform;
+    return normalized;
+  };
+  if (Array.isArray(value)) return value.map(entry => normalize(entry)).filter(Boolean) as Array<Record<string, any>>;
+  if (!isRecord(value)) return [];
+  const entries: Array<Record<string, any>> = [];
+  for (const [legacyProvider, raw] of Object.entries(value)) {
+    if (legacyProvider === 'captcha' && Array.isArray(raw)) {
+      raw.forEach(entry => {
+        const normalized = normalize(entry, isRecord(entry) ? entry.platform : '');
+        if (normalized) entries.push(normalized);
+      });
+      continue;
+    }
+    const normalized = normalize(raw, legacyProvider);
+    if (normalized) entries.push(normalized);
+  }
+  return entries;
+}
+
+function normalizePrivacyPluginSettings(settings: Record<string, any>): Record<string, any> {
+  if (settings.integrations === undefined) return settings;
+  return { ...settings, integrations: normalizePrivacyIntegrations(settings.integrations) };
+}
+
 function themeOptionValueMatches(value: unknown, type: ThemeOptionSchema['type']): boolean {
   if (type === 'array') return Array.isArray(value);
   if (type === 'object') return isRecord(value);
@@ -500,7 +594,8 @@ function normalizeThemeConfig(config: Record<string, any>, theme: Record<string,
     const defaults = isRecord(plugin.defaults) ? cloneThemeValue(plugin.defaults) : {};
     const legacy = legacyThemePluginSettings(config, name);
     const configured = name === 'language' ? {} : isRecord(configuredPlugins[name]) ? configuredPlugins[name] : {};
-    const settings = { ...defaults, ...legacy, ...configured };
+    const mergedSettings = { ...defaults, ...legacy, ...configured };
+    const settings = name === 'privacyConsent' ? normalizePrivacyPluginSettings(mergedSettings) : mergedSettings;
     validateThemePluginSettings(settings, schema, `themes/${themeName}/theme.yml: plugins.${name}`);
     plugins[name] = settings;
   }
@@ -1099,6 +1194,7 @@ function themeContextFor(ctx: BuildContext, doc: Document): ThemeRenderContext {
     safeUrl,
     localized: (value, fallback) => localizedValue(value, doc.locale, fallback),
     translate: (key, fallback) => themeText(ctx, doc.locale, key, fallback),
+    pluginText: (pluginName, key, fallback) => themePluginText(ctx, pluginName, doc.locale, key) || fallback,
     routeFor: candidate => routeFor(ctx, candidate as Document),
     collection: (name, locale = doc.locale) => documentsForCollection(ctx, name, locale),
     translations: (collection, id) => ctx.translationIndex.get(translationKey(collection, id)) || [],
@@ -1189,9 +1285,10 @@ function cookieConsentSettings(ctx: BuildContext): Record<string, any> {
   return merged;
 }
 
-function cookieCategories(settings: Record<string, any>, locale: string, localizedCategories: any[] = []) {
+function cookieCategories(settings: Record<string, any>, locale: string, localizedCategories: any[] = [], configuredCopy: Record<string, any> = {}) {
   const source = Array.isArray(settings.categories) && settings.categories.length ? settings.categories : DEFAULT_COOKIE_CATEGORIES;
   const localizedById = new Map(localizedCategories.map(category => [String(category?.id || '').trim().toLowerCase(), category]));
+  const configuredById = new Map((Array.isArray(configuredCopy.categories) ? configuredCopy.categories : []).map(category => [String(category?.id || '').trim().toLowerCase(), category]));
   const seen = new Set<string>();
   return source.map((raw: any) => {
     const rawId = String(raw?.id || '').trim().toLowerCase();
@@ -1199,7 +1296,8 @@ function cookieCategories(settings: Record<string, any>, locale: string, localiz
     if (seen.has(id)) return null;
     seen.add(id);
     const localized = localizedById.get(id) || {};
-    const copy = { ...localized, ...raw };
+    const configured = configuredById.get(id) || {};
+    const copy = { ...localized, ...configured, ...raw };
     const required = raw?.required === true || (id === 'essential' && raw?.required !== false);
     const retentionDays = Number.isFinite(Number(raw?.retentionDays)) ? Math.max(0, Number(raw.retentionDays)) : Math.max(0, Number(settings.retentionDays || (required ? 365 : 0)));
     return {
@@ -1215,57 +1313,60 @@ function cookieCategories(settings: Record<string, any>, locale: string, localiz
 }
 
 const PRIVACY_INTEGRATION_LABELS: Record<string, Record<string, string>> = {
-  googleAnalytics: { en: 'Google Analytics', 'zh-sg': 'Google Analytics', 'zh-tw': 'Google Analytics' },
-  googleAds: { en: 'Google Ads', 'zh-sg': 'Google Ads', 'zh-tw': 'Google Ads' },
-  cloudflareWebAnalytics: { en: 'Cloudflare Web Analytics', 'zh-sg': 'Cloudflare Web Analytics', 'zh-tw': 'Cloudflare Web Analytics' },
-  baiduTongji: { en: 'Baidu Tongji', 'zh-sg': '百度统计', 'zh-tw': '百度統計' },
-  captcha: { en: 'Human verification', 'zh-sg': '人机验证', 'zh-tw': '人機驗證' },
-  x: { en: 'X embeds', 'zh-sg': 'X 嵌入', 'zh-tw': 'X 嵌入' }
+  'google-analytics': { en: 'Google Analytics', 'zh-sg': 'Google Analytics', 'zh-tw': 'Google Analytics' },
+  'google-ads': { en: 'Google Ads', 'zh-sg': 'Google Ads', 'zh-tw': 'Google Ads' },
+  'cloudflare-web-analytics': { en: 'Cloudflare Web Analytics', 'zh-sg': 'Cloudflare Web Analytics', 'zh-tw': 'Cloudflare Web Analytics' },
+  'baidu-tongji': { en: 'Baidu Tongji', 'zh-sg': '百度统计', 'zh-tw': '百度統計' },
+  recaptcha: { en: 'reCAPTCHA', 'zh-sg': 'reCAPTCHA', 'zh-tw': 'reCAPTCHA' },
+  hcaptcha: { en: 'hCaptcha', 'zh-sg': 'hCaptcha', 'zh-tw': 'hCaptcha' },
+  turnstile: { en: 'Cloudflare Turnstile', 'zh-sg': 'Cloudflare Turnstile', 'zh-tw': 'Cloudflare Turnstile' },
+  'x-for-websites': { en: 'X for Websites', 'zh-sg': 'X for Websites', 'zh-tw': 'X for Websites' }
 };
 
 function privacyIntegrations(settings: Record<string, any>, categories: Array<{ id: string; required: boolean } | null>) {
-  const source = settings.integrations && typeof settings.integrations === 'object' && !Array.isArray(settings.integrations) ? settings.integrations : {};
+  const source = normalizePrivacyIntegrations(settings.integrations);
   const optional = new Set(categories.filter(category => category && !category.required).map(category => category!.id));
   const result: Array<Record<string, string>> = [];
-  const add = (provider: string, raw: any, field: string, defaultCategory: string) => {
-    if (!raw || typeof raw !== 'object' || raw.enabled !== true) return;
-    const value = String(raw[field] || '').trim();
-    const category = String(raw.category || defaultCategory).trim().toLowerCase();
-    if (!value || value.length > 256 || /[<>"'`\\\s]/.test(value) || !optional.has(category)) return;
-    result.push({ provider, category, [field]: value });
+  const definitions: Record<string, { field?: string; defaultCategory: string }> = {
+    'google-analytics': { field: 'measurementId', defaultCategory: 'analytics' },
+    'google-ads': { field: 'tagId', defaultCategory: 'advertising' },
+    'cloudflare-web-analytics': { field: 'token', defaultCategory: 'analytics' },
+    'baidu-tongji': { field: 'siteSignature', defaultCategory: 'analytics' },
+    recaptcha: { field: 'siteKey', defaultCategory: 'security' },
+    hcaptcha: { field: 'siteKey', defaultCategory: 'security' },
+    turnstile: { field: 'siteKey', defaultCategory: 'security' },
+    'x-for-websites': { defaultCategory: 'social' }
   };
-  add('googleAnalytics', source.googleAnalytics, 'measurementId', 'analytics');
-  add('googleAds', source.googleAds, 'conversionId', 'advertising');
-  add('cloudflareWebAnalytics', source.cloudflareWebAnalytics, 'token', 'analytics');
-  add('baiduTongji', source.baiduTongji, 'siteId', 'analytics');
-  const captchaEntries = Array.isArray(source.captcha) ? source.captcha : [];
-  captchaEntries.forEach((raw: any) => {
+  const valueAllowed = (provider: string, value: string) => {
+    if (!value || value.length > 256 || /[<>"'`\\\s]/.test(value)) return false;
+    // The first two adapters use the identifier formats documented by Google;
+    // the remaining adapters receive public tokens or keys from their own UI.
+    if (provider === 'google-analytics') return /^G-[A-Z0-9_-]+$/i.test(value);
+    if (provider === 'google-ads') return /^(AW|GT)-[A-Z0-9_-]+$/i.test(value);
+    return true;
+  };
+  source.forEach((raw: any) => {
     if (!raw || typeof raw !== 'object' || raw.enabled !== true) return;
-    const platform = String(raw.platform || '').trim().toLowerCase();
-    const siteKey = String(raw.siteKey || '').trim();
-    const category = String(raw.category || 'security').trim().toLowerCase();
-    if (!['recaptcha', 'hcaptcha', 'turnstile'].includes(platform) || !siteKey || siteKey.length > 256 || /[<>"'`\\\s]/.test(siteKey) || !optional.has(category)) return;
-    result.push({ provider: 'captcha', platform, siteKey, category });
+    const provider = canonicalPrivacyProvider(raw.provider);
+    const definition = definitions[provider];
+    if (!definition) return;
+    const category = String(raw.category || definition.defaultCategory).trim().toLowerCase();
+    if (!optional.has(category)) return;
+    if (!definition.field) {
+      result.push({ provider, category });
+      return;
+    }
+    const value = String(raw[definition.field] || '').trim();
+    if (!valueAllowed(provider, value)) return;
+    result.push({ provider, category, [definition.field]: value });
   });
-  const x = source.x;
-  if (x && typeof x === 'object' && x.enabled === true) {
-    const category = String(x.category || 'social').trim().toLowerCase();
-    if (optional.has(category)) result.push({ provider: 'x', category });
-  }
   return result;
 }
 
 function privacyIntegrationLabel(integration: Record<string, string>, locale: string): string {
   const language = locale.startsWith('zh-tw') ? 'zh-tw' : locale.startsWith('zh') ? 'zh-sg' : 'en';
   const base = PRIVACY_INTEGRATION_LABELS[integration.provider]?.[language] || PRIVACY_INTEGRATION_LABELS[integration.provider]?.en || integration.provider;
-  if (integration.provider !== 'captcha') return base;
-  const platformLabels: Record<string, string> = {
-    recaptcha: 'reCAPTCHA',
-    hcaptcha: 'hCaptcha',
-    turnstile: 'Cloudflare Turnstile'
-  };
-  const platform = platformLabels[integration.platform] || '';
-  return platform ? `${base} (${platform})` : base;
+  return base;
 }
 
 function decorateCookieCategories(categories: any[], integrations: Array<Record<string, string>>, locale = 'en') {
@@ -1287,11 +1388,12 @@ function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
   const settings = cookieConsentSettings(ctx);
   const enabled = settings.enabled === true && pluginEnabled(ctx, 'privacyConsent');
   const copy = themeLocaleData(ctx, doc.locale).cookieConsent || {};
-  const text = (key: string, fallback: string) => themeText(ctx, doc.locale, `cookieConsent.${key}`, fallback);
+  const configuredCopy = themePluginCopy(ctx, 'privacyConsent', doc.locale);
+  const text = (key: string, fallback: string) => themePluginText(ctx, 'privacyConsent', doc.locale, key) || themeText(ctx, doc.locale, `cookieConsent.${key}`, fallback);
   const policyRoute = String(settings.policyRoute || '/:locale/privacy/').replace(':locale', doc.locale);
   const script = String(pluginResourcePaths(ctx, ['privacyConsent', 'cookies'], 'scripts')[0] || 'scripts/cookie-consent.js').trim();
   const scriptHref = script.startsWith('/') || /^https?:\/\//i.test(script) ? script : themeResourceHref(ctx, themeBase, script);
-  const baseCategories = cookieCategories(settings, doc.locale, Array.isArray(copy.categories) ? copy.categories : []) as Array<{ id: string; label: string; description: string; required: boolean; defaultValue: boolean; provider: string; retentionDays: number }>;
+  const baseCategories = cookieCategories(settings, doc.locale, Array.isArray(copy.categories) ? copy.categories : [], configuredCopy) as Array<{ id: string; label: string; description: string; required: boolean; defaultValue: boolean; provider: string; retentionDays: number }>;
   const integrations = privacyIntegrations(settings, baseCategories);
   const categories = decorateCookieCategories(baseCategories, integrations, doc.locale) as Array<{ id: string; label: string; description: string; required: boolean; defaultValue: boolean; provider: string; retentionDays: number }>;
   const optionalCategory = categories.find(category => !category.required);
@@ -1349,7 +1451,7 @@ function localSearchData(ctx: BuildContext, doc: Document, themeBase: string) {
   const plugin = themePluginFor(ctx, 'search');
   const hasPlugin = Boolean(plugin);
   const enabled = !doc.source.startsWith('generated:') && hasPlugin && settings.enabled !== false && pluginEnabled(ctx, 'search');
-  const text = (key: string, fallback: string) => themeText(ctx, doc.locale, `search.${key}`, fallback);
+  const text = (key: string, fallback: string) => themePluginText(ctx, 'search', doc.locale, key) || themeText(ctx, doc.locale, `search.${key}`, fallback);
   const script = String(pluginResourcePaths(ctx, ['search'], 'scripts')[0] || 'scripts/search.js').trim();
   const scriptHref = script.startsWith('/') || /^https?:\/\//i.test(script) ? script : themeResourceHref(ctx, themeBase, script);
   const search = {
@@ -1360,6 +1462,7 @@ function localSearchData(ctx: BuildContext, doc: Document, themeBase: string) {
     placeholder: text('placeholder', doc.locale.startsWith('zh-tw') ? '搜尋頁面和內容' : doc.locale.startsWith('zh') ? '搜索页面和内容' : 'Search pages and posts'),
     submitLabel: text('submitLabel', doc.locale.startsWith('zh') ? '搜索' : 'Search'),
     noResultsLabel: text('noResultsLabel', doc.locale.startsWith('zh') ? '没有找到匹配内容。' : 'No matching content.'),
+    errorLabel: text('errorLabel', doc.locale.startsWith('zh') ? '搜索索引暂时不可用。' : 'Search is temporarily unavailable.'),
     resultLabel: text('resultLabel', doc.locale.startsWith('zh') ? '搜索结果' : 'Search results'),
     hitTitleLabel: text('hitTitle', doc.locale.startsWith('zh-tw') ? '標題命中' : doc.locale.startsWith('zh') ? '标题命中' : 'Title match'),
     hitDescriptionLabel: text('hitDescription', doc.locale.startsWith('zh-tw') ? '摘要命中' : doc.locale.startsWith('zh') ? '摘要命中' : 'Summary match'),
@@ -1370,7 +1473,7 @@ function localSearchData(ctx: BuildContext, doc: Document, themeBase: string) {
     maxResults: Math.max(1, Math.min(50, Number(settings.maxResults || 8)))
   };
   const inputId = `pagekiln-search-${doc.locale.replace(/[^a-z0-9]+/gi, '-')}-${shortHash(doc.id).slice(0, 6)}`;
-  const searchMarkup = search.enabled ? `<form class="site-search" data-local-search data-search-index="${escapeHtml(search.indexHref)}" data-search-max-results="${search.maxResults}" data-search-no-results="${escapeHtml(search.noResultsLabel)}" data-search-query-hint="${escapeHtml(search.queryHint)}" data-search-hit-title="${escapeHtml(search.hitTitleLabel)}" data-search-hit-description="${escapeHtml(search.hitDescriptionLabel)}" data-search-hit-heading="${escapeHtml(search.hitHeadingLabel)}" data-search-hit-content="${escapeHtml(search.hitContentLabel)}" data-search-hit-path="${escapeHtml(search.hitPathLabel)}" role="search"><label class="sr-only" for="${inputId}">${escapeHtml(search.label)}</label><div class="site-search-control"><input id="${inputId}" name="q" type="search" autocomplete="off" placeholder="${escapeHtml(search.placeholder)}" data-search-input><button type="submit" aria-label="${escapeHtml(search.submitLabel)}">⌕</button></div><div class="search-results" data-search-results hidden aria-live="polite" aria-label="${escapeHtml(search.resultLabel)}"></div><script type="module" src="${search.scriptSrc}"></script></form>` : '';
+  const searchMarkup = search.enabled ? `<form class="site-search" data-local-search data-search-index="${escapeHtml(search.indexHref)}" data-search-max-results="${search.maxResults}" data-search-no-results="${escapeHtml(search.noResultsLabel)}" data-search-error="${escapeHtml(search.errorLabel)}" data-search-query-hint="${escapeHtml(search.queryHint)}" data-search-hit-title="${escapeHtml(search.hitTitleLabel)}" data-search-hit-description="${escapeHtml(search.hitDescriptionLabel)}" data-search-hit-heading="${escapeHtml(search.hitHeadingLabel)}" data-search-hit-content="${escapeHtml(search.hitContentLabel)}" data-search-hit-path="${escapeHtml(search.hitPathLabel)}" role="search"><label class="sr-only" for="${inputId}">${escapeHtml(search.label)}</label><div class="site-search-control"><input id="${inputId}" name="q" type="search" autocomplete="off" placeholder="${escapeHtml(search.placeholder)}" data-search-input><button type="submit" aria-label="${escapeHtml(search.submitLabel)}">⌕</button></div><div class="search-results" data-search-results hidden aria-live="polite" aria-label="${escapeHtml(search.resultLabel)}"></div><script type="module" src="${search.scriptSrc}"></script></form>` : '';
   return { search, searchMarkup };
 }
 
@@ -1611,32 +1714,383 @@ function contentNodes(doc: Document): MarkdownNode[] {
   return doc.nodes;
 }
 
-function discoveryBoundaries() {
+/** Describe generated discovery from the outputs this renderer plans to publish. */
+function discoveryBoundaries(ctx: BuildContext) {
+  const generated = publicDiscoveryResources(ctx).map(resource => resource.href);
+  if (ctx.outputs.has('robots.txt') || !ctx.stagedOutput) generated.push('/robots.txt');
   return {
     sourceOfTruth: ['config.yml', 'content/', 'themes/'],
-    generatedDiscovery: ['.pagekiln/catalog.json', '.well-known/agent.json'],
+    generatedDiscovery: [...new Set(generated)],
     agentInstructions: ['AGENTS.md']
   };
 }
 
+/** The code-owned registry is the only capability list consumed by Agent output. */
 function agentFunctionMap() {
   return [
     { id: 'write-page', purpose: 'Write current site content for a page, guide, reference, or directory', paths: ['content/pages/<id>/<locale>.md'], commands: ['pageskill g'] },
     { id: 'write-post', purpose: 'Record a dated post; use category: tutorial for a tutorial and omit it for uncategorized content', paths: ['content/posts/<id>/<locale>.md'], commands: ['pageskill g'] },
     { id: 'write-update', purpose: 'Record a version update as a post with category: update; the updates view keeps it separate from ordinary posts', paths: ['content/posts/<version>/<locale>.md'], frontmatter: { category: 'update', date: 'YYYY-MM-DD' }, commands: ['pageskill g'] },
-    { id: 'change-layout', purpose: 'Change page structure or visual language', paths: ['themes/<name>/index.ts', 'themes/<name>/components/', 'themes/<name>/layouts/'], commands: ['pageskill g --profile'] },
-    { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, theme plugin options, or deployment settings', paths: ['config.yml', 'themes/<name>/theme.yml'], commands: ['pageskill g --profile'] },
+    { id: 'change-layout', purpose: 'Add, modify, or remove an existing layout, component, pattern, or stylesheet', paths: ['themes/<name>/index.ts', 'themes/<name>/components/', 'themes/<name>/layouts/'], commands: ['pageskill g --profile'] },
+    { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, discovery policy, plugin copy/options, or deployment settings', paths: ['config.yml', 'themes/<name>/theme.yml'], commands: ['pageskill g --profile'] },
+    { id: 'configure-plugin', purpose: 'Configure a declared foundation plugin from theme.yml without editing its renderer', paths: ['themes/<name>/theme.yml', 'themes/<name>/plugins/<plugin>/index.ts'], commands: ['pageskill g --profile'] },
     { id: 'discover-extension', purpose: 'Read active theme Patterns, Blocks, collections, plugin switches, contexts, and resource dependencies', paths: ['themes/<name>/index.ts', 'themes/<name>/theme.yml', 'config.yml'], commands: ['import { getCatalog, inspect } from "pageskill"'] },
+    { id: 'discover-site', purpose: 'Read renderer-generated agent metadata, API links, Markdown negotiation, and content signals', paths: ['dist/public/.well-known/', 'dist/public/robots.txt', 'dist/public/llms.txt'], commands: ['pageskill g'] },
     { id: 'preview', purpose: 'Open the local development server with a persistent incremental context', paths: ['src/bin/pageskill.mjs', 'src/compiler.ts'], commands: ['pageskill s'] },
-    { id: 'deploy', purpose: 'Build and publish dist/ using the hosting target in config.yml', paths: ['config.yml', 'dist/'], commands: ['pageskill d --dry-run', 'pageskill d'] },
+    { id: 'deploy', purpose: 'Build and publish the configured public site target', paths: ['config.yml', 'dist/public/'], commands: ['pageskill d --dry-run', 'pageskill d'] },
     { id: 'dynamic-backend', purpose: 'Add runtime business logic, secrets, writes, or webhooks', paths: ['backend/handler.ts'], commands: ['pageskill g'] }
   ];
+}
+
+function discoverySettings(ctx: BuildContext, name: string): Record<string, any> {
+  // Discovery policy is data from config.yml; absent sections stay disabled
+  // unless the renderer explicitly defines a safe default.
+  const value = ctx.config.agentDiscovery?.[name];
+  return isRecord(value) ? value : {};
+}
+
+function discoveryEnabled(ctx: BuildContext, name: string, fallback = false): boolean {
+  // A capability is opt-in unless its renderer default is explicitly true.
+  const settings = discoverySettings(ctx, name);
+  return settings.enabled === undefined ? fallback : settings.enabled === true;
+}
+
+function absoluteDiscoveryUrl(siteUrl: string, value: unknown, locale: string): string {
+  // Resolve only HTTP(S) links and expand the supported locale placeholder;
+  // other schemes cannot become public discovery metadata.
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const candidate = value.trim().replaceAll(':locale', locale);
+  try {
+    const url = new URL(candidate, `${siteUrl}/`);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return '';
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
+type ApiCatalogEntry = {
+  endpoint: string;
+  anchor: string;
+  title: string;
+  description: string;
+  serviceDesc?: string;
+  serviceDoc?: string;
+  status?: string;
+};
+
+function configuredApiCatalogEntries(ctx: BuildContext, siteUrl: string): ApiCatalogEntry[] {
+  // Only configured endpoint records are emitted; the compiler never guesses
+  // an API surface from private backend source or from a hand-written list.
+  const settings = discoverySettings(ctx, 'apiCatalog');
+  const locale = String(ctx.config.defaultLocale || 'en');
+  const rawEntries = Array.isArray(settings.entries) ? settings.entries : [];
+  const seen = new Set<string>();
+  return rawEntries.map((raw: any, index: number) => {
+    const source = typeof raw === 'string' ? { endpoint: raw } : isRecord(raw) ? raw : {};
+    const endpoint = absoluteDiscoveryUrl(siteUrl, source.endpoint || source.href || source.url, locale);
+    if (!endpoint || seen.has(endpoint)) return null;
+    seen.add(endpoint);
+    const title = localizedValue(source.title, locale, endpoint);
+    const description = localizedValue(source.description, locale, 'Published API endpoint');
+    const serviceDesc = source.serviceDesc === false ? '' : absoluteDiscoveryUrl(siteUrl, source.serviceDesc || source.openapi, locale);
+    const serviceDoc = source.serviceDoc === false
+      ? ''
+      : absoluteDiscoveryUrl(siteUrl, source.serviceDoc || '/.well-known/api-catalog.md', locale);
+    const status = source.status === false ? '' : absoluteDiscoveryUrl(siteUrl, source.status, locale);
+    return {
+      endpoint,
+      anchor: absoluteDiscoveryUrl(siteUrl, source.anchor || endpoint, locale) || endpoint,
+      title: String(title).slice(0, 200),
+      description: String(description).replaceAll(/[\r\n]+/g, ' ').slice(0, 500),
+      ...(serviceDesc ? { serviceDesc } : {}),
+      ...(serviceDoc ? { serviceDoc } : {}),
+      ...(status ? { status } : {})
+    } as ApiCatalogEntry;
+  }).filter(Boolean) as ApiCatalogEntry[];
+}
+
+function apiCatalogLinkset(entries: ApiCatalogEntry[]) {
+  // Keep the JSON shape aligned with RFC 9727 Linkset relations while the
+  // entry list remains owned by site configuration.
+  return {
+    linkset: entries.map(entry => ({
+      anchor: entry.anchor,
+      item: [{ href: entry.endpoint, title: entry.title }],
+      ...(entry.serviceDesc ? { 'service-desc': [{ href: entry.serviceDesc }] } : {}),
+      ...(entry.serviceDoc ? { 'service-doc': [{ href: entry.serviceDoc }] } : {}),
+      ...(entry.status ? { status: [{ href: entry.status }] } : {})
+    }))
+  };
+}
+
+function apiCatalogMarkdown(entries: ApiCatalogEntry[]): string {
+  // The Markdown mirror is generated from the same normalized entries as the
+  // machine-readable Linkset so the two representations cannot drift.
+  return [
+    '# API catalog',
+    '',
+    'This catalog is generated from the site discovery configuration.',
+    '',
+    ...entries.flatMap(entry => [
+      `## ${entry.title}`,
+      '',
+      entry.description,
+      '',
+      `- Endpoint: ${entry.endpoint}`,
+      ...(entry.serviceDesc ? [`- Machine description: ${entry.serviceDesc}`] : []),
+      ...(entry.status ? [`- Status: ${entry.status}`] : []),
+      ''
+    ])
+  ].join('\n');
+}
+
+async function writeApiCatalog(ctx: BuildContext, siteUrl: string): Promise<void> {
+  if (!discoveryEnabled(ctx, 'apiCatalog', false)) return;
+  const entries = configuredApiCatalogEntries(ctx, siteUrl);
+  if (!entries.length) return;
+  // RFC 9727 requires the Linkset media type at the well-known location.
+  await writeIfChanged(ctx, '.well-known/api-catalog', JSON.stringify(apiCatalogLinkset(entries), null, 2));
+  await writeIfChanged(ctx, '.well-known/api-catalog.md', apiCatalogMarkdown(entries));
+}
+
+function authSettings(ctx: BuildContext): Record<string, any> {
+  // OAuth metadata is conditional: this site must explicitly describe both
+  // its protected resource and authorization server before files are emitted.
+  return discoverySettings(ctx, 'auth');
+}
+
+async function writeAuthDiscovery(ctx: BuildContext, siteUrl: string): Promise<void> {
+  // Never publish an OAuth claim for a site that has not configured its real
+  // issuer and resource URLs.
+  const settings = authSettings(ctx);
+  if (settings.enabled !== true) return;
+  const locale = String(ctx.config.defaultLocale || 'en');
+  const resource = absoluteDiscoveryUrl(siteUrl, settings.resource || siteUrl, locale);
+  const issuer = absoluteDiscoveryUrl(siteUrl, settings.authorizationServer || settings.issuer, locale);
+  if (!resource || !issuer) throw new Error('config.yml: agentDiscovery.auth requires resource and authorizationServer URLs when enabled');
+  const scopes = Array.isArray(settings.scopes) ? settings.scopes.map(String).filter(Boolean).slice(0, 100) : [];
+  await writeIfChanged(ctx, '.well-known/oauth-protected-resource', JSON.stringify({
+    resource,
+    authorization_servers: [issuer],
+    ...(scopes.length ? { scopes_supported: scopes } : {})
+  }, null, 2));
+  const authorizationEndpoint = absoluteDiscoveryUrl(siteUrl, settings.authorizationEndpoint, locale);
+  const tokenEndpoint = absoluteDiscoveryUrl(siteUrl, settings.tokenEndpoint, locale);
+  if (authorizationEndpoint && tokenEndpoint) {
+    await writeIfChanged(ctx, '.well-known/oauth-authorization-server', JSON.stringify({
+      issuer,
+      authorization_endpoint: authorizationEndpoint,
+      token_endpoint: tokenEndpoint,
+      ...(scopes.length ? { scopes_supported: scopes } : {})
+    }, null, 2));
+  }
+  const title = String(localizedValue(settings.title, locale, 'Authentication')).replaceAll(/[\r\n]+/g, ' ');
+  const description = String(localizedValue(settings.description, locale, 'Authentication details for protected APIs.')).replaceAll(/[\r\n]+/g, ' ');
+  await writeIfChanged(ctx, 'auth.md', `# ${title}\n\n${description}\n\n- Protected resource: ${resource}\n- Authorization server: ${issuer}\n${scopes.length ? `- Supported scopes: ${scopes.join(', ')}\n` : ''}`);
+}
+
+async function writeMcpServerCard(ctx: BuildContext, siteUrl: string): Promise<void> {
+  // MCP is emitted only when an actual endpoint and validated tool metadata
+  // are supplied by the site owner.
+  const settings = discoverySettings(ctx, 'mcp');
+  if (settings.enabled !== true) return;
+  const locale = String(ctx.config.defaultLocale || 'en');
+  const endpoint = absoluteDiscoveryUrl(siteUrl, settings.endpoint, locale);
+  if (!endpoint) throw new Error('config.yml: agentDiscovery.mcp requires an endpoint URL when enabled');
+  const rawTools = Array.isArray(settings.tools) ? settings.tools : [];
+  const tools = rawTools.map((raw: any) => {
+    if (!isRecord(raw) || !String(raw.name || '').trim() || !String(raw.description || '').trim()) return null;
+    return {
+      name: String(raw.name).trim().slice(0, 128),
+      description: String(raw.description).replaceAll(/[\r\n]+/g, ' ').slice(0, 500),
+      ...(isRecord(raw.inputSchema) ? { inputSchema: raw.inputSchema } : {})
+    };
+  }).filter(Boolean);
+  await writeIfChanged(ctx, '.well-known/mcp/server-card.json', JSON.stringify({
+    name: String(localizedValue(settings.name, locale, localizedValue(ctx.config.siteName, locale, 'Pageskill'))),
+    description: String(localizedValue(settings.description, locale, 'Model Context Protocol server')),
+    version: String(settings.version || '1.0.0'),
+    url: endpoint,
+    capabilities: { tools }
+  }, null, 2));
+}
+
+function agentSkillName(ctx: BuildContext): string {
+  // The public skill name is constrained to the Agent Skills identifier form;
+  // its fallback is derived from the configured localized site name.
+  const configured = discoverySettings(ctx, 'skills').name;
+  const fallback = `${slug(localizedValue(ctx.config.siteName, String(ctx.config.defaultLocale || 'en'), 'site')) || 'site'}-authoring`.slice(0, 64);
+  return /^[a-z0-9][a-z0-9-]{0,63}$/.test(String(configured || '')) ? String(configured) : fallback;
+}
+
+function agentSkillDescription(ctx: BuildContext): string {
+  // A configured description is allowed, but the default is derived from the
+  // registered capability purposes so it has no second prose source.
+  const configured = discoverySettings(ctx, 'skills').description;
+  if (typeof configured === 'string' && configured.trim()) return configured.trim().replaceAll(/[\r\n]+/g, ' ').slice(0, 1024);
+  // A missing description is derived from the registered capabilities instead
+  // of introducing a second, hand-maintained description of the renderer.
+  return agentFunctionMap().map((entry: any) => String(entry.purpose || '').trim()).filter(Boolean).join('; ').slice(0, 1024);
+}
+
+function agentSkillValue(value: unknown): string {
+  if (Array.isArray(value)) return value.map(agentSkillValue).join(', ');
+  if (isRecord(value)) return JSON.stringify(value);
+  return String(value ?? '').replaceAll(/[\r\n]+/g, ' ').trim();
+}
+
+function generatedAgentCapabilitySection(entry: Record<string, unknown>): string {
+  // Render every registered field generically so new capability metadata is
+  // visible without editing another list of labels in this generator.
+  const fields = Object.entries(entry)
+    .filter(([key]) => key !== 'id')
+    .flatMap(([key, value]) => [`${key}: ${agentSkillValue(value)}`, '']);
+  return [`## ${agentSkillValue(entry.id)}`, '', ...fields].join('\n');
+}
+
+function generatedAgentSkill(ctx: BuildContext): string {
+  const settings = discoverySettings(ctx, 'skills');
+  const title = String(settings.title || localizedValue(ctx.config.siteName, String(ctx.config.defaultLocale || 'en'), 'Pageskill')).replaceAll(/[\r\n]+/g, ' ');
+  const instructions = Array.isArray(settings.instructions)
+    ? settings.instructions.map((value: unknown) => String(value).replaceAll(/[\r\n]+/g, ' ').trim()).filter(Boolean)
+    : [];
+  const sections = (agentFunctionMap() as Array<Record<string, unknown>>).map(generatedAgentCapabilitySection);
+  return [
+    '---',
+    `name: ${JSON.stringify(agentSkillName(ctx))}`,
+    `description: ${JSON.stringify(agentSkillDescription(ctx))}`,
+    '---',
+    '',
+    `# ${title}`,
+    '',
+    ...instructions.map(value => `- ${value}`),
+    ...(instructions.length ? [''] : []),
+    ...sections
+  ].join('\n');
+}
+
+async function writeAgentSkills(ctx: BuildContext): Promise<void> {
+  // Write both the index and the content from the same generated skill text so
+  // its integrity hash always describes what the renderer actually published.
+  if (!discoveryEnabled(ctx, 'skills', true)) return;
+  const skill = generatedAgentSkill(ctx);
+  const skillPath = `.well-known/agent-skills/${agentSkillName(ctx)}/SKILL.md`;
+  await writeIfChanged(ctx, skillPath, skill);
+  await writeIfChanged(ctx, '.well-known/agent-skills/index.json', JSON.stringify({
+    $schema: 'https://agentskills.io/specification',
+    skills: [{
+      name: agentSkillName(ctx),
+      type: 'skill',
+      description: agentSkillDescription(ctx),
+      url: `/.well-known/agent-skills/${agentSkillName(ctx)}/SKILL.md`,
+      sha256: sha(skill)
+    }]
+  }, null, 2));
+}
+
+/** Plan only discovery files whose feature is enabled and whose inputs exist. */
+function plannedDiscoveryPaths(ctx: BuildContext): string[] {
+  const paths = ['.well-known/agent.json'];
+  if (discoveryEnabled(ctx, 'apiCatalog', false) && configuredApiCatalogEntries(ctx, String(ctx.config.siteUrl || '').replace(/\/$/, '')).length) paths.push('.well-known/api-catalog', '.well-known/api-catalog.md');
+  if (discoveryEnabled(ctx, 'ard', true)) paths.push('.well-known/ai-catalog.json');
+  if (discoveryEnabled(ctx, 'skills', true)) paths.push('.well-known/agent-skills/index.json', `.well-known/agent-skills/${agentSkillName(ctx)}/SKILL.md`);
+  if (authSettings(ctx).enabled === true) paths.push('.well-known/oauth-protected-resource', 'auth.md');
+  if (authSettings(ctx).enabled === true && authSettings(ctx).authorizationEndpoint && authSettings(ctx).tokenEndpoint) paths.push('.well-known/oauth-authorization-server');
+  if (discoveryEnabled(ctx, 'mcp', false)) paths.push('.well-known/mcp/server-card.json');
+  return paths;
+}
+
+function publicDiscoveryResources(ctx: BuildContext): Array<{ href: string; rel: string; type?: string }> {
+  // Discoverability links are derived from existing/planned public outputs;
+  // disabled optional services never appear as advertised resources.
+  const paths = new Set([...ctx.outputs, ...plannedDiscoveryPaths(ctx)]);
+  const resources: Array<{ href: string; rel: string; type?: string }> = [];
+  const add = (pathName: string, rel: string, type?: string) => { if (paths.has(pathName)) resources.push({ href: `/${pathName}`, rel, ...(type ? { type } : {}) }); };
+  add('.well-known/agent.json', 'describedby', 'application/json');
+  add('.well-known/api-catalog', 'api-catalog', 'application/linkset+json');
+  add('.well-known/api-catalog.md', 'describedby', 'text/markdown');
+  add('.well-known/ai-catalog.json', 'describedby', 'application/json');
+  add('.well-known/agent-skills/index.json', 'describedby', 'application/json');
+  add(`.well-known/agent-skills/${agentSkillName(ctx)}/SKILL.md`, 'describedby', 'text/markdown');
+  add('llms.txt', 'describedby', 'text/plain');
+  add('auth.md', 'describedby', 'text/markdown');
+  add('.well-known/oauth-protected-resource', 'describedby', 'application/json');
+  add('.well-known/mcp/server-card.json', 'describedby', 'application/json');
+  return resources;
+}
+
+function contentSignalHeader(ctx: BuildContext): string {
+  // Content-Signal is a small allow-list so arbitrary configuration cannot
+  // inject response-header syntax.
+  const configured = ctx.config.robots?.contentSignals;
+  if (!isRecord(configured)) return '';
+  return ['ai-train', 'search', 'ai-input'].map(key => {
+    const value = String(configured[key] ?? '').trim().toLowerCase();
+    return value === 'yes' || value === 'no' ? `${key}=${value}` : '';
+  }).filter(Boolean).join(', ');
+}
+
+/** Runtime metadata is derived from outputs so every adapter shares one list. */
+export function siteDiscoveryOptions(ctx: BuildContext): { links: Array<{ href: string; rel: string; type?: string }>; markdown: boolean; contentTypes: Record<string, string>; contentSignal?: string } {
+  const resources = publicDiscoveryResources(ctx);
+  const contentTypes: Record<string, string> = {};
+  if (ctx.outputs.has('.well-known/api-catalog') || plannedDiscoveryPaths(ctx).includes('.well-known/api-catalog')) contentTypes['/.well-known/api-catalog'] = 'application/linkset+json; charset=utf-8';
+  if (ctx.outputs.has('.well-known/oauth-protected-resource') || plannedDiscoveryPaths(ctx).includes('.well-known/oauth-protected-resource')) contentTypes['/.well-known/oauth-protected-resource'] = 'application/json; charset=utf-8';
+  if (ctx.outputs.has('.well-known/oauth-authorization-server') || plannedDiscoveryPaths(ctx).includes('.well-known/oauth-authorization-server')) contentTypes['/.well-known/oauth-authorization-server'] = 'application/json; charset=utf-8';
+  const signal = contentSignalHeader(ctx);
+  return {
+    links: resources,
+    markdown: ctx.config.outputs?.markdownMirrors === true && discoverySettings(ctx, 'markdown').enabled !== false,
+    contentTypes,
+    ...(signal ? { contentSignal: signal } : {})
+  };
+}
+
+/** Read optional ARD queries from config instead of maintaining generated prose in code. */
+function ardQueries(ctx: BuildContext, identifier: string): string[] {
+  const configured = discoverySettings(ctx, 'ard').queries;
+  const queries = isRecord(configured) ? configured[identifier] : undefined;
+  return Array.isArray(queries) ? queries.map(value => String(value).replaceAll(/[\r\n]+/g, ' ').trim()).filter(Boolean).slice(0, 5) : [];
+}
+
+/** Build one ARD entry from the active site name, generated path, and config queries. */
+function ardEntry(host: string, siteUrl: string, pathName: string, identifier: string, displayName: string, type: string, queries: string[]) {
+  return {
+    identifier: `urn:air:${host}:pageskill:${identifier}`,
+    displayName,
+    type,
+    url: `${siteUrl}${pathName}`,
+    ...(queries.length ? { representativeQueries: queries } : {})
+  };
+}
+
+async function writeArdManifest(ctx: BuildContext, siteUrl: string): Promise<void> {
+  // ARD entries point only at public files generated in this build; optional
+  // representative queries come from config rather than embedded copy.
+  if (!discoveryEnabled(ctx, 'ard', true)) return;
+  let host = siteUrl;
+  try { host = new URL(siteUrl).host; } catch { /* siteUrl validation is handled by the site deployment */ }
+  const siteName = localizedValue(ctx.config.siteName, String(ctx.config.defaultLocale || 'en'), 'Pageskill');
+  const entries: Array<Record<string, any>> = [];
+  entries.push(ardEntry(host, siteUrl, '/.well-known/agent.json', 'agent', `${siteName} agent guidance`, 'application/json', ardQueries(ctx, 'agent')));
+  const paths = new Set([...ctx.outputs, ...plannedDiscoveryPaths(ctx)]);
+  if (paths.has('.well-known/api-catalog')) entries.push(ardEntry(host, siteUrl, '/.well-known/api-catalog', 'api-catalog', `${siteName} API catalog`, 'application/linkset+json', ardQueries(ctx, 'api-catalog')));
+  if (paths.has('.well-known/agent-skills/index.json')) entries.push(ardEntry(host, siteUrl, '/.well-known/agent-skills/index.json', 'skills', `${siteName} agent skills`, 'application/json', ardQueries(ctx, 'skills')));
+  if (paths.has('llms.txt')) entries.push(ardEntry(host, siteUrl, '/llms.txt', 'llms', `${siteName} content index`, 'text/plain', ardQueries(ctx, 'llms')));
+  if (paths.has('.well-known/oauth-protected-resource')) entries.push(ardEntry(host, siteUrl, '/.well-known/oauth-protected-resource', 'oauth', `${siteName} OAuth metadata`, 'application/json', ardQueries(ctx, 'oauth')));
+  if (paths.has('.well-known/mcp/server-card.json')) entries.push(ardEntry(host, siteUrl, '/.well-known/mcp/server-card.json', 'mcp', `${siteName} MCP server card`, 'application/json', ardQueries(ctx, 'mcp')));
+  await writeIfChanged(ctx, '.well-known/ai-catalog.json', JSON.stringify({
+    specVersion: '0.1',
+    host,
+    entries
+  }, null, 2));
 }
 
 function catalog(ctx: BuildContext) {
   const privacySettings = cookieConsentSettings(ctx);
   const locale = ctx.config.defaultLocale || 'en';
-  const basePrivacyCategories = cookieCategories(privacySettings, locale, themeLocaleData(ctx, locale).cookieConsent?.categories || []);
+  const basePrivacyCategories = cookieCategories(privacySettings, locale, themeLocaleData(ctx, locale).cookieConsent?.categories || [], themePluginCopy(ctx, 'privacyConsent', locale));
   const privacyIntegrationsData = privacyIntegrations(privacySettings, basePrivacyCategories);
   const privacyCategories = decorateCookieCategories(basePrivacyCategories, privacyIntegrationsData, locale);
   return {
@@ -1686,7 +2140,7 @@ function catalog(ctx: BuildContext) {
       optional: true,
       role: 'assistive',
       defaultCommands: ['npm install', 'pageskill s', 'pageskill g'],
-      ...discoveryBoundaries(),
+      ...discoveryBoundaries(ctx),
       functionMap: agentFunctionMap()
     },
     privacy: {
@@ -1911,16 +2365,35 @@ function isPostCollection(ctx: BuildContext, collection: string): boolean {
 }
 
 async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
+  // Agent metadata describes active consent, locale, and discovery outputs;
+  // it does not expose private configuration or claim disabled services.
   const settings = cookieConsentSettings(ctx);
   const locale = ctx.config.defaultLocale || 'en';
   const policyRoute = String(settings.policyRoute || '/:locale/privacy/');
   const policyRoutes = Object.fromEntries((ctx.config.activeLocales || [locale]).map((candidate: string) => [candidate, policyRoute.replace(':locale', candidate)]));
-  const baseCategories = cookieCategories(settings, locale, themeLocaleData(ctx, locale).cookieConsent?.categories || []);
+  const baseCategories = cookieCategories(settings, locale, themeLocaleData(ctx, locale).cookieConsent?.categories || [], themePluginCopy(ctx, 'privacyConsent', locale));
   const integrations = privacyIntegrations(settings, baseCategories);
   await writeIfChanged(ctx, '.well-known/agent.json', JSON.stringify({
     version: 1,
     site: { name: localizedValue(ctx.config.siteName, locale, 'Pageskill'), defaultLocale: locale, locales: ctx.config.activeLocales || [locale] },
-    crawl: { robots: '/robots.txt', sitemap: '/sitemap.xml', llms: '/llms.txt', catalog: '/.pagekiln/catalog.json' },
+    crawl: { robots: '/robots.txt', sitemap: '/sitemap.xml', llms: '/llms.txt', catalog: '/.well-known/ai-catalog.json' },
+    discovery: {
+      resources: publicDiscoveryResources(ctx),
+      markdown: ctx.config.outputs?.markdownMirrors === true && discoverySettings(ctx, 'markdown').enabled !== false,
+      contentSignal: contentSignalHeader(ctx) || undefined,
+      authentication: authSettings(ctx).enabled === true ? {
+        protectedResource: '/.well-known/oauth-protected-resource',
+        authorizationServer: authSettings(ctx).authorizationServer || authSettings(ctx).issuer,
+        documentation: '/auth.md'
+      } : { enabled: false },
+      mcp: discoverySettings(ctx, 'mcp').enabled === true ? { serverCard: '/.well-known/mcp/server-card.json' } : { enabled: false },
+      webmcp: discoverySettings(ctx, 'webmcp').enabled === true
+        ? { configured: true, note: 'Browser tools are theme-owned and must use the supported browser API with explicit safe schemas.' }
+        : { configured: false },
+      dnsAid: discoverySettings(ctx, 'dnsAid').enabled === true
+        ? { configured: true, note: 'Publish the generated domain records through a DNS provider with DNSSEC; the static renderer cannot change DNS.' }
+        : { configured: false }
+    },
     privacy: {
       audience: 'agent',
       format: 'application/json',
@@ -1942,7 +2415,7 @@ async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
     agentGuidance: {
       optional: true,
       role: 'assistive',
-      ...discoveryBoundaries(),
+      ...discoveryBoundaries(ctx),
       functionMap: agentFunctionMap()
     },
     generatedBy: { name: 'Pageskill', version: 3, static: true, siteUrl }
@@ -2029,6 +2502,34 @@ async function writeLlms(ctx: BuildContext, siteUrl: string) {
   await writeIfChanged(ctx, 'llms-full.txt', `${localizedValue(ctx.config.llms?.title, ctx.config.defaultLocale || 'en', 'Site')} full-content shards\n\n${shards.map(file => `- /${file}`).join('\n')}\n`);
 }
 
+function robotsValue(value: unknown, fallback: string): string {
+  // Keep user-provided robots values single-line and bounded before they reach
+  // a public text file or the generated Content-Signal header.
+  const text = String(value ?? fallback).replaceAll(/[\r\n]+/g, ' ').trim();
+  return text.slice(0, 200);
+}
+
+function robotsText(ctx: BuildContext, siteUrl: string): string {
+  // Generate robots.txt from the same signal settings advertised by responses
+  // so crawler policy has one configuration source.
+  const configuredRules = Array.isArray(ctx.config.robots?.rules) ? ctx.config.robots.rules : [];
+  const rules = configuredRules.length ? configuredRules : [{ userAgent: '*' , allow: ['/'] }];
+  const lines: string[] = [];
+  for (const raw of rules) {
+    if (!isRecord(raw)) continue;
+    lines.push(`User-agent: ${robotsValue(raw.userAgent, '*')}`);
+    const allow = Array.isArray(raw.allow) ? raw.allow : raw.allow ? [raw.allow] : [];
+    const disallow = Array.isArray(raw.disallow) ? raw.disallow : raw.disallow ? [raw.disallow] : [];
+    for (const value of allow) lines.push(`Allow: ${robotsValue(value, '/')}`);
+    for (const value of disallow) lines.push(`Disallow: ${robotsValue(value, '/')}`);
+    lines.push('');
+  }
+  const signal = contentSignalHeader(ctx);
+  if (signal) lines.push(`Content-Signal: ${signal}`);
+  lines.push(`Sitemap: ${siteUrl}/sitemap.xml`, '');
+  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n')}`;
+}
+
 async function writeArchives(ctx: BuildContext): Promise<string[]> {
   const routes: string[] = [];
   const pageSize = Math.max(10, Number(ctx.config.archive?.pageSize || 50));
@@ -2071,6 +2572,9 @@ async function writeDeployments(ctx: BuildContext) {
   const deployment = ctx.config.deployment && typeof ctx.config.deployment === 'object' ? ctx.config.deployment : {};
   const publicDirectory = configuredPublicDirectory(ctx.config);
   const publicDirectoryLiteral = JSON.stringify(publicDirectory);
+  // Embed only renderer-derived public metadata in adapters; private config
+  // and backend implementation details never cross the deployment boundary.
+  const discoveryLiteral = JSON.stringify(siteDiscoveryOptions(ctx));
   const cloudflare = deployment.cloudflare && typeof deployment.cloudflare === 'object' ? deployment.cloudflare : {};
   const workers = cloudflare.workers && typeof cloudflare.workers === 'object' ? cloudflare.workers : {};
   const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -2108,7 +2612,7 @@ async function writeDeployments(ctx: BuildContext) {
 
   const backendImport = backendEnabled ? `import { router } from './_pagekiln/backend/handler.js';\n` : 'const router = undefined;\n';
   const localeLiteral = JSON.stringify(String(locale));
-  const worker = `import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${backendImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${localeLiteral}, staticDirectory: ${publicDirectoryLiteral} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`;
+  const worker = `import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${backendImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${localeLiteral}, staticDirectory: ${publicDirectoryLiteral}, discovery: ${discoveryLiteral} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`;
   await writeIfChanged(ctx, 'cloudflare-worker.mjs', worker);
   if (backendEnabled) await writeIfChanged(ctx, '_worker.js', worker);
   await writeIfChanged(ctx, '.assetsignore', `_worker.js\ncloudflare-worker.mjs\nvps-server.mjs\nwrangler.toml\n_pagekiln/*\nserver/*\n.pagekiln/*\n`);
@@ -2152,13 +2656,13 @@ async function fetchStaticAsset(request) {
   return new Response(method === 'HEAD' ? null : body, { status: 200, headers });
 }
 `;
-  await writeIfChanged(ctx, 'vps-server.mjs', `${vpsStaticSource}import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${denoBackendImport}const runtimeEnv = new Proxy({}, { get: (_target, key) => Deno.env.get(String(key)) });\nconst fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${JSON.stringify(String(locale))}, staticDirectory: ${publicDirectoryLiteral}, assets: fetchStaticAsset });\nconst port = Number(Deno.env.get('PORT') || '8787');\nconst hostname = Deno.env.get('HOST') || '127.0.0.1';\nDeno.serve({ port, hostname }, (request, info) => fetchHandler(request, runtimeEnv, info));\nexport { fetchHandler };\n`);
+  await writeIfChanged(ctx, 'vps-server.mjs', `${vpsStaticSource}import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${denoBackendImport}const runtimeEnv = new Proxy({}, { get: (_target, key) => Deno.env.get(String(key)) });\nconst fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${JSON.stringify(String(locale))}, staticDirectory: ${publicDirectoryLiteral}, discovery: ${discoveryLiteral}, assets: fetchStaticAsset });\nconst port = Number(Deno.env.get('PORT') || '8787');\nconst hostname = Deno.env.get('HOST') || '127.0.0.1';\nDeno.serve({ port, hostname }, (request, info) => fetchHandler(request, runtimeEnv, info));\nexport { fetchHandler };\n`);
   const sitesBackendImport = backendEnabled ? `import { router } from './_pagekiln/backend/handler.js';\n` : 'const router = undefined;\n';
   const openAiSites = hasOpenAiSitesDeployment(ctx.config);
   const staticOption = openAiSites ? `, staticDirectory: ${publicDirectoryLiteral}` : '';
   const staticAssetsImport = openAiSites ? `import { fetchStaticAsset } from './_pagekiln/static-assets.js';\n` : '';
   const staticAssetsOption = openAiSites ? ', assets: fetchStaticAsset' : '';
-  await writeIfChanged(ctx, 'server/index.js', `import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${sitesBackendImport}${staticAssetsImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${localeLiteral}${staticOption}${staticAssetsOption} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`);
+  await writeIfChanged(ctx, 'server/index.js', `import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${sitesBackendImport}${staticAssetsImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${localeLiteral}${staticOption}, discovery: ${discoveryLiteral}${staticAssetsOption} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`);
 }
 
 function openaiSitesStaticDirectory(ctx: BuildContext): string {
@@ -2188,6 +2692,9 @@ async function writeSiteStaticDirectory(ctx: BuildContext) {
 }
 
 function staticContentType(file: string): string {
+  const normalized = normalizePath(file).replace(/^\/+/, '');
+  if (normalized === '.well-known/api-catalog') return 'application/linkset+json; charset=utf-8';
+  if (normalized === '.well-known/oauth-protected-resource' || normalized === '.well-known/oauth-authorization-server') return 'application/json; charset=utf-8';
   const types: Record<string, string> = {
     '.css': 'text/css; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.eot': 'application/vnd.ms-fontobject',
     '.gif': 'image/gif', '.html': 'text/html; charset=utf-8', '.ico': 'image/x-icon', '.jpeg': 'image/jpeg',
@@ -2532,9 +3039,8 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   ctx.profile.render = duration(renderStart);
   const assetStart = performance.now();
   await writeGeneratedPages(ctx);
-  await writeIfChanged(ctx, 'robots.txt', `User-agent: *\nAllow: /\nSitemap: ${String(ctx.config.siteUrl || '').replace(/\/$/, '')}/sitemap.xml\n`);
   const siteUrl = String(ctx.config.siteUrl || '').replace(/\/$/, '');
-  await writeAgentInfo(ctx, siteUrl);
+  await writeIfChanged(ctx, 'robots.txt', robotsText(ctx, siteUrl));
   const archiveRoutes = ctx.config.archive?.enabled === false ? [] : await writeArchives(ctx);
   const sitemapDocuments = [...ctx.routes.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([route, doc]) => {
     const translations = ctx.translationIndex.get(translationKey(doc.collection, doc.id)) || [];
@@ -2558,6 +3064,12 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
     }
   }
   await writeLlms(ctx, siteUrl);
+  await writeApiCatalog(ctx, siteUrl);
+  await writeAuthDiscovery(ctx, siteUrl);
+  await writeMcpServerCard(ctx, siteUrl);
+  await writeAgentSkills(ctx);
+  await writeArdManifest(ctx, siteUrl);
+  await writeAgentInfo(ctx, siteUrl);
   await writeIfChanged(ctx, '.pagekiln/catalog.json', JSON.stringify(catalog(ctx), null, 2)); await writeDeployments(ctx); await copyThemeAndAssets(ctx); await writeSiteStaticDirectory(ctx); await writeSiteStaticRuntime(ctx); ctx.profile.assets = duration(assetStart);
   const previousOutputs = new Set(ctx.cache.outputs || []); const writeStart = performance.now();
   for (const old of previousOutputs) {

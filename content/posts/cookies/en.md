@@ -1,15 +1,15 @@
 ---
-title: "How we build a plugin: the Cookie selector as a reference"
-description: Follow the Cookie selector from its behavior contract and module files to safe rendering, theme configuration, and partial translations.
+title: "How we build a plugin"
+description: Use the Cookie selector as a reference for behavior contracts, safe rendering, theme configuration, and partial translations.
 date: 2026-09-07
 category: tutorial
 ---
 
-# How we build a plugin: the Cookie selector as a reference
+# How we build a plugin
 
 The Cookie selector is our reference implementation for a reusable plugin. It combines a visitor-facing interface, browser state, optional scripts, localized messages, and a policy link without putting HTML in every post.
 
-We borrow a useful transparency pattern from cookie-policy generators: show categories, providers, retention, and consent requirements together so a visitor can review them. The selector is still a consent control, not legal advice or a policy generator. Keep the reviewed policy page in Markdown.
+We use the Cookie selector as the reference implementation and borrow a useful transparency pattern from [cookie-policy generators](https://www.toolszone.net/zh/tools/cookie-policy-generator): show categories, providers, retention, and consent requirements together so a visitor can review them. We borrow the presentation idea only; the selector is still a consent control, not legal advice or a policy generator. Keep the reviewed policy page in Markdown.
 
 ## 1. Start with a behavior contract
 
@@ -39,7 +39,7 @@ themes/default/plugins/cookies/
 
 ## 3. Register the capability in code
 
-The plugin definition is code-owned. It registers the capability, resources, localized messages, defaults, and the shape of the instance data; it does not contain this site's provider IDs or enablement choices. A shortened version of the real definition looks like this:
+The plugin definition is code-owned. It registers the capability, resources, localized messages, defaults, fixed provider adapters, and the shape of the instance data; it does not contain this site's account values or enablement choices. A shortened version of the real definition looks like this:
 
 ```ts
 import type { ThemePluginDefinition } from '../../../../src/theme-api.ts';
@@ -47,6 +47,7 @@ import type { ThemePluginDefinition } from '../../../../src/theme-api.ts';
 export const plugin: ThemePluginDefinition = {
   implementation: 'plugins/cookies/index.ts',
   resources: {
+    // Code registers resource ownership; the site instance stays in theme.yml.
     styles: ['plugins/cookies/style.css'],
     scripts: ['plugins/cookies/script.js']
   },
@@ -59,13 +60,33 @@ export const plugin: ThemePluginDefinition = {
       { id: 'security', required: false, default: false },
       { id: 'social', required: false, default: false }
     ],
-    integrations: {},
+    integrations: [
+      { provider: 'google-analytics', enabled: false, measurementId: '', category: 'analytics' },
+      { provider: 'google-ads', enabled: false, tagId: '', category: 'advertising' }
+    ],
     gatedScripts: []
   },
   schema: {
+    // The schema describes data; it never accepts executable provider code.
     enabled: { type: 'boolean' },
     categories: { type: 'array' },
-    integrations: { type: 'object', additionalProperties: true },
+    integrations: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          provider: { type: 'string', required: true },
+          enabled: { type: 'boolean' },
+          category: { type: 'string' },
+          measurementId: { type: 'string' },
+          tagId: { type: 'string' },
+          token: { type: 'string' },
+          siteSignature: { type: 'string' },
+          siteKey: { type: 'string' }
+        }
+      }
+    },
     gatedScripts: { type: 'array' }
   }
 };
@@ -83,9 +104,9 @@ import { plugin as toc } from './toc/index.ts';
 export const plugins = { chrome, search, toc, privacyConsent: cookies, language };
 ```
 
-The real schema describes the built-in Google Analytics, Google Ads, Cloudflare Web Analytics, Baidu Tongji, CAPTCHA, and X fields. It also permits extra provider entries and provider-specific fields for future theme modules. Unknown data is inert until code registers a renderer for it; configuration is never executable code.
+The real schema describes an array of provider instances. Built-in provider values are `google-analytics`, `google-ads`, `cloudflare-web-analytics`, `baidu-tongji`, `recaptcha`, `hcaptcha`, `turnstile`, and `x-for-websites`. These are code-owned adapter names, not IDs invented for a site. Unknown entries and extra fields remain inert until a theme module registers their behavior; configuration is never executable code.
 
-## 4. Separate instance data from site data
+## 4. Use real provider identifiers in theme data
 
 The active theme configures the plugin instance. Keep optional categories disabled until they are intentionally wired to a reviewed service:
 
@@ -115,30 +136,45 @@ plugins:
         default: false
         retentionDays: 0
     integrations:
-      googleAnalytics:
+      - provider: google-analytics
         enabled: false
-        measurementId: ''
+        measurementId: '' # GA4 value such as G-XXXXXXXXXX
         category: analytics
-      googleAds:
+      - provider: google-ads
         enabled: false
-        conversionId: ''
+        tagId: '' # Google tag value such as AW-XXXXXXXXXX or GT-XXXXXXXX
         category: advertising
-      cloudflareWebAnalytics:
+      - provider: cloudflare-web-analytics
         enabled: false
-        token: ''
+        token: '' # token from the Cloudflare beacon snippet
         category: analytics
-      captcha:
-        - enabled: false
-          platform: turnstile
-          siteKey: ''
-          category: security
-      x:
+      - provider: baidu-tongji
+        enabled: false
+        siteSignature: '' # the value after hm.baidu.com/hm.js?
+        category: analytics
+      - provider: recaptcha
+        enabled: false
+        siteKey: ''
+        category: security
+      - provider: hcaptcha
+        enabled: false
+        siteKey: ''
+        category: security
+      - provider: turnstile
+        enabled: false
+        siteKey: ''
+        category: security
+      - provider: x-for-websites
         enabled: false
         category: social
     gatedScripts: []
 ```
 
-The built-in mappings are deliberately explicit: Google Analytics uses `analytics`, Google Ads uses `advertising`, Cloudflare Web Analytics uses `analytics`, CAPTCHA uses `security`, and X embeds use `social`. Set `enabled: true` only after reviewing the provider's terms, privacy notice, retention, and CSP. The supported CAPTCHA platforms are `recaptcha`, `hcaptcha`, and `turnstile`. Their scripts load after consent; the page can use the normal `.g-recaptcha`, `.h-captcha`, or `.cf-turnstile` marker. CAPTCHA site keys are public identifiers; secret keys and server-side token verification stay in `backend/handler.ts` or another private service.
+The fields follow the provider's actual web contract: [Google Analytics measurement IDs](https://support.google.com/analytics/answer/12270356) use `G-...`; a Google Ads `tagId` is a Google tag identifier such as `AW-...` or `GT-...`, not a made-up `conversionId`. The plugin uses Google's basic consent-mode flow: it blocks the tag before a choice, then sends the documented `analytics_storage`, `ad_storage`, `ad_user_data`, and `ad_personalization` states. It initializes the consent-aware Google tag; it does not invent a conversion event or label. [Cloudflare Web Analytics](https://developers.cloudflare.com/web-analytics/get-started/) supplies the public beacon `token`, while [Baidu Tongji](https://tongji.baidu.com/web/help/article?id=219) supplies the `siteSignature` used after `hm.js?`. If Cloudflare proxy or Pages automatic Web Analytics injection is enabled, disable that separate injection or it will bypass this chooser. The category is a site policy choice, not a provider identifier.
+
+Set `enabled: true` only after reviewing the provider's terms, privacy notice, retention, and CSP. The CAPTCHA adapters use the official scripts and markers for [reCAPTCHA](https://developers.google.com/recaptcha/docs/display), [hCaptcha](https://docs.hcaptcha.com/), and [Turnstile](https://developers.cloudflare.com/turnstile/get-started/). Their `siteKey` is public; secret keys and server-side token verification stay in `backend/handler.ts` or another private service. X has no account ID in this adapter: [X for Websites](https://help.x.com/en/using-x/embed-x-feed) is loaded on demand from its official widget resource only when an X marker exists.
+
+Not every integration is literally a cookie. Cloudflare Web Analytics is designed around a beacon token, Turnstile performs a challenge, and X may receive request or cookie information when its widget runs. Keep the category and retention explanation aligned with the provider's current notice instead of claiming that every optional provider creates the same cookie.
 
 The X integration is on-demand: after consent, `platform.x.com/widgets.js` loads only when the page contains an X/Twitter embed marker. The selector does not load social embeds before consent. Other provider-specific fields can remain in the theme configuration for a future registered integration, but they do not cause a network request by themselves.
 
@@ -158,11 +194,12 @@ Put the reviewed policy at `content/pages/privacy/<locale>.md`. Do not put HTML,
 `renderCookieConsent` builds a fixed dialog and banner from the validated context. Dynamic values follow two separate rules:
 
 ```ts
+// Text and URLs use separate safe render paths.
 const label = context.escapeHtml(category.label);
 const href = context.safeUrl(privacy.policyHref);
 ```
 
-Labels and metadata are escaped as text. Policy and gated-script URLs pass through `safeUrl`; unsafe protocols are rejected. Built-in provider URLs are fixed in the registered browser implementation, while provider IDs and tokens are treated as data. The browser script creates elements with DOM APIs and only loads optional resources after consent. There is no `innerHTML`, `eval`, arbitrary attribute, or configuration-provided markup in the plugin surface.
+Labels and metadata are escaped as text. Policy and gated-script URLs pass through `safeUrl`; unsafe protocols are rejected. Built-in provider URLs are fixed in the registered browser implementation, while canonical provider names and public tokens/keys are treated as data. The browser script creates elements with DOM APIs and only loads optional resources after consent. There is no `innerHTML`, `eval`, arbitrary attribute, or configuration-provided markup in the plugin surface.
 
 Provider and retention fields are deliberately visible in the selector. They help visitors understand what a category represents, while the legal policy remains a human-reviewed page rather than silently generated legal text.
 

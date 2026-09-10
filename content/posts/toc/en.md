@@ -41,6 +41,19 @@ The active post pattern can show the outline beside the body. If the active them
 
 The default `toc` plugin lives in `themes/default/plugins/toc/`; its Block, style, and messages are one reusable module. Set its switch and depth in `themes/default/theme.yml` under `plugins.toc`.
 
+```yaml
+plugins:
+  toc:
+    enabled: true
+    maxDepth: 4
+    copy:
+      zh-sg:
+        # A partial copy map inherits the remaining labels from messages.yml.
+        title: On this page
+```
+
+Keep locale activation in `config.yml`; `copy` changes wording only and does not create a second language system.
+
 ## Expected result
 
 The outline links to the generated section IDs. Selecting a link moves to that section, and the page still works when the outline is closed or the viewport is narrow.

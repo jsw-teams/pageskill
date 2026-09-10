@@ -11,6 +11,8 @@ Pageskill turns Markdown articles, site settings, and theme styles into a publis
 
 Themes provide reusable article structures, styles, and Blocks. Start with the capabilities you have; when a structure is truly missing, implement one theme extension so later articles can reuse it. Individuals can edit a theme directly or ask an Agent to help with a clear target.
 
+Foundation plugin options and localized copy belong in `themes/<name>/theme.yml`; language activation and fallback belong in `config.yml`. The renderer generates Agent discovery metadata and Markdown mirrors from those sources, so generated files are outputs to inspect rather than files to maintain.
+
 ## Remember three commands
 
 | Command | Does |

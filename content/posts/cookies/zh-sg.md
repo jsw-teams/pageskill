@@ -1,15 +1,15 @@
 ---
-title: 我们如何构建插件：以 Cookie 选择器为例
-description: 从 Cookie 选择器的行为约定和模块文件开始，学习安全渲染、主题配置和部分翻译的处理方式。
+title: 我们如何构建插件
+description: 以 Cookie 选择器作为参考，学习行为约定、安全渲染、主题配置和部分翻译的处理方式。
 date: 2026-09-07
 category: tutorial
 ---
 
-# 我们如何构建插件：以 Cookie 选择器为例
+# 我们如何构建插件
 
 Cookie 选择器是我们构建可复用插件时的参考实现。它把访客界面、浏览器状态、可选脚本、本地化消息和政策链接组合起来，同时不需要每个 post 重复 HTML。
 
-我们借鉴 Cookie 政策生成器的一项透明展示思路：把类别、提供者、保存期限和同意要求放在一起，方便访客查看。选择器仍然只是同意控制，不是法律建议或政策生成器。经过审核的政策继续用 Markdown 维护。
+我们以 Cookie 选择器作为参考，并借鉴 [Cookie 政策生成器](https://www.toolszone.net/zh/tools/cookie-policy-generator) 的透明展示思路：把类别、提供者、保存期限和同意要求放在一起，方便访客查看。这里只借鉴展示方式；选择器仍然只是同意控制，不是法律建议或政策生成器。经过审核的政策继续用 Markdown 维护。
 
 ## 1. 先定义行为约定
 
@@ -39,7 +39,7 @@ themes/default/plugins/cookies/
 
 ## 3. 在代码中登记能力
 
-插件定义由代码拥有。它负责登记能力、资源、本地化消息、默认值和实例数据形状，不包含本站的服务 ID 或启用选择。下面是实际定义的精简示例：
+插件定义由代码拥有。它负责登记能力、资源、本地化消息、默认值、固定的 provider 适配器和实例数据形状，不包含本站账户值或启用选择。下面是实际定义的精简示例：
 
 ```ts
 import type { ThemePluginDefinition } from '../../../../src/theme-api.ts';
@@ -47,6 +47,7 @@ import type { ThemePluginDefinition } from '../../../../src/theme-api.ts';
 export const plugin: ThemePluginDefinition = {
   implementation: 'plugins/cookies/index.ts',
   resources: {
+    // 代码登记资源归属；本站实例数据留在 theme.yml。
     styles: ['plugins/cookies/style.css'],
     scripts: ['plugins/cookies/script.js']
   },
@@ -59,13 +60,33 @@ export const plugin: ThemePluginDefinition = {
       { id: 'security', required: false, default: false },
       { id: 'social', required: false, default: false }
     ],
-    integrations: {},
+    integrations: [
+      { provider: 'google-analytics', enabled: false, measurementId: '', category: 'analytics' },
+      { provider: 'google-ads', enabled: false, tagId: '', category: 'advertising' }
+    ],
     gatedScripts: []
   },
   schema: {
+    // schema 只描述数据，不接受可执行的 provider 代码。
     enabled: { type: 'boolean' },
     categories: { type: 'array' },
-    integrations: { type: 'object', additionalProperties: true },
+    integrations: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          provider: { type: 'string', required: true },
+          enabled: { type: 'boolean' },
+          category: { type: 'string' },
+          measurementId: { type: 'string' },
+          tagId: { type: 'string' },
+          token: { type: 'string' },
+          siteSignature: { type: 'string' },
+          siteKey: { type: 'string' }
+        }
+      }
+    },
     gatedScripts: { type: 'array' }
   }
 };
@@ -83,9 +104,9 @@ import { plugin as toc } from './toc/index.ts';
 export const plugins = { chrome, search, toc, privacyConsent: cookies, language };
 ```
 
-真实 schema 会描述 Google Analytics、Google Ads、Cloudflare Web Analytics、百度统计、验证码和 X 的内置字段，同时允许未来主题模块增加其他 provider 和 provider 专属字段。未知数据在代码登记对应渲染器之前不会产生作用；配置永远不是可执行代码。
+真实 schema 描述的是 provider 实例数组。内置 provider 值是 `google-analytics`、`google-ads`、`cloudflare-web-analytics`、`baidu-tongji`、`recaptcha`、`hcaptcha`、`turnstile` 和 `x-for-websites`。这些是代码拥有的适配器名称，不是站点凭空生成的 ID。未知条目和额外字段在主题模块登记对应行为之前保持惰性；配置永远不是可执行代码。
 
-## 4. 分离实例数据和站点数据
+## 4. 在主题数据中使用真实 provider 标识
 
 活动主题在配置文件中设置插件实例。可选类别只有在明确接入并审核过的服务后才开启：
 
@@ -115,30 +136,45 @@ plugins:
         default: false
         retentionDays: 0
     integrations:
-      googleAnalytics:
+      - provider: google-analytics
         enabled: false
-        measurementId: ''
+        measurementId: '' # GA4 值，例如 G-XXXXXXXXXX
         category: analytics
-      googleAds:
+      - provider: google-ads
         enabled: false
-        conversionId: ''
+        tagId: '' # Google tag 值，例如 AW-XXXXXXXXXX 或 GT-XXXXXXXX
         category: advertising
-      cloudflareWebAnalytics:
+      - provider: cloudflare-web-analytics
         enabled: false
-        token: ''
+        token: '' # Cloudflare beacon 代码中的 token
         category: analytics
-      captcha:
-        - enabled: false
-          platform: turnstile
-          siteKey: ''
-          category: security
-      x:
+      - provider: baidu-tongji
+        enabled: false
+        siteSignature: '' # hm.baidu.com/hm.js? 后面的值
+        category: analytics
+      - provider: recaptcha
+        enabled: false
+        siteKey: ''
+        category: security
+      - provider: hcaptcha
+        enabled: false
+        siteKey: ''
+        category: security
+      - provider: turnstile
+        enabled: false
+        siteKey: ''
+        category: security
+      - provider: x-for-websites
         enabled: false
         category: social
     gatedScripts: []
 ```
 
-内置映射是明确的：Google Analytics 使用 `analytics`，Google Ads 使用 `advertising`，Cloudflare Web Analytics 使用 `analytics`，验证码使用 `security`，X 嵌入使用 `social`。只有在审核提供者条款、隐私说明、保存期限和 CSP 后，才把 `enabled` 改为 `true`。验证码平台支持 `recaptcha`、`hcaptcha` 和 `turnstile`；脚本会在同意后加载，页面可使用普通的 `.g-recaptcha`、`.h-captcha` 或 `.cf-turnstile` 标记。验证码 site key 是公开标识；secret key 和服务端 token 校验必须留在 `backend/handler.ts` 或其他私有服务中。
+这些字段跟随 provider 实际的网页接入约定：[Google Analytics measurement ID](https://support.google.com/analytics/answer/12270356) 使用 `G-...`；Google Ads 的 `tagId` 使用 Ads 显示的 Google tag 标识，例如 `AW-...` 或 `GT-...`，不是自造的 `conversionId`。插件使用 Google 的 basic consent mode：选择前阻止 tag，选择后传递文档规定的 `analytics_storage`、`ad_storage`、`ad_user_data` 和 `ad_personalization` 状态。插件只负责初始化带同意状态的 Google tag，不会凭空创建转化事件或 label。[Cloudflare Web Analytics](https://developers.cloudflare.com/web-analytics/get-started/) 提供 beacon `token`，[百度统计](https://tongji.baidu.com/web/help/article?id=219) 提供 `hm.js?` 后的 `siteSignature`。如果 Cloudflare proxy 或 Pages 自动注入 Web Analytics，请关闭那条独立注入路径，否则它会绕过此选择器。`category` 是站点隐私政策分类，不是 provider ID。
+
+只有在审核 provider 条款、隐私说明、保存期限和 CSP 后，才把 `enabled` 改为 `true`。验证码适配器使用 [reCAPTCHA](https://developers.google.com/recaptcha/docs/display)、[hCaptcha](https://docs.hcaptcha.com/) 和 [Turnstile](https://developers.cloudflare.com/turnstile/get-started/) 的官方脚本与标记。它们的 `siteKey` 可以公开；secret key 和服务端 token 校验必须留在 `backend/handler.ts` 或其他私有服务中。X 适配器没有账户 ID：只有页面存在 X 标记并且访客同意后，才按 [X for Websites](https://help.x.com/en/using-x/embed-x-feed) 的方式加载官方 widget 资源。
+
+并非每个集成都是字面意义上的 Cookie。Cloudflare Web Analytics 主要使用 beacon token，Turnstile 执行挑战，X widget 运行时可能接收请求或 Cookie 信息。应依据 provider 当前说明填写类别和保存期限，不要宣称所有可选 provider 都会写入同一种 Cookie。
 
 X 集成按需加载：同意后，只有页面存在 X/Twitter 嵌入标记时才加载 `platform.x.com/widgets.js`。选择前不会加载社交嵌入。其他 provider 专属字段可以保留在主题配置中供未来代码使用，但不会仅因写入配置就发起网络请求。
 
@@ -158,11 +194,12 @@ privacy:
 `renderCookieConsent` 根据经过校验的 context 生成固定的弹窗和横幅。动态值遵循两条不同规则：
 
 ```ts
+// 文字和 URL 使用不同的安全渲染路径。
 const label = context.escapeHtml(category.label);
 const href = context.safeUrl(privacy.policyHref);
 ```
 
-标签和元数据作为文字转义；政策链接和受同意控制的脚本 URL 经过 `safeUrl`，不安全协议会被拒绝。内置 provider 的 URL 固定在已登记的浏览器实现中，服务 ID 和 token 只作为数据处理。浏览器脚本使用 DOM API 创建元素，并且只在同意后加载可选资源。插件界面没有 `innerHTML`、`eval`、任意属性或配置注入的标记。
+标签和元数据作为文字转义；政策链接和受同意控制的脚本 URL 经过 `safeUrl`，不安全协议会被拒绝。内置 provider 的 URL 固定在已登记的浏览器实现中，canonical provider 名称和公开 token/key 只作为数据处理。浏览器脚本使用 DOM API 创建元素，并且只在同意后加载可选资源。插件界面没有 `innerHTML`、`eval`、任意属性或配置注入的标记。
 
 提供者和保存期限会直接显示在选择器中，帮助访客理解类别用途；法律政策仍然是人工审核的页面，而不是悄悄生成的法律文本。
 

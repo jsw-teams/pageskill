@@ -74,11 +74,27 @@ export class Router<Environment = Record<string, unknown>, ExecutionContext = un
 
 type AssetBinding = { fetch(request: Request): Response | Promise<Response> };
 
+/** A public discovery link emitted by the renderer and attached by the runtime. */
+export type SiteDiscoveryLink = {
+  href: string;
+  rel: string;
+  type?: string;
+};
+
+/** Runtime switches generated from config.yml and the actual public outputs. */
+export type SiteDiscoveryOptions = {
+  links?: SiteDiscoveryLink[];
+  markdown?: boolean;
+  contentTypes?: Record<string, string>;
+  contentSignal?: string;
+};
+
 export type SiteFetchOptions<Environment = Record<string, unknown>, ExecutionContext = unknown> = {
   router?: Router<Environment, ExecutionContext>;
   defaultLocale?: string;
   staticDirectory?: string;
   assets?: (request: Request, env: Environment) => Response | Promise<Response>;
+  discovery?: SiteDiscoveryOptions;
 };
 
 function publicAssetRequest(request: Request, staticDirectory = ''): Request | null {
@@ -97,19 +113,49 @@ function assetRequest(request: Request, defaultLocale: string, staticDirectory =
   return new Request(url, publicRequest);
 }
 
-function assetRequests(request: Request, defaultLocale: string, staticDirectory = ''): Request[] {
+/** Return the generated Markdown mirror for a document route when one exists. */
+function markdownAssetRequest(request: Request, staticDirectory = ''): Request | null {
+  const publicRequest = publicAssetRequest(request, staticDirectory) || request;
+  const url = new URL(publicRequest.url);
+  const pathname = url.pathname;
+  // Machine-readable endpoints and non-HTML assets must keep their original
+  // representation even when a client sends a broad Accept header.
+  if (pathname.startsWith('/.well-known/') || /\.(?:css|gif|ico|jpe?g|js|json|mjs|png|svg|txt|webmanifest|webp|woff2?|xml)$/i.test(pathname)) return null;
+  if (pathname === '/') url.pathname = '/index.md';
+  else if (pathname.endsWith('/')) url.pathname = `${pathname.slice(0, -1)}.md`;
+  else if (/\.html$/i.test(pathname)) url.pathname = pathname.replace(/\.html$/i, '.md');
+  else url.pathname = `${pathname}.md`;
+  return new Request(url, publicRequest);
+}
+
+function acceptsMarkdown(request: Request): boolean {
+  const accept = request.headers.get('accept') || '';
+  return accept.split(',').some(value => {
+    const [media, ...parameters] = value.trim().toLowerCase().split(';');
+    if (media !== 'text/markdown') return false;
+    const quality = parameters.find(parameter => parameter.trim().startsWith('q='));
+    return quality ? Number(quality.trim().slice(2)) > 0 : true;
+  });
+}
+
+function wantsMarkdown(request: Request, options: { discovery?: SiteDiscoveryOptions }): boolean {
+  return options.discovery?.markdown === true && acceptsMarkdown(request);
+}
+
+function assetRequests(request: Request, defaultLocale: string, staticDirectory = '', markdown = false): Request[] {
   const publicRequest = publicAssetRequest(request, staticDirectory) || request;
   const standard = assetRequest(publicRequest, defaultLocale, staticDirectory);
   const original = new Request(publicRequest);
   // Pages' ASSETS binding owns directory-index and trailing-slash resolution.
   // Ask for the published URL first; translating `/` to `index.html` before
   // the binding sees it can turn Pages' canonical 308 into a self-redirect.
-  const candidates = [original, standard];
+  const preferredMarkdown = markdown ? markdownAssetRequest(publicRequest, staticDirectory) : null;
+  const candidates = preferredMarkdown ? [preferredMarkdown, original, standard] : [original, standard];
   const normalizedStaticDirectory = String(staticDirectory).replace(/^\/+|\/+$/g, '');
-  const standardPathname = new URL(standard.url).pathname;
+  const preferredPathname = preferredMarkdown ? new URL(preferredMarkdown.url).pathname : new URL(standard.url).pathname;
   const staticPrefix = normalizedStaticDirectory ? `/${normalizedStaticDirectory}/` : '';
-  if (normalizedStaticDirectory && !standardPathname.startsWith(staticPrefix)) {
-    const staticUrl = new URL(standard.url);
+  if (normalizedStaticDirectory && !preferredPathname.startsWith(staticPrefix)) {
+    const staticUrl = new URL(preferredMarkdown?.url || standard.url);
     staticUrl.pathname = `/${normalizedStaticDirectory}${staticUrl.pathname}`;
     candidates.push(new Request(staticUrl, request));
   }
@@ -150,13 +196,50 @@ function notFoundResponse(method: string): Response {
   return method === 'HEAD' ? new Response(null, response) : response;
 }
 
+function appendVary(headers: Headers, value: string) {
+  const values = (headers.get('vary') || '').split(',').map(entry => entry.trim()).filter(Boolean);
+  if (!values.some(entry => entry.toLocaleLowerCase() === value.toLocaleLowerCase())) values.push(value);
+  headers.set('vary', values.join(', '));
+}
+
+/** Reject header values that could break the generated RFC 8288 field. */
+function validLinkPart(value: unknown): value is string {
+  return typeof value === 'string' && Boolean(value) && !/[\u0000-\u001f<>"\\]/.test(value);
+}
+
+/** Serialize renderer-owned discovery links into one Link response header. */
+function discoveryLinkHeader(links: SiteDiscoveryLink[] = []): string {
+  return links.filter(link => validLinkPart(link.href) && validLinkPart(link.rel) && (!link.type || validLinkPart(link.type)))
+    .map(link => `<${link.href}>; rel="${link.rel}"${link.type ? `; type="${link.type}"` : ''}`).join(', ');
+}
+
+/** Add generated discovery metadata without replacing headers from a handler. */
+function withDiscoveryHeaders(response: Response, options: SiteDiscoveryOptions | undefined, request: Request, negotiatedMarkdown = false): Response {
+  if (!options) return response;
+  const headers = new Headers(response.headers);
+  const link = discoveryLinkHeader(options.links);
+  if (link) headers.append('link', link);
+  if (options.contentSignal) headers.set('content-signal', options.contentSignal);
+  if (options.markdown === true && !request.url.includes('/.well-known/')) appendVary(headers, 'Accept');
+  if (negotiatedMarkdown) {
+    headers.set('content-type', 'text/markdown; charset=utf-8');
+    headers.delete('content-encoding');
+    headers.delete('content-range');
+    headers.delete('transfer-encoding');
+  }
+  const pathname = new URL(request.url).pathname;
+  const configuredType = options.contentTypes?.[pathname];
+  if (configuredType && response.status >= 200 && response.status < 300) headers.set('content-type', configuredType);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 export function createSiteFetchHandler<Environment = Record<string, unknown>, ExecutionContext = unknown>(
   options: SiteFetchOptions<Environment, ExecutionContext> = {}
 ) {
   const defaultLocale = options.defaultLocale || 'en';
   return async (request: Request, env: Environment, executionContext: ExecutionContext): Promise<Response> => {
     const dynamic = options.router ? await options.router.match(request, env, executionContext) : null;
-    if (dynamic) return dynamic;
+    if (dynamic) return withDiscoveryHeaders(dynamic, options.discovery, request);
     const method = request.method.toUpperCase();
     const security = classifyPublicUrl(request.url, { staticDirectory: options.staticDirectory });
     if (!security.ok) {
@@ -165,36 +248,50 @@ export function createSiteFetchHandler<Environment = Record<string, unknown>, Ex
         status,
         headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }
       });
-      return method === 'HEAD' ? new Response(null, response) : response;
+      return withDiscoveryHeaders(method === 'HEAD' ? new Response(null, response) : response, options.discovery, request);
     }
     // `/api` is the reserved same-origin backend namespace. Once Router.match
     // returns null, never let an accidentally similarly named static file
     // answer the request. Other paths may still fall through to assets.
-    if (isBackendNamespace(security.pathname)) return notFoundResponse(method);
+    if (isBackendNamespace(security.pathname)) return withDiscoveryHeaders(notFoundResponse(method), options.discovery, request);
     if (method !== 'GET' && method !== 'HEAD') {
-      return new Response('Method not allowed', {
+      return withDiscoveryHeaders(new Response('Method not allowed', {
         status: 405,
         headers: { allow: 'GET, HEAD', 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }
-      });
+      }), options.discovery, request);
     }
     const explicitAssets = options.assets;
     if (explicitAssets) {
-      const response = await explicitAssets(assetRequest(request, defaultLocale, options.staticDirectory), env);
-      return method === 'HEAD' ? new Response(null, response) : response;
+      const markdown = wantsMarkdown(request, options);
+      let response: Response | undefined;
+      if (markdown) {
+        const candidate = markdownAssetRequest(request, options.staticDirectory);
+        if (candidate) {
+          const preferred = await explicitAssets(candidate, env);
+          if (preferred.status !== 404) response = preferred;
+        }
+      }
+      response ||= await explicitAssets(assetRequest(request, defaultLocale, options.staticDirectory), env);
+      const headResponse = method === 'HEAD' ? new Response(null, response) : response;
+      return withDiscoveryHeaders(headResponse, options.discovery, request, Boolean(markdown && response.status >= 200 && response.status < 300 && response.headers.get('content-type')?.toLocaleLowerCase().startsWith('text/markdown')));
     }
     const binding = (env as Record<string, unknown> | undefined)?.ASSETS as AssetBinding | undefined;
     if (binding && typeof binding.fetch === 'function') {
       let response = new Response('Not found', { status: 404 });
-      for (const candidate of assetRequests(request, defaultLocale, options.staticDirectory)) {
+      const markdown = wantsMarkdown(request, options);
+      for (const candidate of assetRequests(request, defaultLocale, options.staticDirectory, markdown)) {
         response = await binding.fetch(candidate);
         if (isSelfRedirect(request, response)) {
           response = new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
           continue;
         }
-        if (response.status !== 404) return method === 'HEAD' ? new Response(null, response) : response;
+        if (response.status !== 404) {
+          const negotiated = Boolean(markdown && new URL(candidate.url).pathname.endsWith('.md') && response.status >= 200 && response.status < 300);
+          return withDiscoveryHeaders(method === 'HEAD' ? new Response(null, response) : response, options.discovery, request, negotiated);
+        }
       }
-      return method === 'HEAD' ? new Response(null, response) : response;
+      return withDiscoveryHeaders(method === 'HEAD' ? new Response(null, response) : response, options.discovery, request);
     }
-    return notFoundResponse(method);
+    return withDiscoveryHeaders(notFoundResponse(method), options.discovery, request);
   };
 }

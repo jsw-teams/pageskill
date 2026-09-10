@@ -60,4 +60,4 @@ Do not use a different directory name for each language or put the post in a rou
 
 ## Next step
 
-Read [How we build a plugin: the Cookie selector as a reference](/en/posts/cookies/) to study a complete consent-aware plugin.
+Read [How we build a plugin](/en/posts/cookies/) to study the Cookie selector reference implementation.

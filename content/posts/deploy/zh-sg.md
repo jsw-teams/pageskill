@@ -45,6 +45,8 @@ npm run g
 
 查看 `dist/public`，确认首页、文章、资源和站点地图都在里面。需要 API 的站点还要准备同一个服务的后端运行时。
 
+渲染器还会根据 `config.yml` 和实际写出的输出生成 Agent 发现信息：`/.well-known/agent.json`、`/.well-known/ai-catalog.json`、条件生成的 API catalog、Agent Skills 索引、`robots.txt` 和 `llms.txt`。不要手工新增这些文件。启用 Markdown mirror 时，页面会协商 `Accept: text/markdown`；OAuth/OIDC、MCP、WebMCP 和 DNS-AID 要等真实服务或外部 DNS/DNSSEC 配置准备好后再启用。
+
 ## 4. 先查看发布计划
 
 先运行安全检查：

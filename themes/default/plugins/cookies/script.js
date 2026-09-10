@@ -1,3 +1,4 @@
+// Optional provider resources are created only after an affirmative category choice.
 const root = document.querySelector('[data-cookie-consent]');
 
 if (root) {
@@ -14,9 +15,9 @@ if (root) {
     }
   };
   const integrations = parse(root.dataset.cookieIntegrations) || [];
-  const googleIntegrations = integrations.filter(item => item.provider === 'googleAnalytics' || item.provider === 'googleAds');
-  const captchaIntegrations = integrations.filter(item => item.provider === 'captcha');
-  const xIntegrations = integrations.filter(item => item.provider === 'x');
+  const googleIntegrations = integrations.filter(item => item.provider === 'google-analytics' || item.provider === 'google-ads');
+  const captchaIntegrations = integrations.filter(item => item.provider === 'recaptcha' || item.provider === 'hcaptcha' || item.provider === 'turnstile');
+  const xIntegrations = integrations.filter(item => item.provider === 'x-for-websites');
   const scriptPromises = new Map();
   let lastFocus = null;
 
@@ -105,8 +106,8 @@ if (root) {
   });
 
   const googleConsent = categories => {
-    const analyticsGranted = googleIntegrations.some(item => item.provider === 'googleAnalytics' && categories?.[item.category]);
-    const advertisingGranted = googleIntegrations.some(item => item.provider === 'googleAds' && categories?.[item.category]);
+    const analyticsGranted = googleIntegrations.some(item => item.provider === 'google-analytics' && categories?.[item.category]);
+    const advertisingGranted = googleIntegrations.some(item => item.provider === 'google-ads' && categories?.[item.category]);
     return {
       analytics_storage: analyticsGranted ? 'granted' : 'denied',
       ad_storage: advertisingGranted ? 'granted' : 'denied',
@@ -121,7 +122,9 @@ if (root) {
 
   const loadGoogle = async categories => {
     const allowed = googleIntegrations.filter(item => categories?.[item.category]);
-    const ids = [...new Set(allowed.map(item => item.measurementId || item.conversionId).filter(Boolean))];
+    // GA4 uses a G- measurement ID; Google Ads uses the Google tag ID shown
+    // by Ads (normally AW- or GT-). Neither value is a Pageskill-generated ID.
+    const ids = [...new Set(allowed.map(item => item.measurementId || item.tagId).filter(Boolean))];
     if (!ids.length) return;
     window.dataLayer = window.dataLayer || [];
     window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
@@ -144,7 +147,7 @@ if (root) {
   };
 
   const loadCloudflare = categories => integrations
-    .filter(item => item.provider === 'cloudflareWebAnalytics' && categories?.[item.category])
+    .filter(item => item.provider === 'cloudflare-web-analytics' && categories?.[item.category])
     .forEach(item => {
       if (item.token) void loadScript(`cloudflare:${item.token}`, 'https://static.cloudflareinsights.com/beacon.min.js', {
         type: 'module',
@@ -155,11 +158,11 @@ if (root) {
     });
 
   const loadBaidu = categories => integrations
-    .filter(item => item.provider === 'baiduTongji' && categories?.[item.category])
+    .filter(item => item.provider === 'baidu-tongji' && categories?.[item.category])
     .forEach(item => {
-      if (!item.siteId) return;
+      if (!item.siteSignature) return;
       window._hmt = window._hmt || [];
-      void loadScript(`baidu:${item.siteId}`, `https://hm.baidu.com/hm.js?${encodeURIComponent(item.siteId)}`, { async: true, 'data-pagekiln-provider': 'baidu' });
+      void loadScript(`baidu:${item.siteSignature}`, `https://hm.baidu.com/hm.js?${encodeURIComponent(item.siteSignature)}`, { async: true, 'data-pagekiln-provider': 'baidu' });
     });
 
   const captchaSources = {
@@ -174,7 +177,7 @@ if (root) {
   };
 
   const prepareCaptcha = item => {
-    const selector = captchaSelectors[item.platform];
+    const selector = captchaSelectors[item.provider];
     if (!selector) return;
     document.querySelectorAll(selector).forEach(element => {
       if (item.siteKey && !element.getAttribute('data-sitekey')) element.setAttribute('data-sitekey', item.siteKey);
@@ -183,19 +186,19 @@ if (root) {
   };
 
   const loadCaptcha = categories => captchaIntegrations
-    .filter(item => item.platform && item.siteKey && categories?.[item.category])
+    .filter(item => item.provider && item.siteKey && categories?.[item.category])
     .forEach(item => {
       prepareCaptcha(item);
-      const source = captchaSources[item.platform];
+      const source = captchaSources[item.provider];
       if (!source) return;
-      void loadScript(`captcha:${item.platform}`, source, {
+      void loadScript(`captcha:${item.provider}`, source, {
         async: true,
         defer: true,
         'data-pagekiln-provider': 'captcha',
-        'data-pagekiln-platform': item.platform
+        'data-pagekiln-platform': item.provider
       }).then(loaded => {
         window.dispatchEvent(new CustomEvent('pagekiln:captcha-ready', {
-          detail: { platform: item.platform, siteKey: item.siteKey, loaded: Boolean(loaded) }
+          detail: { platform: item.provider, siteKey: item.siteKey, loaded: Boolean(loaded) }
         }));
       });
     });
@@ -206,7 +209,7 @@ if (root) {
     void loadScript('x-widgets', 'https://platform.x.com/widgets.js', {
       async: true,
       defer: true,
-      'data-pagekiln-provider': 'x'
+      'data-pagekiln-provider': 'x-for-websites'
     }).then(loaded => {
       if (loaded) window.twttr?.widgets?.load?.();
       window.dispatchEvent(new CustomEvent('pagekiln:x-ready', { detail: { loaded: Boolean(loaded) } }));
@@ -221,19 +224,19 @@ if (root) {
     });
 
   const clearProviderStorage = (before, after) => {
-    const analyticsBefore = googleIntegrations.some(item => item.provider === 'googleAnalytics' && before?.[item.category]);
-    const analyticsAfter = googleIntegrations.some(item => item.provider === 'googleAnalytics' && after?.[item.category]);
+    const analyticsBefore = googleIntegrations.some(item => item.provider === 'google-analytics' && before?.[item.category]);
+    const analyticsAfter = googleIntegrations.some(item => item.provider === 'google-analytics' && after?.[item.category]);
     if (analyticsBefore && !analyticsAfter) clearCookies(['_ga', '_gid', '_gat']);
-    const advertisingBefore = googleIntegrations.some(item => item.provider === 'googleAds' && before?.[item.category]);
-    const advertisingAfter = googleIntegrations.some(item => item.provider === 'googleAds' && after?.[item.category]);
+    const advertisingBefore = googleIntegrations.some(item => item.provider === 'google-ads' && before?.[item.category]);
+    const advertisingAfter = googleIntegrations.some(item => item.provider === 'google-ads' && after?.[item.category]);
     if (advertisingBefore && !advertisingAfter) {
       clearCookies(['_gcl_']);
       try {
         localStorage.removeItem('_gcl_ls');
       } catch {}
     }
-    const baiduBefore = integrations.some(item => item.provider === 'baiduTongji' && before?.[item.category]);
-    const baiduAfter = integrations.some(item => item.provider === 'baiduTongji' && after?.[item.category]);
+    const baiduBefore = integrations.some(item => item.provider === 'baidu-tongji' && before?.[item.category]);
+    const baiduAfter = integrations.some(item => item.provider === 'baidu-tongji' && after?.[item.category]);
     if (baiduBefore && !baiduAfter) clearCookies(['Hm_', '_hmt']);
   };
 

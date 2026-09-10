@@ -33,7 +33,32 @@ theme:
 
 组件专属样式放在组件旁边，例如 `themes/default/components/learning-path/style.css`。插件样式放在自己的 `themes/default/plugins/<id>/style.css`。
 
-## 3. 复用或增加一次能力
+## 3. 新增、修改或删除样式
+
+让每份样式和负责它的能力放在一起：
+
+- 修改现有规则时，编辑 `themes/default/layouts/site/style.css`，或编辑负责输出标记的 component、Block、plugin 旁边的样式文件。
+- 新增样式时，在对应模块下创建 stylesheet，加入模块的 `resources.styles`，并确保主题组装入口仍然导入这个模块。新增 component 时，还要把它加入 `themes/default/components/index.ts`。
+- 删除样式时，同时删除 import、资源登记，以及对应 class 或资源的所有引用。生成前先搜索源码，避免留下没有用途的文件。
+
+例如，组件自己的资源要明确登记，并在不明显的决定旁边写注释：
+
+```ts
+export const modules = [
+  {
+    id: 'reading-tip',
+    kind: 'component',
+    resources: {
+      // 让编译器可以追踪组件旁边的样式。
+      styles: ['components/reading-tip/style.css']
+    }
+  }
+];
+```
+
+每次新增、修改或删除后运行 `npm run compile-theme` 和 `npm run g -- --profile`，打开使用该能力的路由，确认生成的资源清单跟随源码变化。
+
+## 4. 复用或增加一次能力
 
 先在 Markdown 中使用已有 Block，再考虑写代码。如果缺少组件，把 `index.ts`、可选的 `style.css` 和 `messages.yml` 放在 `themes/default/components/<id>/`，再把模块加入 `components/index.ts`。保留 `index.ts` 的统一组装，共享辅助函数放在 `components/shared/`，不要把标记复制到每篇文章。
 
@@ -43,7 +68,7 @@ npm run g
 npm run s
 ```
 
-## 4. 在 theme.yml 中安全增加 shell 链接
+## 5. 在 theme.yml 中安全增加 shell 链接
 
 主导航仍然是 `config.yml` 中的站点数据。如果主题需要在标准导航或页脚工具前后增加链接，请使用结构化的 `plugins.chrome` 选项：
 

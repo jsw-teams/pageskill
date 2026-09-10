@@ -18,7 +18,9 @@ Pageskill 3.0.2 把版本历史和教程内容分开，并收紧响应式阅读�
 - 修复语言选择页的推荐标签布局，预留标签行并保持卡片等高。文章页头现在和正文阅读栏对齐，在封面之前紧凑显示标题、说明、日期和作者；手机目录默认折叠。
 - 归档缩略图固定使用 16:9 容器并显式设置 `height: 100%`、`width: 100%` 和 `object-fit: cover`，不会让原图 `height` 属性撑出高空白行；post 卡片和文章封面使用稳定容器，并用 `object-fit: contain` 保留完整原图。
 - 增加主题级 `plugins.chrome` 结构化插槽，可在标准导航和页脚工具前后增加链接。语言替换、尺寸上限、路径穿越/协议检查和标签转义把自定义限制在安全链接范围；不接受 HTML、脚本、CSS、选择器或任意属性。
-- 扩展 Cookie 插件为由代码登记能力、由主题配置 provider 实例的同意控制模块。内置支持 Google Analytics、Google Ads、Cloudflare Web Analytics、reCAPTCHA/hCaptcha/Turnstile 和按需 X 嵌入；额外 integration 字段可以扩展，但只有登记对应模块后才会生效。可选 provider 资源必须在明确同意后加载，`config.yml` 不会进入 `dist/public`，也没有线上运行时写入路由。
+- 扩展 Cookie 插件为由代码登记能力、由主题配置 provider 实例的同意控制模块。内置配置使用 provider 数组和真实网页接入字段：GA4 的 `measurementId`（`G-...`）、Google Ads 的 `tagId`（`AW-...`/`GT-...`）、Cloudflare Web Analytics 的 `token`、百度统计的 `siteSignature`、验证码的 `siteKey`，以及不需要账户 ID 的 X for Websites widget。额外 integration 字段可以扩展，但只有登记对应模块后才会生效。可选 provider 资源必须在明确同意后加载，`config.yml` 不会进入 `dist/public`，也没有线上运行时写入路由。
+- 让 Agent 发现信息归渲染器负责：编译器根据配置和实际输出生成 `.well-known/agent.json`、ARD、条件生成的 RFC 9727 API catalog、Agent Skills 索引、`robots.txt` 和 `llms.txt`。共享 Fetch Router 生成 RFC 8288 `Link`，用 `Vary: Accept` 协商 `Accept: text/markdown` 镜像，并把 robots 策略中的 `Content-Signal` 带到响应中。生成的 Skill 会遍历代码登记能力表和配置段落，不再维护第二份手写字段映射。
+- 让日常插件和样式工作优先配置化。`search`、`toc`、`privacyConsent` 和 `chrome` 在 `theme.yml` 公开受 schema 约束的实例选项和部分 `copy.<locale>` 映射；新增、修改、删除样式都通过所属模块的资源登记完成，不修改生成输出。
 
 ### 兼容用法
 
@@ -26,16 +28,20 @@ Pageskill 3.0.2 把版本历史和教程内容分开，并收紧响应式阅读�
 - 新增语言可以在尚未完成翻译前启用。随着翻译进度补上界面和内容文件；缺失的界面键使用回退语言，缺失整篇文档使用回退内容，已经部分翻译的 Markdown 则保持原样，不会静默机器翻译。
 - 如果旧主题有语言启用/禁用开关，请删除这个重复设置；访客语言选择仍来自有效语言列表，并保留回退行为。
 - 发布前运行 `npm run g -- --profile`，检查文章和更新归档/Feed，再运行 `npm run d -- --dry-run`。
+- 不要把生成的发现文件复制回源码。需要 API 条目、可选 ARD 查询或条件 OAuth/MCP 元数据时，在 `config.yml` 配置后重新生成，让文件、媒体类型和响应头保持一致。
+- 把旧的对象形 `privacyConsent.integrations` 迁移为 Cookie 教程中的数组。迁移期间编译器会接受旧 provider key，并把 `conversionId` 映射到 Google Ads 的 `tagId`、把 `siteId` 映射到百度的 `siteSignature`；新配置应使用 canonical provider 名称和 provider 自己提供的真实值。Google Ads 转化事件仍需单独审核并实现事件逻辑，同意适配器只初始化 Google tag。
 
 ### 已移除项与替代方案
 
 - 不再使用独立的 `content/updates` 源 collection。原因是版本文章和普通文章需要共用一套按日期排序的来源，避免重复内容机制；替代用法是 `content/posts` 加 `category: update`。公开更新索引、路由、Feed、搜索结果和语言链接没有被删除。
-- 没有移除 Cookie 同意或语言选择功能。提供者/保存期限是说明性元数据，经过审核的本地化隐私页面仍然是法律政策来源。
+- 没有移除 Cookie 同意或语言选择功能。提供者/保存期限是说明性元数据，经过审核的本地化隐私页面仍然是法律政策来源。canonical integration 结构替换了含义不清的 provider 对象键；旧结构在迁移期间仍可读取，并提供了明确替代用法。
 - 现有 Cookie 存储键和 `gatedScripts` 行为保持兼容。把 provider 实例移到 `themes/<name>/theme.yml`；secret 和验证码校验继续放在服务端。provider 字段不完整或尚未支持时会被忽略，默认不会启用任何 provider。
+- 没有移除发现 endpoint；手工维护的快照改由渲染器生成。OAuth/OIDC、MCP、WebMCP 和 DNS-AID 仍然是可选能力，在真实服务或外部 DNS/DNSSEC 契约完成前不会生效。
 
 ### 验证
 
 - `npm run g -- --profile` 通过；runtime、theme、backend 编译通过，构建报告 48 篇源文档。
+- 本地预览实测：明确请求 Markdown 时返回 `text/markdown`，`/.well-known/api-catalog` 返回 `application/linkset+json`，响应带生成的 `Link`/`Content-Signal`；访问 `/config.yml` 和 `/assets/config.yml` 返回 404 且没有私有配置文本。
 - 56 个 HTML 内部 `href`/`src` 检查没有缺失引用。posts Feed 有 10 条、updates Feed 有 3 条，两个集合保持隔离；3.0.0 和 3.0.1 的旧 posts 路由已经不存在。
 - 1280px 桌面和 390px 手机检查通过：语言卡片均为 136px 且标题基线一致，归档封面为 144x81，文章标题／日期／作者紧凑对齐，手机目录默认折叠并可点击展开，页面没有横向溢出。根语言页能匹配繁体中文浏览器偏好，品牌和隐私链接会指向 `zh-tw`。
 - `git diff --check` 通过。`npm run d -- --dry-run` 因未配置 `deployment.targets` 以退出码 1 结束；没有执行部署或 npm 发布。

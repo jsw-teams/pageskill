@@ -45,6 +45,8 @@ npm run g
 
 Inspect `dist/public` and check that the home page, articles, assets, and sitemap are present. A site with APIs also needs its server runtime alongside the same service.
 
+The renderer also creates Agent discovery from `config.yml` and the outputs it actually wrote: `/.well-known/agent.json`, `/.well-known/ai-catalog.json`, the conditional API catalog, the Agent Skills index, `robots.txt`, and `llms.txt`. Do not add these files by hand. Pages with Markdown mirrors negotiate `Accept: text/markdown`; OAuth/OIDC, MCP, WebMCP, and DNS-AID remain disabled until the real service or external DNS/DNSSEC setup exists.
+
 ## 4. Preview the publishing plan
 
 Run the safe check first:

@@ -60,4 +60,4 @@ npm run s
 
 ## 下一步
 
-继续看[我们如何构建插件：以 Cookie 选择器为例](/zh-sg/posts/cookies/)，学习完整的同意后加载插件。
+继续看[我们如何构建插件](/zh-sg/posts/cookies/)，以 Cookie 选择器为参考学习完整的同意后加载插件。

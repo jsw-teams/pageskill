@@ -8,17 +8,19 @@ export function tocEnabled(context: ThemeRenderContext): boolean {
   return setting?.enabled !== false;
 }
 
+/** Clamp the configured depth so a theme cannot create an unbounded outline. */
 function tocMaxDepth(context: ThemeRenderContext): number {
   const value = Number(context.themeConfig?.plugins?.toc?.maxDepth || 3);
   return Math.max(2, Math.min(6, Number.isFinite(value) ? value : 3));
 }
 
+/** Build a TOC from parsed Markdown headings rather than hand-written anchors. */
 export function automaticToc(context: ThemeRenderContext): string {
   if (!tocEnabled(context)) return '';
   const headings = context.doc.nodes.filter(node => node.kind === 'heading' && node.depth > 1 && node.depth <= tocMaxDepth(context)) as Extract<MarkdownNode, { kind: 'heading' }>[];
   if (headings.length < 2) return '';
-  const label = context.translate('toc.title', 'Table of contents');
-  const onThisPage = context.translate('toc.onThisPage', 'On this page');
+  const label = context.pluginText('toc', 'title', context.translate('toc.title', 'Table of contents'));
+  const onThisPage = context.pluginText('toc', 'onThisPage', context.translate('toc.onThisPage', 'On this page'));
   return `<aside class="pattern-toc"><details class="toc-drawer" open><summary><span class="toc-summary-icon" aria-hidden="true">${iconSvg(BookOpen, 'toc-icon')}</span><span>${context.escapeHtml(label)}</span></summary><nav class="toc-panel" aria-label="${context.escapeHtml(label)}"><strong>${context.escapeHtml(onThisPage)}</strong><ol>${headings.map(heading => `<li class="toc-depth-${heading.depth}"><a href="#${context.escapeHtml(heading.id)}">${context.renderInline(heading.text)}</a></li>`).join('')}</ol></nav></details></aside>`;
 }
 
@@ -28,8 +30,8 @@ export const tocBlock: ThemeBlockDefinition = {
   render: (_node, context) => {
     if (!tocEnabled(context)) return '';
     const headings = context.doc.nodes.filter(node => node.kind === 'heading' && node.depth > 1 && node.depth <= tocMaxDepth(context)) as Extract<MarkdownNode, { kind: 'heading' }>[];
-    const label = context.translate('toc.title', 'Table of contents');
-    const onThisPage = context.translate('toc.onThisPage', 'On this page');
+    const label = context.pluginText('toc', 'title', context.translate('toc.title', 'Table of contents'));
+    const onThisPage = context.pluginText('toc', 'onThisPage', context.translate('toc.onThisPage', 'On this page'));
     return `<nav class="block toc" aria-label="${context.escapeHtml(label)}"><strong>${context.escapeHtml(onThisPage)}</strong><ul>${headings.map(heading => `<li><a href="#${context.escapeHtml(heading.id)}">${context.renderInline(heading.text)}</a></li>`).join('')}</ul></nav>`;
   }
 };
@@ -38,9 +40,13 @@ export const plugin: ThemePluginDefinition = {
   implementation: 'plugins/toc/index.ts',
   resources: { styles: ['plugins/toc/style.css'], scripts: ['plugins/toc/script.js'] },
   i18n: 'plugins/toc/messages.yml',
-  defaults: { enabled: true, maxDepth: 3 },
+  // The switch and localized labels are instance data; the renderer remains
+  // responsible for the accessible markup and heading filtering.
+  defaults: { enabled: true, maxDepth: 3, copy: {} },
   schema: {
     enabled: { type: 'boolean' },
-    maxDepth: { type: 'number', min: 2, max: 6 }
+    maxDepth: { type: 'number', min: 2, max: 6 },
+    // Allow partial locale maps so a new language can inherit missing labels.
+    copy: { type: 'object', additionalProperties: true }
   }
 };

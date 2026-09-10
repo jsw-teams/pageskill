@@ -1,5 +1,6 @@
 import type { ThemePluginDefinition, ThemeShellContext } from '../../../../src/theme-api.ts';
 
+/** Render the search shell; the client script receives only escaped data attributes. */
 export function renderSearch(context: ThemeShellContext): string {
   const search = context.search;
   if (!search.enabled) return '';
@@ -12,11 +13,16 @@ export const plugin: ThemePluginDefinition = {
   implementation: 'plugins/search/index.ts',
   resources: { styles: ['plugins/search/style.css'], scripts: ['plugins/search/script.js'] },
   i18n: 'plugins/search/messages.yml',
-  defaults: { enabled: true, provider: 'Pageskill', maxResults: 8, shardSize: 500 },
+  // Search behaviour is code-owned while labels and safe limits are instance
+  // data, so a site can reword the UI from theme.yml without editing JS.
+  defaults: { enabled: true, provider: 'Pageskill', maxResults: 8, shardSize: 500, copy: {} },
   schema: {
     enabled: { type: 'boolean' },
     provider: { type: 'string' },
     maxResults: { type: 'number', min: 1, max: 50 },
-    shardSize: { type: 'number', min: 50, max: 5000 }
+    shardSize: { type: 'number', min: 50, max: 5000 },
+    // Copy is keyed by locale and may be partial; compiler fallback keeps
+    // untranslated labels usable when a locale is added incrementally.
+    copy: { type: 'object', additionalProperties: true }
   }
 };

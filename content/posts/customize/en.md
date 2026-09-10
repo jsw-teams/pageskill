@@ -33,7 +33,32 @@ Shared shell CSS lives in `themes/default/layouts/site/style.css`. Change an exi
 
 A component-specific change belongs beside that component, such as `themes/default/components/learning-path/style.css`. A plugin's style belongs in its own `themes/default/plugins/<id>/style.css`.
 
-## 3. Reuse or add one capability
+## 3. Add, change, or remove a style
+
+Keep each style beside the capability that owns it:
+
+- Change an existing rule in `themes/default/layouts/site/style.css`, or in the stylesheet beside the component, Block, or plugin that renders the markup.
+- Add a new stylesheet under that module, list it in the module's `resources.styles`, and keep the module imported by the theme assembly. For a new component, also add its export to `themes/default/components/index.ts`.
+- Remove a style by deleting its import/resource entry and every reference to its class or asset. Search the source tree before generating so an unused file is not silently kept.
+
+For example, a component-owned resource remains explicit and carries a comment when the choice is not obvious:
+
+```ts
+export const modules = [
+  {
+    id: 'reading-tip',
+    kind: 'component',
+    resources: {
+      // Keep the style next to the component so the compiler can track it.
+      styles: ['components/reading-tip/style.css']
+    }
+  }
+];
+```
+
+Run `npm run compile-theme` and `npm run g -- --profile` after each add, edit, or removal. Inspect the route that uses the capability and confirm the generated resource list changes with the source.
+
+## 4. Reuse or add one capability
 
 Use an existing Block in Markdown before adding code. If a component is missing, put its `index.ts`, optional `style.css`, and `messages.yml` in `themes/default/components/<id>/`, then add its module to `components/index.ts`. Keep the shared assembly in `index.ts`; put shared helpers in `components/shared/` and do not copy markup into each article.
 
@@ -43,7 +68,7 @@ npm run g
 npm run s
 ```
 
-## 4. Add safe shell links from theme.yml
+## 5. Add safe shell links from theme.yml
 
 Primary navigation remains site data in `config.yml`. If a theme needs an extra link before or after the standard navigation or footer tools, use the structured `plugins.chrome` option:
 

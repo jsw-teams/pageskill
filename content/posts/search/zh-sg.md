@@ -19,9 +19,15 @@ plugins:
     enabled: true
     maxResults: 8
     shardSize: 500
+    copy:
+      zh-sg:
+        # copy 是数据；缺少的 key 会从 messages.yml 回退。
+        placeholder: 搜索本站
 ```
 
 `maxResults` 限制显示数量，`shardSize` 控制生成索引如何分片；站点还不大时保持默认值即可。
+
+`copy` 可选，也可以只翻译一部分。语言启用和回退仍然放在 `config.yml`，不要给搜索插件增加语言开关。只有要改变行为或 schema 时，才修改模块代码。
 
 当前主题的搜索模块在 `themes/default/plugins/search/`；`index.ts`、脚本、样式和 messages 放在一起。只有需要改变默认搜索行为时才修改这个模块。
 

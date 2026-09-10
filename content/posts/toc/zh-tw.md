@@ -41,6 +41,19 @@ npm run s
 
 預設 `toc` 外掛在 `themes/default/plugins/toc/`；Block、樣式和 messages 是一個可重用模組。在 `themes/default/theme.yml` 的 `plugins.toc` 下設定開關和目錄深度。
 
+```yaml
+plugins:
+  toc:
+    enabled: true
+    maxDepth: 4
+    copy:
+      zh-tw:
+        # 只寫已翻譯的文案，其餘標籤從 messages.yml 回退。
+        title: 本頁目錄
+```
+
+語言啟用仍在 `config.yml`；`copy` 只修改文案，不會再建立另一套語言系統。
+
 ## 成功結果
 
 目錄連結會指向產生的章節 ID。點選連結會跳到章節；目錄收起或窄螢幕時，內容仍然可以閱讀。

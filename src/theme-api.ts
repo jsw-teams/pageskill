@@ -34,6 +34,8 @@ export type ThemeRenderContext = {
   safeUrl: (value: string) => string;
   localized: (value: unknown, fallback: string) => string;
   translate: (key: string, fallback: string) => string;
+  /** Read a localized, schema-validated copy override from theme.yml. */
+  pluginText: (pluginName: string, key: string, fallback: string) => string;
   routeFor: (doc: Pick<ThemeDocument, 'collection' | 'id' | 'locale' | 'data'>) => string;
   collection: (name: string, locale?: string) => ThemeDocument[];
   translations: (collection: string, id: string) => ThemeDocument[];
@@ -72,6 +74,7 @@ export type ThemeShellContext = ThemeRenderContext & {
     placeholder: string;
     submitLabel: string;
     noResultsLabel: string;
+    errorLabel: string;
     resultLabel: string;
     hitTitleLabel: string;
     hitDescriptionLabel: string;

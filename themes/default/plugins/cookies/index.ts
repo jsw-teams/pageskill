@@ -1,5 +1,6 @@
 import type { ThemePluginDefinition, ThemeShellContext } from '../../../../src/theme-api.ts';
 
+/** Render consent controls from validated compiler data; provider code stays in the browser module. */
 export function renderCookieConsent(context: ThemeShellContext): { markup: string; triggerMarkup: string } {
   const privacy = context.privacy;
   if (!privacy.enabled) return { markup: '', triggerMarkup: '' };
@@ -35,15 +36,23 @@ export const plugin: ThemePluginDefinition = {
       { id: 'security', required: false, default: false, retentionDays: 0 },
       { id: 'social', required: false, default: false, retentionDays: 0 }
     ],
-    integrations: {
-      googleAnalytics: { enabled: false, measurementId: '', category: 'analytics' },
-      googleAds: { enabled: false, conversionId: '', category: 'advertising' },
-      cloudflareWebAnalytics: { enabled: false, token: '', category: 'analytics' },
-      baiduTongji: { enabled: false, siteId: '', category: 'analytics' },
-      captcha: [],
-      x: { enabled: false, category: 'social' }
-    },
-    gatedScripts: []
+    // Provider names and fields mirror the public web integrations. The
+    // browser module owns their fixed script endpoints; the site only supplies
+    // public account values and the consent category.
+    integrations: [
+      { provider: 'google-analytics', enabled: false, measurementId: '', category: 'analytics' },
+      { provider: 'google-ads', enabled: false, tagId: '', category: 'advertising' },
+      { provider: 'cloudflare-web-analytics', enabled: false, token: '', category: 'analytics' },
+      { provider: 'baidu-tongji', enabled: false, siteSignature: '', category: 'analytics' },
+      { provider: 'recaptcha', enabled: false, siteKey: '', category: 'security' },
+      { provider: 'hcaptcha', enabled: false, siteKey: '', category: 'security' },
+      { provider: 'turnstile', enabled: false, siteKey: '', category: 'security' },
+      { provider: 'x-for-websites', enabled: false, category: 'social' }
+    ],
+    gatedScripts: [],
+    // Consent wording is configured per theme instance; provider capability
+    // registration remains in this code-owned schema and implementation.
+    copy: {}
   },
   schema: {
     enabled: { type: 'boolean' },
@@ -67,70 +76,22 @@ export const plugin: ThemePluginDefinition = {
       }
     },
     integrations: {
-      type: 'object',
-      // Known providers are documented below, while extra provider entries and
-      // provider-specific options remain available for future theme modules.
-      // Runtime code only consumes fields it explicitly supports.
-      additionalProperties: true,
-      properties: {
-        googleAnalytics: {
-          type: 'object',
-          additionalProperties: true,
-          properties: {
-            enabled: { type: 'boolean' },
-            measurementId: { type: 'string' },
-            category: { type: 'string' }
-          }
-        },
-        googleAds: {
-          type: 'object',
-          additionalProperties: true,
-          properties: {
-            enabled: { type: 'boolean' },
-            conversionId: { type: 'string' },
-            category: { type: 'string' }
-          }
-        },
-        cloudflareWebAnalytics: {
-          type: 'object',
-          additionalProperties: true,
-          properties: {
-            enabled: { type: 'boolean' },
-            token: { type: 'string' },
-            category: { type: 'string' }
-          }
-        },
-        baiduTongji: {
-          type: 'object',
-          additionalProperties: true,
-          properties: {
-            enabled: { type: 'boolean' },
-            siteId: { type: 'string' },
-            category: { type: 'string' }
-          }
-        },
-        captcha: {
-          type: 'array',
-          items: {
-            type: 'object',
-            additionalProperties: true,
-            properties: {
-              enabled: { type: 'boolean' },
-              // Keep this open for additional CAPTCHA platforms; the browser
-              // implementation consumes only the platforms it knows.
-              platform: { type: 'string' },
-              siteKey: { type: 'string' },
-              category: { type: 'string' }
-            }
-          }
-        },
-        x: {
-          type: 'object',
-          additionalProperties: true,
-          properties: {
-            enabled: { type: 'boolean' },
-            category: { type: 'string' }
-          }
+      type: 'array',
+      items: {
+        type: 'object',
+        // A third-party theme can extend this data shape, but it must register
+        // its own browser/server implementation before an unknown provider can
+        // perform any work.
+        additionalProperties: true,
+        properties: {
+          provider: { type: 'string', required: true },
+          enabled: { type: 'boolean' },
+          category: { type: 'string' },
+          measurementId: { type: 'string' },
+          tagId: { type: 'string' },
+          token: { type: 'string' },
+          siteSignature: { type: 'string' },
+          siteKey: { type: 'string' }
         }
       }
     },
@@ -144,6 +105,8 @@ export const plugin: ThemePluginDefinition = {
           category: { type: 'string' }
         }
       }
-    }
+    },
+    // Locale maps may contain only the labels/categories translated so far.
+    copy: { type: 'object', additionalProperties: true }
   }
 };

@@ -33,7 +33,32 @@ theme:
 
 元件專屬樣式放在元件旁邊，例如 `themes/default/components/learning-path/style.css`。外掛樣式放在自己的 `themes/default/plugins/<id>/style.css`。
 
-## 3. 重用或增加一次能力
+## 3. 新增、修改或刪除樣式
+
+讓每份樣式和負責它的能力放在一起：
+
+- 修改現有規則時，編輯 `themes/default/layouts/site/style.css`，或編輯負責輸出標記的 component、Block、plugin 旁邊的樣式檔案。
+- 新增樣式時，在對應模組下建立 stylesheet，加入模組的 `resources.styles`，並確保主題組裝入口仍然匯入這個模組。新增 component 時，還要把它加入 `themes/default/components/index.ts`。
+- 刪除樣式時，同時刪除 import、資源登記，以及對應 class 或資源的所有參照。產生前先搜尋來源，避免留下沒有用途的檔案。
+
+例如，元件自己的資源要明確登記，並在不明顯的決定旁邊寫註解：
+
+```ts
+export const modules = [
+  {
+    id: 'reading-tip',
+    kind: 'component',
+    resources: {
+      // 讓編譯器可以追蹤元件旁邊的樣式。
+      styles: ['components/reading-tip/style.css']
+    }
+  }
+];
+```
+
+每次新增、修改或刪除後執行 `npm run compile-theme` 和 `npm run g -- --profile`，開啟使用該能力的路由，確認產生的資源清單跟隨來源變化。
+
+## 4. 重用或增加一次能力
 
 先在 Markdown 中使用已有 Block，再考慮寫程式碼。如果缺少元件，把 `index.ts`、可選的 `style.css` 和 `messages.yml` 放在 `themes/default/components/<id>/`，再把模組加入 `components/index.ts`。保留 `index.ts` 的統一組裝，共用輔助函式放在 `components/shared/`，不要把標記複製到每篇文章。
 
@@ -43,7 +68,7 @@ npm run g
 npm run s
 ```
 
-## 4. 在 theme.yml 中安全增加 shell 連結
+## 5. 在 theme.yml 中安全增加 shell 連結
 
 主導覽仍然是 `config.yml` 中的網站資料。如果主題需要在標準導覽或頁尾工具前後增加連結，請使用結構化的 `plugins.chrome` 選項：
 

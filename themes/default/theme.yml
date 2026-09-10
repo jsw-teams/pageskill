@@ -14,9 +14,13 @@ plugins:
     provider: Pageskill
     maxResults: 8
     shardSize: 500
+    # Optional localized labels; untranslated keys fall back to messages.yml.
+    copy: {}
   toc:
     enabled: true
     maxDepth: 3
+    # Example: copy.zh-sg.title changes only this plugin's wording.
+    copy: {}
   privacyConsent:
     enabled: true
     provider: Pageskill
@@ -43,37 +47,41 @@ plugins:
         required: false
         default: false
         retentionDays: 0
+    # Each provider value is the real adapter name used by its web service;
+    # the identifier fields are copied from that provider's dashboard/snippet.
     integrations:
-      googleAnalytics:
+      - provider: google-analytics
         enabled: false
         measurementId: ''
         category: analytics
-      googleAds:
+      - provider: google-ads
         enabled: false
-        conversionId: ''
+        tagId: ''
         category: advertising
-      cloudflareWebAnalytics:
+      - provider: cloudflare-web-analytics
         enabled: false
         token: ''
         category: analytics
-      baiduTongji:
+      - provider: baidu-tongji
         enabled: false
-        siteId: ''
+        siteSignature: ''
         category: analytics
-      captcha:
-        - enabled: false
-          platform: recaptcha
-          siteKey: ''
-          category: security
-        - enabled: false
-          platform: hcaptcha
-          siteKey: ''
-          category: security
-        - enabled: false
-          platform: turnstile
-          siteKey: ''
-          category: security
-      x:
+      - provider: recaptcha
+        enabled: false
+        siteKey: ''
+        category: security
+      - provider: hcaptcha
+        enabled: false
+        siteKey: ''
+        category: security
+      - provider: turnstile
+        enabled: false
+        siteKey: ''
+        category: security
+      - provider: x-for-websites
         enabled: false
         category: social
     gatedScripts: []
+    # Optional localized consent labels/categories; code keeps provider
+    # capability registration in plugins/cookies/index.ts.
+    copy: {}
