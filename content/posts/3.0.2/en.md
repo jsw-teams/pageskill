@@ -2,32 +2,35 @@
 title: "3.0.2 update: clearer archives and responsive reading"
 description: Separate version updates from tutorials, align covers without distortion, and make the language chooser and article layout easier to scan.
 date: 2026-09-10
-author: Site Owner
+category: update
+author: toewpq
 cover: assets/og-default-product.webp
 ---
 
 # 3.0.2 update: clearer archives and responsive reading
 
-Pageskill 3.0.2 keeps tutorials and version history in separate collections. It also tightens the article header, gives covers a predictable responsive frame, and keeps the language chooser aligned when one card has a recommendation label.
+Pageskill 3.0.2 keeps tutorials and version history in one post collection while using Frontmatter categories and filtered views to separate them. It also tightens the article header, gives covers a predictable responsive frame, and keeps the language chooser aligned when one card has a recommendation label.
 
 ## What changed
 
-- Version notes now live in `content/updates/<version>/<locale>.md` and resolve at `/:locale/updates/<version>/`. Tutorials, notes, and product records remain in `content/posts/<id>/<locale>.md`.
+- Version notes now live in `content/posts/<version>/<locale>.md` with `category: update` and resolve at `/:locale/updates/<version>/`. Tutorials, notes, and product records use the same post collection without that category.
 - The updates archive has its own `/:locale/updates/` index, feed, search entries, language links, navigation item, and home-page section. The article archive remains at `/:locale/posts/`.
 - Article titles, descriptions, publication dates, and authors form one compact header. The cover and reading column share the same width and a stable 1200:630 frame.
 - Archive thumbnails now constrain both width and height instead of retaining the source image's `height` attribute as a rendered pixel height. Images keep `object-fit: cover` without stretching.
 - Language cards reserve the recommendation line and use a fixed row height, so the suggested-language label does not move one card above its neighbors. On small screens, the article table of contents starts collapsed.
+- `config.yml` now publishes `https://pageskill.openjsu.com` with `toewpq` as the site author; a post without an explicit `author` inherits that value. Root `i18n` settings provide a fallback locale for partially translated theme UI and missing locale documents, while `hreflang` lists only actual translations.
+- Cookie choices show each category's provider and retention explicitly. This borrows a policy generator's useful transparency, but the visitor chooser remains separate from the reviewed legal policy page.
 
 ## Content locations
 
 Use the collection that matches the document:
 
 ```text
-content/posts/<id>/<locale>.md       tutorials, articles, and notes
-content/updates/<version>/<locale>.md version history and release notes
+content/posts/<id>/<locale>.md       tutorials, articles, notes, and release notes
+                                    (release notes add `category: update`)
 ```
 
-The existing 3.0.0 and 3.0.1 notes were moved without changing their publication dates or author/cover metadata. Their new links are `/en/updates/3.0.0/` and `/en/updates/3.0.1/`. The old post routes have no duplicate copies or redirects.
+The existing 3.0.0 and 3.0.1 notes now use the post path and `category: update` without changing their publication dates or author/cover metadata. Their links remain `/en/updates/3.0.0/` and `/en/updates/3.0.1/`; the updates view supplies those routes without duplicate copies.
 
 ## Verify before publishing
 

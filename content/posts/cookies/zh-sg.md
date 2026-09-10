@@ -49,6 +49,8 @@ plugins:
 
 站点服务的 ID 等实例数据放在 `config.yml`。不要把服务 ID 写进文章，也不要默认打开可选类别。
 
+选择器会明确显示每个类别的提供者和保存期限，借鉴政策生成器的透明信息展示；它仍然只是访客同意控制，不会悄悄生成法律文本。经过审核的政策请继续维护在 `content/pages/privacy/<locale>.md`。
+
 ## 3. 登记受信脚本
 
 需要在同意后才加载的脚本，放在主题插件中，不要放进站点配置。在 `themes/default/plugins/cookies/index.ts` 的现有 `plugin` 导出中加入：

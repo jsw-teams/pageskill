@@ -2,7 +2,8 @@
 title: 3.0.1 更新：文章元資料與更安全的發佈
 description: 增加可選的文章作者和封面，保持日期彙整穩定，並遵循目前 npm 與 Cloudflare Pages 契約。
 date: 2026-09-09
-author: Site Owner
+category: update
+author: toewpq
 cover: assets/og-default-product.webp
 ---
 
@@ -25,14 +26,14 @@ Pageskill 3.0.1 是 3.0 版本線上的修訂版。它繼續把原始碼儲存�
 title: 我的網站上線了
 description: 記錄第一次發佈。
 date: 2026-09-07
-author: Site Owner
+author: toewpq
 cover: assets/og-default-product.webp
 ---
 
 # 我的網站上線了
 ```
 
-`author` 是可選的普通文字。省略時，文章會使用 `config.yml` 中 `author` 對應語言的值；發佈前請把儲存庫裡明確可編輯的 `Site Owner` 換成真實的網站作者。`cover` 是可選的：把本地來源圖片放在 `content/assets/`，在 Frontmatter 寫 `assets/<路徑>`（或 `/assets/<路徑>`）；公開檔案會產生到 `dist/public/assets/<路徑>`。儲存庫現有的 `assets/og-default-product.webp` 是目前的小熊圖片。也可以使用 HTTPS 圖片 URL；危險協定和越界路徑會被拒絕。沒有封面的文章頁、文章列表和彙整不會顯示圖片，也不會被強行塞入統一預設圖。
+`author` 是可選的普通文字。省略時，文章會使用 `config.yml` 中 `author` 對應語言的值；目前儲存庫的網站作者是 `toewpq`，新網站發佈前應替換成真實作者。`cover` 是可選的：把本地來源圖片放在 `content/assets/`，在 Frontmatter 寫 `assets/<路徑>`（或 `/assets/<路徑>`）；公開檔案會產生到 `dist/public/assets/<路徑>`。儲存庫現有的 `assets/og-default-product.webp` 是目前的小熊圖片。也可以使用 HTTPS 圖片 URL；危險協定和越界路徑會被拒絕。沒有封面的文章頁、文章列表和彙整不會顯示圖片，也不會被強行塞入統一預設圖。
 
 頁面會把標題、Frontmatter 說明、發佈日期和作者分開顯示。若 Markdown 的 `#` 標題與 Frontmatter 標題相同，正文不會重複顯示；列表和彙整摘要使用說明欄位，不會從正文裡的程式碼或標題抽取摘要。
 
@@ -60,4 +61,4 @@ npm run d -- --dry-run
 
 ## 保持遷移最小
 
-穩定頁面放在 `content/pages/<id>/<locale>.md`，帶日期的教學和文章放在 `content/posts/<id>/<locale>.md`，版本更新放在 `content/updates/<version>/<locale>.md`。使用同一個 ID 和對應的 `en`、`zh-sg`、`zh-tw` 檔案，讓發佈日期 `date` 保持一致，只為文件需要的欄位補 Frontmatter。新手路徑可以繼續閱讀[十分鐘開始你的網站](/zh-tw/posts/start/)和[把網站放到網路上](/zh-tw/posts/deploy/)。
+穩定頁面放在 `content/pages/<id>/<locale>.md`，帶日期的教學、文章和版本更新都在 `content/posts/<id>/<locale>.md`；版本更新增加 `category: update`。使用同一個 ID 和對應的 `en`、`zh-sg`、`zh-tw` 檔案，讓發佈日期 `date` 保持一致，只為文件需要的欄位補 Frontmatter。新手路徑可以繼續閱讀[十分鐘開始你的網站](/zh-tw/posts/start/)和[把網站放到網路上](/zh-tw/posts/deploy/)。

@@ -49,6 +49,8 @@ plugins:
 
 Site integrations belong in `config.yml` as data. Do not put a provider ID in an article or turn an optional category on by default.
 
+The chooser shows each category's provider and retention explicitly, borrowing the useful transparency of a policy generator. It remains a visitor-consent control; keep the reviewed legal policy as `content/pages/privacy/<locale>.md` rather than generating legal text silently.
+
 ## 3. Register a trusted script
 
 A script that should load only after consent belongs in the trusted theme plugin, not site config. Add it to the existing `plugin` export in `themes/default/plugins/cookies/index.ts`:

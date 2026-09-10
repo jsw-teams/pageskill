@@ -28,7 +28,7 @@ npm run g
 
 ## 3. 直接修改網站
 
-首頁改 `content/pages/home/<locale>.md`，帶日期的教學和文章改 `content/posts/<id>/<locale>.md`，版本更新改 `content/updates/<version>/<locale>.md`，網站資料和開關改 `config.yml`。先重用主題已有能力，再增加新的擴充。
+首頁改 `content/pages/home/<locale>.md`，帶日期的教學和文章改 `content/posts/<id>/<locale>.md`；版本更新也放在這裡，並加上 `category: update` 進入更新封存。網站資料和開關改 `config.yml`。先重用主題已有能力，再增加新的擴充。
 
 ## 4. 開啟預覽
 

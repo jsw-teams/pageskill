@@ -6,7 +6,7 @@ date: 2026-09-07
 
 # 发布第一篇文章
 
-普通教程、日志和产品文章可以放在 `content/posts/`，这类文章需要日期。版本更新另放在 `content/updates/`，这样[更新归档](/zh-sg/updates/)会和教程分开。固定的 About 或联系页面放在 `content/pages/`，不需要 `date`；三种语言共用一个目录名，文章才能互相切换。
+普通教程、日志、产品文章和版本更新都放在 `content/posts/`，这类文章需要日期。给版本说明加上 `category: update`，这样[更新归档](/zh-sg/updates/)会和普通文章分开。固定的 About 或联系页面放在 `content/pages/`，不需要 `date`；三种语言共用一个目录名，文章才能互相切换。
 
 ## 1. 建立文章目录
 
@@ -23,7 +23,7 @@ New-Item -ItemType Directory content\posts\hello-site
 title: 我的网站上线了
 description: 记录第一次发布。
 date: 2026-09-07
-author: Site Owner
+author: toewpq
 cover: assets/og-default-product.webp
 ---
 

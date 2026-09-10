@@ -28,7 +28,7 @@ npm run g
 
 ## 3. Edit the site in place
 
-Change `content/pages/home/<locale>.md` for the home page, `content/posts/<id>/<locale>.md` for dated articles, and `content/updates/<version>/<locale>.md` for version updates. Use `config.yml` for site data and switches. Reuse the theme capabilities before adding a new extension.
+Change `content/pages/home/<locale>.md` for the home page and `content/posts/<id>/<locale>.md` for dated articles. Add `category: update` to version updates so they appear in the filtered update archive. Use `config.yml` for site data and switches. Reuse the theme capabilities before adding a new extension.
 
 ## 4. Open the preview
 

@@ -49,6 +49,8 @@ plugins:
 
 網站服務的 ID 等實例資料放在 `config.yml`。不要把服務 ID 寫進文章，也不要預設開啟可選類別。
 
+選擇器會明確顯示每個類別的提供者和保存期限，借鑑政策產生器的透明資訊展示；它仍然只是訪客同意控制，不會悄悄產生法律文字。經過審核的政策請繼續維護在 `content/pages/privacy/<locale>.md`。
+
 ## 3. 登記受信任腳本
 
 需要在同意後才載入的腳本，放在主題外掛中，不要放進網站設定。在 `themes/default/plugins/cookies/index.ts` 的現有 `plugin` 匯出中加入：

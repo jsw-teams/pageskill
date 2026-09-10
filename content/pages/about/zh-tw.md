@@ -19,4 +19,4 @@ Pageskill 把 Markdown 文章、網站設定和主題樣式產生成一個可發
 | `npm run s` | 啟動持續預覽，按 `Ctrl+C` 停止。 |
 | `npm run d` | 依照設定好的目標發佈。 |
 
-目前首頁在 `content/pages/home/`；教學、部落格和產品文章在 `content/posts/`，版本更新則放在 `content/updates/`，可查看[更新封存](/zh-tw/updates/)。隱私政策是固定入口 `/:locale/privacy/`。先從[十分鐘開始你的網站](/zh-tw/posts/start/)開始。
+目前首頁在 `content/pages/home/`；教學、部落格、產品文章和版本更新都在 `content/posts/`。為版本說明加上 `category: update`，就會進入[更新封存](/zh-tw/updates/)，同時不會混入一般文章列表。隱私政策是固定入口 `/:locale/privacy/`。先從[十分鐘開始你的網站](/zh-tw/posts/start/)開始。

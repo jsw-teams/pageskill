@@ -14,6 +14,9 @@ messages:
       optionalLabel: 可选项目
       optionalDescription: 默认关闭；只有同意后才可启用。
       policyLabel: 隐私政策
+      providerLabel: 提供者
+      retentionLabel: 保存期限
+      retentionSession: 会话期间
       categories:
         - id: essential
           provider: Pageskill
@@ -42,6 +45,9 @@ messages:
       optionalLabel: 可選項目
       optionalDescription: 預設關閉；只有同意後才可啟用。
       policyLabel: 隱私政策
+      providerLabel: 提供者
+      retentionLabel: 保存期限
+      retentionSession: 工作階段
       categories:
         - id: essential
           provider: Pageskill
@@ -70,6 +76,9 @@ messages:
       optionalLabel: Optional
       optionalDescription: Off by default; enabled only after consent.
       policyLabel: Privacy policy
+      providerLabel: Provider
+      retentionLabel: Retention
+      retentionSession: Session
       categories:
         - id: essential
           provider: Pageskill

@@ -28,7 +28,7 @@ npm run g
 
 ## 3. 直接修改站点
 
-首页改 `content/pages/home/<locale>.md`，带日期的教程和文章改 `content/posts/<id>/<locale>.md`，版本更新改 `content/updates/<version>/<locale>.md`，站点数据和开关改 `config.yml`。先复用主题已有能力，再增加新的扩展。
+首页改 `content/pages/home/<locale>.md`，带日期的教程和文章改 `content/posts/<id>/<locale>.md`；版本更新也放在这里，并加上 `category: update` 进入更新归档。站点数据和开关改 `config.yml`。先复用主题已有能力，再增加新的扩展。
 
 ## 4. 打开预览
 

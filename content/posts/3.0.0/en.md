@@ -2,7 +2,8 @@
 title: "3.0 update: a simpler entry"
 description: Pageskill 3.0 narrows the daily workflow to g, s, and d, and turns the beginner guide into practical articles.
 date: 2026-09-07
-author: Site Owner
+category: update
+author: toewpq
 cover: assets/og-default-product.webp
 ---
 
@@ -16,13 +17,13 @@ Pageskill 3.0 still generates sites from Markdown, settings, and themes, but a f
 - `npm run s` starts a persistent preview; press `Ctrl+C` to end it, while editing can continue in another terminal.
 - `npm run d` runs the deployment targets in `config.yml`.
 - A new site starts by cloning the repository, running `npm install` and `npm run g`, then editing that clone in place.
-- Stable pages live under `content/pages/` without a date. Tutorials, blogs, and product records live under `content/posts/` with a required `date`; version updates live under `content/updates/<version>/`.
+- Stable pages live under `content/pages/` without a date. Tutorials, blogs, product records, and version updates live under `content/posts/` with a required `date`; version updates add `category: update`.
 - Search, the article table of contents, and reusable plugin development now have short localized guides.
 
 ## Migrate existing content
 
 1. Keep a backup, clone the current repository, run `npm install` and `npm run g`, then make [Start your site in ten minutes](/en/posts/start/) the tutorial entry.
-2. Keep stable pages in `content/pages/<id>/<locale>.md` without a date. Keep tutorials and blog notes in `content/posts/<id>/`, and put version updates in `content/updates/<version>/`, with equivalent locale files and the required `date`.
+2. Keep stable pages in `content/pages/<id>/<locale>.md` without a date. Keep tutorials, blog notes, and version updates in `content/posts/<id>/`; add `category: update` to version updates and provide equivalent locale files with the required `date`.
 3. Point the Cookie policy to `/:locale/privacy/`, then use [Privacy policy](/en/privacy/) to add real contacts and services.
 4. Run the compile commands, `npm run g -- --profile`, and `npm run s` for source checks. Use `npm run d -- --dry-run` for the publishing plan; run `npm run d` only when you are ready to publish.
 
@@ -34,7 +35,7 @@ Pages and same-origin APIs remain separate: public static files live in `dist/pu
 
 Register any backend path with the existing `router.get(...)`, `router.post(...)`, or `router.all(...)` methods. At runtime, a match returns a `Response`; no match returns `null`, so the generated entry does not need a per-route `dynamicRoutes` list in `config.yml`. Generated Worker/Pages/VPS entrypoints run the Router first for every pathname and set `run_worker_first = true`; unknown paths fall through to public assets, while an unmatched `/api` path remains 404. API errors and authorization responses stay API responses instead of falling back to static pages. Build and generation keep nested server-side ESM inside the private boundary. During persistent `npm run s` preview, changed nested theme TypeScript is compiled into a fresh private runtime before reload; each public CSS/JS resource is fingerprinted independently, so an unchanged resource keeps its URL and cache identity.
 
-This release also fixes the Cookie prompt and footer layout. The language chooser prefers a visitor's manual choice before falling back to browser language, while locale URLs stay unchanged. Version history is kept in the separate `content/updates/` collection so it does not compete with tutorial articles.
+This release also fixes the Cookie prompt and footer layout. The language chooser prefers a visitor's manual choice before falling back to browser language, while locale URLs stay unchanged. Version history uses `category: update` and a filtered updates view, so it does not compete with tutorial articles.
 
 ## A new learning path
 

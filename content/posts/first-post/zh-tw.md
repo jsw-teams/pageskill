@@ -6,7 +6,7 @@ date: 2026-09-07
 
 # 發佈第一篇文章
 
-普通教學、日誌和產品文章可以放在 `content/posts/`，這類文章需要日期。版本更新另放在 `content/updates/`，這樣[更新封存](/zh-tw/updates/)會和教學分開。固定的 About 或聯絡頁面放在 `content/pages/`，不需要 `date`；三種語言共用一個資料夾名稱，文章才能互相切換。
+普通教學、日誌、產品文章和版本更新都放在 `content/posts/`，這類文章需要日期。為版本說明加上 `category: update`，這樣[更新封存](/zh-tw/updates/)會和一般文章分開。固定的 About 或聯絡頁面放在 `content/pages/`，不需要 `date`；三種語言共用一個資料夾名稱，文章才能互相切換。
 
 ## 1. 建立文章資料夾
 
@@ -23,7 +23,7 @@ New-Item -ItemType Directory content\posts\hello-site
 title: 我的網站上線了
 description: 記錄第一次發佈。
 date: 2026-09-07
-author: Site Owner
+author: toewpq
 cover: assets/og-default-product.webp
 ---
 

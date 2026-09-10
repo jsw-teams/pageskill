@@ -1,9 +1,12 @@
-siteUrl: https://pagekiln.pages.dev
+siteUrl: https://pageskill.openjsu.com
 defaultLocale: en
 activeLocales:
   - zh-sg
   - zh-tw
   - en
+i18n:
+  fallbackLocale: en
+  contentFallback: true
 siteName:
   zh-sg: Pageskill
   zh-tw: Pageskill
@@ -13,9 +16,9 @@ description:
   zh-tw: 給剛開始做網站的人：用 Markdown 和清楚的步驟，學習、編寫並發布自己的 Pageskill 網站。
   en: A friendly starting point for building a small website with Markdown, clear steps, and Pageskill.
 author:
-  zh-sg: Site Owner
-  zh-tw: Site Owner
-  en: Site Owner
+  zh-sg: toewpq
+  zh-tw: toewpq
+  en: toewpq
 theme:
   name: default
 
@@ -99,6 +102,9 @@ archive:
 feed:
   title: Pageskill
   limit: 20
+  collections:
+    - posts
+    - updates
 
 privacy:
   controller:
@@ -136,31 +142,18 @@ content:
         date:
           type: string
           required: true
+        category: string
         author: string
         cover: string
         ogImage: string
         pattern: string
+  views:
     updates:
-      contentType: post
-      pattern: blog
+      collection: posts
+      category: update
       route: /:locale/updates/:id/
-      feed: true
-      feedRoute: /:locale/updates/feed.xml
-      archive: true
       archiveRoute: /:locale/updates/
-      orderBy: date:desc
-      schema:
-        title:
-          type: string
-          required: true
-        description: string
-        date:
-          type: string
-          required: true
-        author: string
-        cover: string
-        ogImage: string
-        pattern: string
+      feedRoute: /:locale/updates/feed.xml
 
 deployment:
   targets: []

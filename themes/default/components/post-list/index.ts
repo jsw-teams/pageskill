@@ -5,7 +5,11 @@ export const block: ThemeBlockDefinition = {
   name: 'post-list',
   schema: { limit: 'number', collection: 'string' },
   defaults: { limit: '6' },
-  dependencies: (node, context) => [`collection:${String(node.attrs.collection || 'posts')}:${context.doc.locale}`],
+  dependencies: (node, context) => {
+    const collection = String(node.attrs.collection || 'posts');
+    const sourceCollection = String(context.config.content?.views?.[collection]?.collection || collection);
+    return [...new Set([collection, sourceCollection].map(name => `collection:${name}:${context.doc.locale}`))];
+  },
   render: (node, context) => {
     validateAttrs(node, block);
     const limit = numberAttr(node, 'limit', 1, 50, 6);

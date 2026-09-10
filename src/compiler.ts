@@ -34,7 +34,7 @@ type CachedDocument = { hash: string; outputs: string[]; dependencies?: string[]
 type CachedImage = { hash: string; output: string };
 type CacheManifest = { version: 2; rendererVersion?: string; configHash?: string; themeHash?: string; assetHash?: string; backendHash?: string; contentRoots?: Record<string, number>; routeCount?: number; documents: Record<string, CachedDocument>; images?: Record<string, CachedImage>; outputs: string[]; outputHashes?: Record<string, string> };
 export type BuildProfile = { discover: number; load: number; validate: number; parse: number; route: number; render: number; assets: number; write: number; total: number; documents: number; changedOutputs: number; imagesProcessed: number; imageCacheHits: number };
-const RENDERER_VERSION = '2.4.26';
+const RENDERER_VERSION = '2.4.27';
 const MAX_MARKDOWN_CACHE = 32;
 const MAX_SOURCE_PARSE_CACHE = 64;
 const LOAD_CONCURRENCY = 32;
@@ -202,22 +202,44 @@ function localeCandidates(locale: string, fallbackLocale: string): string[] {
   return [...new Set(values.filter(Boolean))];
 }
 
+function mergeLocaleValue(base: unknown, overlay: unknown): any {
+  if (Array.isArray(base) && Array.isArray(overlay)) {
+    const keyed = [...base, ...overlay].every(value => isRecord(value) && typeof value.id === 'string');
+    if (!keyed) return overlay;
+    const result = base.map(value => cloneThemeValue(value));
+    for (const value of overlay) {
+      const index = result.findIndex(candidate => candidate && candidate.id === value.id);
+      if (index < 0) result.push(cloneThemeValue(value));
+      else result[index] = mergeLocaleValue(result[index], value);
+    }
+    return result;
+  }
+  if (isRecord(base) && isRecord(overlay)) {
+    const result: Record<string, any> = { ...base };
+    for (const [key, value] of Object.entries(overlay)) result[key] = key in result ? mergeLocaleValue(result[key], value) : cloneThemeValue(value);
+    return result;
+  }
+  return overlay === undefined ? base : cloneThemeValue(overlay);
+}
+
+function fallbackLocaleFor(ctx: BuildContext): string {
+  return String(ctx.config.i18n?.fallbackLocale || ctx.themeI18n?.fallbackLocale || ctx.config.defaultLocale || 'en');
+}
+
 function themeLocaleData(ctx: BuildContext, locale: string): Record<string, any> {
   const messages = ctx.themeI18n?.messages && typeof ctx.themeI18n.messages === 'object' ? ctx.themeI18n.messages : ctx.themeI18n;
   if (!messages || typeof messages !== 'object') return {};
-  const fallbackLocale = String(ctx.themeI18n?.fallbackLocale || ctx.config.defaultLocale || 'en');
-  for (const candidate of localeCandidates(locale, fallbackLocale)) {
+  const fallbackLocale = fallbackLocaleFor(ctx);
+  let merged: Record<string, any> = {};
+  for (const candidate of [...localeCandidates(locale, fallbackLocale)].reverse()) {
     const value = messages[candidate];
-    if (value && typeof value === 'object') return value as Record<string, any>;
+    if (value && typeof value === 'object') merged = mergeLocaleValue(merged, value);
   }
-  return {};
+  return merged;
 }
 
 function themeText(ctx: BuildContext, locale: string, key: string, fallback: string): string {
-  const messages = ctx.themeI18n?.messages && typeof ctx.themeI18n.messages === 'object' ? ctx.themeI18n.messages : ctx.themeI18n;
-  if (!messages || typeof messages !== 'object') return fallback;
-  const fallbackLocale = String(ctx.themeI18n?.fallbackLocale || ctx.config.defaultLocale || 'en');
-  const value = localeCandidates(locale, fallbackLocale).map(candidate => nestedValue(messages[candidate], key)).find(candidate => candidate !== undefined && candidate !== null);
+  const value = nestedValue(themeLocaleData(ctx, locale), key);
   return value === undefined || value === null || value === '' || typeof value === 'object' ? fallback : String(value);
 }
 
@@ -397,6 +419,7 @@ function normalizeThemeDefinition(value: PageskillTheme, legacy: Record<string, 
 }
 
 function legacyThemePluginSettings(config: Record<string, any>, name: string): Record<string, any> {
+  if (name === 'language') return {};
   const values: Record<string, any> = {};
   const legacyPlugins = isRecord(config.plugins) ? config.plugins : {};
   if (isRecord(legacyPlugins[name])) Object.assign(values, legacyPlugins[name]);
@@ -457,6 +480,7 @@ function normalizeThemeConfig(config: Record<string, any>, theme: Record<string,
   if (!isRecord(configuredPlugins)) throw new Error(`themes/${themeName}/theme.yml: plugins must be a mapping`);
   const definitions = definition.plugins || {};
   for (const name of Object.keys(configuredPlugins)) {
+    if (name === 'language') continue;
     if (!definitions[name]) throw new Error(`themes/${themeName}/theme.yml: plugins.${name} is not declared by the theme entry`);
     if (!isRecord(configuredPlugins[name])) throw new Error(`themes/${themeName}/theme.yml: plugins.${name} must be a mapping`);
   }
@@ -465,7 +489,7 @@ function normalizeThemeConfig(config: Record<string, any>, theme: Record<string,
     const schema = plugin.schema || {};
     const defaults = isRecord(plugin.defaults) ? cloneThemeValue(plugin.defaults) : {};
     const legacy = legacyThemePluginSettings(config, name);
-    const configured = isRecord(configuredPlugins[name]) ? configuredPlugins[name] : {};
+    const configured = name === 'language' ? {} : isRecord(configuredPlugins[name]) ? configuredPlugins[name] : {};
     const settings = { ...defaults, ...legacy, ...configured };
     validateThemePluginSettings(settings, schema, `themes/${themeName}/theme.yml: plugins.${name}`);
     plugins[name] = settings;
@@ -897,6 +921,7 @@ function rebuildDocumentIndexes(ctx: BuildContext) {
   ctx.documentPositions.clear();
   ctx.tagIndex.clear();
   for (const doc of ctx.routes.values()) {
+    if (doc.source.startsWith('fallback:')) continue;
     const key = translationKey(doc.collection, doc.id);
     const translations = ctx.translationIndex.get(key) || [];
     if (!translations.some(candidate => candidate.locale === doc.locale)) translations.push(doc);
@@ -923,29 +948,74 @@ function documentOutputs(ctx: BuildContext, doc: Document): string[] {
 }
 
 function slug(value: string) { return value.toLocaleLowerCase().normalize('NFKC').replace(/[^\p{Letter}\p{Number}\s-]/gu, '').trim().replace(/[\s_-]+/g, '-'); }
+function postCategory(doc: Pick<Document, 'collection' | 'data'>): string {
+  if (doc.collection !== 'posts') return '';
+  const value = doc.data?.category ?? doc.data?.type ?? '';
+  return String(value).trim().toLocaleLowerCase();
+}
+
+function contentViewSettings(ctx: BuildContext, name: string): Record<string, any> {
+  const value = ctx.config.content?.views?.[name];
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function viewForDocument(ctx: BuildContext, doc: Pick<Document, 'collection' | 'data'>): { name: string; settings: Record<string, any> } | undefined {
+  const views = ctx.config.content?.views;
+  if (!views || typeof views !== 'object' || Array.isArray(views)) return undefined;
+  for (const [name, raw] of Object.entries(views)) {
+    const settings = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, any> : {};
+    if (String(settings.collection || name) !== doc.collection) continue;
+    if (settings.category !== undefined && postCategory(doc) !== String(settings.category).trim().toLocaleLowerCase()) continue;
+    return { name, settings };
+  }
+  return undefined;
+}
+
+function documentViewCollection(ctx: BuildContext, doc: Pick<Document, 'collection' | 'data'>): string {
+  return viewForDocument(ctx, doc)?.name || doc.collection;
+}
+
+function sourceDocuments(ctx: BuildContext): Document[] {
+  return ctx.routes.size ? [...ctx.routes.values()] : ctx.docs;
+}
+
+function documentsForCollection(ctx: BuildContext, collection: string, locale: string): Document[] {
+  const viewSettings = contentViewSettings(ctx, collection);
+  const sourceCollection = String(viewSettings.collection || collection);
+  const viewCategory = viewSettings.category === undefined ? undefined : String(viewSettings.category).trim().toLocaleLowerCase();
+  const documents = sourceDocuments(ctx).filter(doc => {
+    if (doc.locale !== locale || doc.collection !== sourceCollection) return false;
+    if (viewCategory !== undefined) return postCategory(doc) === viewCategory;
+    if (collection === sourceCollection && sourceCollection === 'posts') return !viewForDocument(ctx, doc);
+    return true;
+  });
+  return documents.sort(comparePublicationOrder);
+}
+
 function routeFor(ctx: BuildContext, doc: Document): string {
   if (doc.data?.route) return String(doc.data.route).replace(':locale', doc.locale).replace(/\/+/g, '/').replace(/([^:])\/\//g, '$1/');
-  const routeConfig = ctx.config.content?.collections?.[doc.collection]?.route || '/:locale/:id/';
+  const view = viewForDocument(ctx, doc);
+  const routeConfig = view?.settings.route || ctx.config.content?.collections?.[doc.collection]?.route || '/:locale/:id/';
   return String(routeConfig).replace(':locale', doc.locale).replace(':id', doc.id === 'home' ? '' : doc.id).replace(/\/+/g, '/').replace(/([^:])\/\//g, '$1/');
 }
 
 function blogRelationsFor(ctx: BuildContext, doc: Document): string {
-  const posts = ctx.collectionIndex.get(collectionKey(doc.collection, doc.locale)) || [];
-  const index = ctx.documentPositions.get(documentKey(doc)) ?? -1;
+  const posts = documentsForCollection(ctx, documentViewCollection(ctx, doc), doc.locale);
+  const index = posts.findIndex(candidate => candidate.id === doc.id && candidate.locale === doc.locale);
   const newer = index > 0 ? posts[index - 1] : undefined;
   const older = index >= 0 && index + 1 < posts.length ? posts[index + 1] : undefined;
   const tags = Array.isArray(doc.data.tags) ? doc.data.tags.map(String) : [];
   const related: Document[] = [];
   const candidates = tags.length
-    ? tags.flatMap(tag => ctx.tagIndex.get(`${doc.collection}:${doc.locale}:${tag}`) || [])
+    ? tags.flatMap(tag => (ctx.tagIndex.get(`${doc.collection}:${doc.locale}:${tag}`) || []).filter(candidate => documentViewCollection(ctx, candidate) === documentViewCollection(ctx, doc)))
     : [posts[index - 1], posts[index + 1], posts[0], posts[1], posts[2], posts[3]];
   for (const candidate of candidates) if (candidate && candidate.id !== doc.id && !related.some(entry => entry.id === candidate.id)) {
     related.push(candidate);
     if (related.length === 3) break;
   }
-  const relationLink = (label: string, candidate: Document | undefined) => candidate ? `<a href="${safeUrl(routeFor(ctx, candidate))}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(candidate.title)}</strong></a>` : '';
-  const previousLabel = themeText(ctx, doc.locale, 'previous', 'Newer');
-  const nextLabel = themeText(ctx, doc.locale, 'next', 'Older');
+  const relationLink = (label: string, candidate: Document | undefined) => candidate ? `<a class="post-pagination-link" href="${safeUrl(routeFor(ctx, candidate))}" aria-label="${escapeHtml(`${label}: ${candidate.title}`)}"><span class="post-pagination-label">${escapeHtml(label)}</span><strong>${escapeHtml(candidate.title)}</strong></a>` : '';
+  const previousLabel = themeText(ctx, doc.locale, 'previous', 'Previous article');
+  const nextLabel = themeText(ctx, doc.locale, 'next', 'Next article');
   const relatedLabel = themeText(ctx, doc.locale, 'related', 'Related');
   return `<footer class="post-relations"><nav class="post-pagination">${relationLink(previousLabel, newer)}${relationLink(nextLabel, older)}</nav>${related.length ? `<section class="related-posts"><h2>${escapeHtml(relatedLabel)}</h2><ul>${related.map(candidate => `<li><a href="${safeUrl(routeFor(ctx, candidate))}">${escapeHtml(candidate.title)}</a></li>`).join('')}</ul></section>` : ''}</footer>`;
 }
@@ -965,7 +1035,7 @@ function themeContextFor(ctx: BuildContext, doc: Document): ThemeRenderContext {
     localized: (value, fallback) => localizedValue(value, doc.locale, fallback),
     translate: (key, fallback) => themeText(ctx, doc.locale, key, fallback),
     routeFor: candidate => routeFor(ctx, candidate as Document),
-    collection: (name, locale = doc.locale) => ctx.collectionIndex.get(collectionKey(name, locale)) || [],
+    collection: (name, locale = doc.locale) => documentsForCollection(ctx, name, locale),
     translations: (collection, id) => ctx.translationIndex.get(translationKey(collection, id)) || [],
     position: candidate => ctx.documentPositions.get(documentKey(candidate as Document)) ?? -1,
     formatDate: value => formatDate(value, doc.locale),
@@ -1142,7 +1212,14 @@ function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
   };
   const escape = (value: unknown) => escapeHtml(value);
   const retentionUnit = doc.locale.startsWith('zh') ? '天' : 'days';
-  const categoryMarkup = privacy.categories.map(category => `<label class="cookie-option"><input type="checkbox" data-cookie-category="${escape(category.id)}"${category.required ? ' checked disabled' : category.defaultValue ? ' checked' : ''}><span><strong>${escape(category.label)}</strong><small>${escape(category.description)}${category.provider ? ` · ${escape(category.provider)}` : ''}${category.retentionDays ? ` · ${escape(String(category.retentionDays))} ${retentionUnit}` : ''}</small></span></label>`).join('');
+  const providerLabel = text('providerLabel', doc.locale.startsWith('zh') ? '提供者' : 'Provider');
+  const retentionLabel = text('retentionLabel', doc.locale.startsWith('zh') ? '保存期限' : 'Retention');
+  const retentionSession = text('retentionSession', doc.locale.startsWith('zh') ? '会话期间' : 'Session');
+  const categoryMarkup = privacy.categories.map(category => {
+    const retention = category.retentionDays > 0 ? `${category.retentionDays} ${retentionUnit}` : retentionSession;
+    const metadata = `<span class="cookie-option-meta">${category.provider ? `<span><span class="cookie-option-meta-label">${escape(providerLabel)}</span>${escape(category.provider)}</span>` : ''}<span><span class="cookie-option-meta-label">${escape(retentionLabel)}</span>${escape(retention)}</span></span>`;
+    return `<label class="cookie-option"><input type="checkbox" data-cookie-category="${escape(category.id)}"${category.required ? ' checked disabled' : category.defaultValue ? ' checked' : ''}><span><strong>${escape(category.label)}</strong><small>${escape(category.description)}</small>${metadata}</span></label>`;
+  }).join('');
   const gatedScriptMarkup = gatedScripts.map(script => `<template data-cookie-script data-cookie-category="${escape(script.category)}" data-cookie-src="${safeUrl(script.href)}"></template>`).join('');
   const privacyMarkup = enabled ? `<section class="privacy-consent" data-cookie-consent data-cookie-audience="human" data-cookie-version="1" data-cookie-storage="${escape(privacy.storage)}" data-cookie-retention-days="${privacy.retentionDays}" data-cookie-integrations="${escape(JSON.stringify(integrations))}" aria-label="${escape(privacy.bannerLabel)}"><div class="cookie-banner" data-cookie-banner hidden role="region" aria-labelledby="cookie-banner-title"><div class="cookie-banner-copy"><p id="cookie-banner-title"><strong>${escape(privacy.title)}</strong></p><p>${escape(privacy.description)}</p></div><div class="cookie-actions"><button class="button-secondary" type="button" data-cookie-action="reject-optional">${escape(privacy.rejectLabel)}</button><button class="button-primary" type="button" data-cookie-action="open" aria-controls="cookie-dialog">${escape(privacy.settingsLabel)}</button><button class="button-primary" type="button" data-cookie-action="accept-all">${escape(privacy.acceptLabel)}</button></div><p class="privacy-links"><a href="${privacy.policyHref}">${escape(privacy.policyLabel)}</a></p></div><dialog id="cookie-dialog" class="cookie-dialog" data-cookie-dialog aria-labelledby="cookie-dialog-title" aria-describedby="cookie-dialog-description"><form method="dialog" class="cookie-dialog-card"><div class="cookie-dialog-heading"><h2 id="cookie-dialog-title">${escape(privacy.title)}</h2><button class="cookie-close" type="button" data-cookie-action="close" aria-label="${escape(privacy.closeLabel)}">×</button></div><p id="cookie-dialog-description">${escape(privacy.description)}</p><fieldset><legend>${escape(privacy.bannerLabel)}</legend>${categoryMarkup}</fieldset><p class="privacy-links"><a href="${privacy.policyHref}">${escape(privacy.policyLabel)}</a></p><div class="cookie-actions"><button class="button-secondary" type="button" data-cookie-action="reject-optional">${escape(privacy.rejectLabel)}</button><button class="button-primary" type="button" data-cookie-action="save">${escape(privacy.saveLabel)}</button></div></form></dialog>${gatedScriptMarkup}<script type="module" src="${privacy.scriptSrc}"></script></section>` : '';
   const privacyTriggerMarkup = enabled ? `<button class="privacy-trigger" type="button" data-cookie-action="open" aria-controls="cookie-dialog">${escape(privacy.settingsLabel)}</button>` : '';
@@ -1277,7 +1354,7 @@ async function writeGeneratedPages(ctx: BuildContext) {
   const locale = ctx.config.defaultLocale || 'en';
   const themeName = configuredThemeName(ctx.config);
   const themeBase = `/assets/theme/${themeName}`;
-  const languageScript = pluginEnabled(ctx, 'language') ? pluginResourcePaths(ctx, ['language', 'languagePicker'], 'scripts')[0] : '';
+  const languageScript = pluginResourcePaths(ctx, ['language', 'languagePicker'], 'scripts')[0] || '';
   const languageScriptHref = languageScript ? themeResourceHref(ctx, themeBase, languageScript) : '';
   const pickerTitle = themeText(ctx, locale, 'languagePicker.title', 'Choose a site language');
   const pickerDescription = themeText(ctx, locale, 'languagePicker.description', 'Choose a language to open the matching site version.');
@@ -1327,16 +1404,17 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const navigationConfig = configuredNavigation(ctx.config);
   const navigation = Array.isArray(navigationConfig.links) ? navigationConfig.links : [];
   const currentRoute = routeFor(ctx, doc);
+  const availableTranslations = ctx.translationIndex.get(translationKey(doc.collection, doc.id)) || [];
   const translatedDocuments = doc.collection === 'archive' && doc.data?.archiveCollection
     ? (ctx.config.activeLocales || [ctx.config.defaultLocale || doc.locale]).map((locale: string) => ({ ...doc, locale, data: { ...doc.data, route: String(doc.data.route || '').replace(`/${doc.locale}/`, `/${locale}/`) } }))
-    : ctx.translationIndex.get(translationKey(doc.collection, doc.id)) || [];
+    : [...availableTranslations, ...(doc.source.startsWith('fallback:') ? [doc] : [])].sort((left, right) => left.locale.localeCompare(right.locale));
   const languageLinks = translatedDocuments.map((candidate: Document) => {
     const candidateRoute = routeFor(ctx, candidate);
     const current = candidate.locale === doc.locale ? ' aria-current="page"' : '';
     return `<a href="${safeUrl(candidateRoute)}" lang="${escapeHtml(candidate.locale)}" data-locale="${escapeHtml(candidate.locale)}"${current}>${escapeHtml(languageDisplayName(ctx, doc.locale, candidate.locale))}</a>`;
   }).join('');
-  const defaultTranslation = translatedDocuments.find((candidate: Document) => candidate.locale === (ctx.config.defaultLocale || 'en'));
-  const alternates = `${translatedDocuments.map((candidate: Document) => `<link rel="alternate" hreflang="${escapeHtml(candidate.locale)}" href="${safeUrl(`${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${routeFor(ctx, candidate)}`)}">`).join('')}${defaultTranslation ? `<link rel="alternate" hreflang="x-default" href="${safeUrl(`${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${routeFor(ctx, defaultTranslation)}`)}">` : ''}`;
+  const defaultTranslation = availableTranslations.find((candidate: Document) => candidate.locale === (ctx.config.defaultLocale || 'en'));
+  const alternates = `${availableTranslations.map((candidate: Document) => `<link rel="alternate" hreflang="${escapeHtml(candidate.locale)}" href="${safeUrl(`${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${routeFor(ctx, candidate)}`)}">`).join('')}${defaultTranslation ? `<link rel="alternate" hreflang="x-default" href="${safeUrl(`${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${routeFor(ctx, defaultTranslation)}`)}">` : ''}`;
   const navigationLinks = showSiteChrome ? navigation.map((item: any) => {
     const href = String(item.href || '').replace(':locale', doc.locale);
     const current = href === currentRoute ? ' aria-current="page"' : '';
@@ -1350,7 +1428,7 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   ].join('');
   const documentFeedCollection = doc.collection === 'archive'
     ? String(doc.data?.archiveCollection || feedCollection(ctx) || '')
-    : isPostCollection(ctx, doc.collection) ? doc.collection : String(feedCollection(ctx) || '');
+    : isPostCollection(ctx, doc.collection) ? documentViewCollection(ctx, doc) : String(feedCollection(ctx) || '');
   const documentFeedHref = documentFeedCollection && feedCollections(ctx).includes(documentFeedCollection)
     ? feedRouteFor(ctx, doc.locale, documentFeedCollection)
     : '';
@@ -1426,7 +1504,7 @@ function agentFunctionMap() {
   return [
     { id: 'write-page', purpose: 'Write current site content for a page, guide, reference, or directory', paths: ['content/pages/<id>/<locale>.md'], commands: ['pageskill g'] },
     { id: 'write-post', purpose: 'Record a dated tutorial, article, or note for the Feed, archive, and search', paths: ['content/posts/<id>/<locale>.md'], commands: ['pageskill g'] },
-    { id: 'write-update', purpose: 'Record a version update separately from tutorials and articles', paths: ['content/updates/<version>/<locale>.md'], commands: ['pageskill g'] },
+    { id: 'write-update', purpose: 'Record a version update as a post with category: update; the updates view keeps it separate from ordinary articles', paths: ['content/posts/<version>/<locale>.md'], frontmatter: { category: 'update', date: 'YYYY-MM-DD' }, commands: ['pageskill g'] },
     { id: 'change-layout', purpose: 'Change page structure or visual language', paths: ['themes/<name>/index.ts', 'themes/<name>/components/', 'themes/<name>/layouts/'], commands: ['pageskill g --profile'] },
     { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, theme plugin options, or deployment settings', paths: ['config.yml', 'themes/<name>/theme.yml'], commands: ['pageskill g --profile'] },
     { id: 'discover-extension', purpose: 'Read active theme Patterns, Blocks, collections, plugin switches, contexts, and resource dependencies', paths: ['themes/<name>/index.ts', 'themes/<name>/theme.yml', 'config.yml'], commands: ['import { getCatalog, inspect } from "pageskill"'] },
@@ -1483,6 +1561,7 @@ function catalog(ctx: BuildContext) {
         archive: settings.archive === true
       };
     }),
+    views: Object.entries(ctx.config.content?.views || {}).map(([name, value]) => ({ name, ...(value && typeof value === 'object' && !Array.isArray(value) ? value : {}) })),
     languages: ctx.config.activeLocales || [ctx.config.defaultLocale || 'en'],
     agent: {
       optional: true,
@@ -1753,15 +1832,17 @@ async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
 function feedCollections(ctx: BuildContext): string[] {
   if (ctx.config.feed?.enabled === false) return [];
   if (typeof ctx.config.feed?.collection === 'string' && String(ctx.config.feed.collection).trim()) return [String(ctx.config.feed.collection)];
+  if (Array.isArray(ctx.config.feed?.collections)) return ctx.config.feed.collections.map(String);
   return Object.entries(ctx.config.content?.collections || {})
     .filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value) && (value as any).feed === true)
     .map(([name]) => name);
 }
 function feedCollection(ctx: BuildContext): string | undefined { return feedCollections(ctx)[0]; }
 function feedRouteFor(ctx: BuildContext, locale: string, collection: string): string {
+  const view = contentViewSettings(ctx, collection);
   const settings = collectionSettings(ctx, collection);
   const firstCollection = feedCollection(ctx);
-  const configured = settings.feedRoute || (collection === firstCollection ? ctx.config.feed?.route : undefined) || (collection === 'posts' ? '/:locale/feed.xml' : `/:locale/${collection}/feed.xml`);
+  const configured = view.feedRoute || settings.feedRoute || (collection === firstCollection ? ctx.config.feed?.route : undefined) || (collection === 'posts' ? '/:locale/feed.xml' : `/:locale/${collection}/feed.xml`);
   return String(configured).replace(':locale', locale).replace(':collection', collection).replace(/\/{2,}/g, '/').replace(/([^:])\/\//g, '$1/');
 }
 function archiveCollections(ctx: BuildContext): string[] {
@@ -1771,15 +1852,16 @@ function archiveCollections(ctx: BuildContext): string[] {
   return Object.entries(ctx.config.content?.collections || {}).filter(([, value]) => (value as any)?.archive === true).map(([name]) => name);
 }
 function feedXml(ctx: BuildContext, locale: string, collection: string) {
-  const entries = ctx.docs.filter(doc => doc.collection === collection && doc.locale === locale).sort(comparePublicationOrder).slice(0, Number(ctx.config.feed?.limit || 20));
+  const entries = documentsForCollection(ctx, collection, locale).slice(0, Number(ctx.config.feed?.limit || 20));
   const site = String(ctx.config.siteUrl || '').replace(/\/$/, '');
   return `<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>${xml(localizedValue(ctx.config.feed?.title, locale, localizedValue(ctx.config.siteName, locale, 'Site')))}</title><link>${xml(site)}</link><description>${xml(localizedValue(ctx.config.description, locale, ''))}</description>${entries.map(entry => { const parsed = entry.date ? new Date(entry.date) : null; const published = parsed && !Number.isNaN(parsed.valueOf()) ? parsed.toUTCString() : entry.date || ''; return `<item><title>${xml(entry.title)}</title><link>${xml(`${site}${routeFor(ctx, entry)}`)}</link><guid>${xml(`${site}${routeFor(ctx, entry)}`)}</guid><pubDate>${xml(published)}</pubDate><description>${xml(entry.description)}</description></item>`; }).join('')}</channel></rss>`;
 }
 
 function searchIndex(ctx: BuildContext, locale: string) {
-  return ctx.docs.filter(doc => doc.locale === locale).sort((left, right) => routeFor(ctx, left).localeCompare(routeFor(ctx, right))).map(doc => ({
+  return sourceDocuments(ctx).filter(doc => doc.locale === locale).sort((left, right) => routeFor(ctx, left).localeCompare(routeFor(ctx, right))).map(doc => ({
     id: doc.id,
-    collection: doc.collection,
+    collection: documentViewCollection(ctx, doc),
+    category: postCategory(doc),
     title: doc.title,
     description: doc.description,
     url: routeFor(ctx, doc),
@@ -1832,10 +1914,9 @@ async function writeArchives(ctx: BuildContext): Promise<string[]> {
   const routes: string[] = [];
   const pageSize = Math.max(10, Number(ctx.config.archive?.pageSize || 50));
   for (const collection of archiveCollections(ctx)) for (const locale of ctx.config.activeLocales || [ctx.config.defaultLocale || 'en']) {
-    const entries = ctx.docs.filter(doc => doc.collection === collection && doc.locale === locale)
-      .sort(comparePublicationOrder);
+    const entries = documentsForCollection(ctx, collection, locale);
     if (!entries.length) continue;
-    const base = String(ctx.config.archive?.route || collectionSettings(ctx, collection).archiveRoute || `/:locale/${collection}/`).replace(':locale', locale).replace(':collection', collection).replace(/\/+/g, '/').replace(/([^:])\/\//g, '$1/');
+    const base = String(ctx.config.archive?.route || contentViewSettings(ctx, collection).archiveRoute || collectionSettings(ctx, collection).archiveRoute || `/:locale/${collection}/`).replace(':locale', locale).replace(':collection', collection).replace(/\/+/g, '/').replace(/([^:])\/\//g, '$1/');
     const archiveBase = `/${base.replace(/^\/+|\/+$/g, '')}/`;
     const pages = Math.ceil(entries.length / pageSize);
     for (let page = 1; page <= pages; page += 1) {
@@ -2068,7 +2149,7 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
   const generation = `${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}`;
   const themeDefinition = await loadThemeDefinition(root, themeName, theme, themeHash, generation);
   const themeConfig = normalizeThemeConfig(config, theme, themeDefinition, themeName);
-  const themeI18n = await loadThemeI18n(themeRoot, themeDefinition, String(config.defaultLocale || 'en'));
+  const themeI18n = await loadThemeI18n(themeRoot, themeDefinition, String(config.i18n?.fallbackLocale || config.defaultLocale || 'en'));
   // Keep site-level visual options from the legacy YAML while exposing one
   // normalized definition to all compiler consumers. Resource discovery is
   // owned by the defineTheme export, not by a second file registry.
@@ -2124,7 +2205,7 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
         ...cached,
         ...identity,
         pattern: String(cached.data?.pattern || defaultPattern(config, identity.collection, identity.id, themeDefinition.patterns)),
-        author: cached.author || (cached.data?.author ? String(cached.data.author) : localizedValue(config.author, identity.locale, 'Site Owner')),
+        author: cached.data?.author ? String(cached.data.author) : localizedValue(config.author, identity.locale, 'Site Owner'),
         cover: cached.cover || (cached.data?.cover ? String(cached.data.cover) : undefined),
         excerpt: typeof cached.excerpt === 'string' ? cached.excerpt : cached.markdown,
         source,
@@ -2279,25 +2360,27 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   }
   if (ctx.diagnostics.length) throw new Error(ctx.diagnostics.join('\n'));
   const activeLocales = ctx.config.activeLocales || [ctx.config.defaultLocale || 'en'];
-  const defaultLocale = ctx.themeI18n?.fallbackLocale || ctx.config.defaultLocale || 'en';
+  const defaultLocale = fallbackLocaleFor(ctx);
   const fallbackDocuments: Document[] = [];
   const groups = new Map<string, Document[]>();
   for (const doc of ctx.docs) {
     const key = `${doc.collection}:${doc.id}`;
     groups.set(key, [...(groups.get(key) || []), doc]);
   }
-  for (const documents of groups.values()) {
-    const source = documents.find(candidate => candidate.locale === defaultLocale) || documents[0];
-    for (const locale of activeLocales) {
-      if (documents.some(candidate => candidate.locale === locale)) continue;
-      if (!source.nodes.length && source.markdown) {
-        parseDocumentNodes(ctx, source);
+  if (ctx.config.i18n?.contentFallback !== false) {
+    for (const documents of groups.values()) {
+      const source = documents.find(candidate => candidate.locale === defaultLocale) || documents[0];
+      for (const locale of activeLocales) {
+        if (documents.some(candidate => candidate.locale === locale)) continue;
+        if (!source.nodes.length && source.markdown) {
+          parseDocumentNodes(ctx, source);
+        }
+        const fallback = { ...source, locale, data: { ...source.data, fallbackFrom: source.locale }, source: `fallback:${locale}:${source.collection}:${source.id}` };
+        const route = routeFor(ctx, fallback);
+        if (ctx.routes.has(route)) continue;
+        ctx.routes.set(route, fallback);
+        fallbackDocuments.push(fallback);
       }
-      const fallback = { ...source, locale, data: { ...source.data, fallbackFrom: source.locale }, source: `fallback:${locale}:${source.collection}:${source.id}` };
-      const route = routeFor(ctx, fallback);
-      if (ctx.routes.has(route)) continue;
-      ctx.routes.set(route, fallback);
-      fallbackDocuments.push(fallback);
     }
   }
   rebuildDocumentIndexes(ctx);
@@ -2350,7 +2433,7 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   for (const locale of ctx.config.activeLocales || [ctx.config.defaultLocale || 'en']) {
     await writeSearch(ctx, locale);
     for (const feedCollectionName of feedCollections(ctx)) {
-      if (!ctx.docs.some(doc => doc.collection === feedCollectionName && doc.locale === locale)) continue;
+      if (!documentsForCollection(ctx, feedCollectionName, locale).length) continue;
       const feedRoute = feedRouteFor(ctx, locale, feedCollectionName);
       await writeIfChanged(ctx, `${feedRoute.replace(/^\//, '')}`, feedXml(ctx, locale, feedCollectionName));
     }
@@ -2444,9 +2527,10 @@ function inspectNotFound(query: string, kind: string, available: string[]): neve
   throw new InspectError('INSPECT_NOT_FOUND', `No ${kind} matches "${query}".`, { query, kind, available });
 }
 
-function inspectContent(ctx: BuildContext, query: string, collection?: string, id?: string) {
+function inspectContent(ctx: BuildContext, query: string, collection?: string, id?: string, category?: string) {
   const matches = ctx.docs.filter(doc => {
     if (collection && doc.collection !== collection) return false;
+    if (category && postCategory(doc) !== category) return false;
     if (id !== undefined) return doc.id === id;
     return !query || doc.id === query || doc.source.includes(query);
   });
@@ -2468,8 +2552,8 @@ export async function inspect(ctx: BuildContext, query = '') {
   if (!id) throw new InspectError('INSPECT_INVALID_QUERY', `Inspect namespace "${namespace}" requires an id.`, { query: rawQuery, allowedNamespaces: availableNamespaces });
 
   if (namespace === 'page' || namespace === 'post' || namespace === 'update') {
-    const collection = namespace === 'page' ? 'pages' : namespace === 'update' ? 'updates' : 'posts';
-    return inspectContent(ctx, rawQuery, collection, id);
+    const collection = namespace === 'page' ? 'pages' : 'posts';
+    return inspectContent(ctx, rawQuery, collection, id, namespace === 'update' ? 'update' : undefined);
   }
 
   if (namespace === 'block') {

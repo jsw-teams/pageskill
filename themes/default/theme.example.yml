@@ -1,6 +1,4 @@
 plugins:
-  language:
-    enabled: true
   search:
     enabled: true
     provider: Pageskill

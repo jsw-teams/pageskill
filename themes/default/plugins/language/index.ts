@@ -8,7 +8,5 @@ export function renderLanguageNav(context: ThemeShellContext): string {
 export const plugin: ThemePluginDefinition = {
   implementation: 'plugins/language/index.ts',
   resources: { styles: ['plugins/language/style.css'], scripts: ['plugins/language/script.js'] },
-  i18n: 'plugins/language/messages.yml',
-  defaults: { enabled: true },
-  schema: { enabled: { type: 'boolean' } }
+  i18n: 'plugins/language/messages.yml'
 };

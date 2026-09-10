@@ -10,8 +10,10 @@ Pageskill 3.0.2 separates version history from tutorial content and tightens the
 
 ### Changed
 
-- Added an `updates` post collection at `content/updates/<version>/<locale>.md`, with independent localized index/detail routes, archive, feed, search entries, language links, navigation, and home-page section. Moved the 3.0.0 and 3.0.1 notes without changing their dates, authors, or covers; tutorials remain in `content/posts/`.
-- Extended the existing collection-driven archive/feed and post-list mechanisms instead of introducing a second page pattern. Update relations stay within the updates collection, and generated archive pages now expose a visible heading, description, and localized links.
+- Added an `updates` view backed by the `posts` collection at `content/posts/<version>/<locale>.md` with `category: update`. It has independent localized index/detail routes, archive, feed, search entries, language links, navigation, and a home-page section; tutorials remain in the same source collection without the update category.
+- Extended the existing collection-driven archive/feed and post-list mechanisms instead of introducing a second content collection or page pattern. Update relations stay within the filtered view, and generated archive pages now expose a visible heading, description, and localized links.
+- Set the published site URL to `https://pageskill.openjsu.com` and the localized site author to `toewpq`; a post without an explicit `author` inherits that value, including when the incremental document cache is warm. The root `i18n` settings now own fallback locale and missing-content behavior, while partially translated theme UI merges missing keys from the fallback locale without advertising fallback pages as translated.
+- Kept language capability resources in the theme code but removed language options from `theme.yml`. Cookie choices now expose provider and retention metadata per category, borrowing a policy generator's transparency while keeping the reviewed legal policy as authored content.
 - Fixed the language chooser's recommendation layout with a reserved label line and equal card heights. Article headers now align with the reading column and keep title, description, date, and author compact before the cover; mobile tables of contents start collapsed.
 - Constrained archive thumbnails to a stable 16:9 frame with `height: 100%`, `width: 100%`, and `object-fit: cover`, so source `height` attributes cannot create tall blank rows. Article covers use a stable 1200:630 frame without stretching.
 

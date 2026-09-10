@@ -2,7 +2,8 @@
 title: "3.0.1 update: article metadata and safer publishing"
 description: Add optional article authors and covers, keep dated archives stable, and follow the current npm and Cloudflare Pages contract.
 date: 2026-09-09
-author: Site Owner
+category: update
+author: toewpq
 cover: assets/og-default-product.webp
 ---
 
@@ -25,14 +26,14 @@ Ordinary authors only need to fill in Markdown Frontmatter; no HTML is required.
 title: My site is live
 description: A note about the first publish.
 date: 2026-09-07
-author: Site Owner
+author: toewpq
 cover: assets/og-default-product.webp
 ---
 
 # My site is live
 ```
 
-`author` is optional plain text. If it is omitted, the article uses the matching locale in `config.yml` under `author`; replace the repository's clearly editable `Site Owner` value with the real site owner before publishing. `cover` is optional. Put a local source image under `content/assets/` and write `assets/<path>` (or `/assets/<path>`) in Frontmatter; the public file is generated under `dist/public/assets/<path>`. The existing `assets/og-default-product.webp` is the current bear-derived asset used by this repository. HTTPS image URLs are also accepted; unsafe schemes and traversal paths are rejected. Without a cover, the article page, list, and archive render no image or forced default.
+`author` is optional plain text. If it is omitted, the article uses the matching locale in `config.yml` under `author`; this repository currently uses `toewpq`, while a new site should replace that value with its real site author. `cover` is optional. Put a local source image under `content/assets/` and write `assets/<path>` (or `/assets/<path>`) in Frontmatter; the public file is generated under `dist/public/assets/<path>`. The existing `assets/og-default-product.webp` is the current bear-derived asset used by this repository. HTTPS image URLs are also accepted; unsafe schemes and traversal paths are rejected. Without a cover, the article page, list, and archive render no image or forced default.
 
 The page separates title, Frontmatter description, published date, and author. A matching Markdown `#` title is not repeated in the article body, and list/archive summaries use the description instead of extracting code or headings from the body.
 
@@ -60,4 +61,4 @@ This 3.0.1 pass observed the runtime/theme compiles, `npm run g` generating 45 d
 
 ## Keep the migration small
 
-Keep stable pages in `content/pages/<id>/<locale>.md`, dated tutorials and articles in `content/posts/<id>/<locale>.md`, and version updates in `content/updates/<version>/<locale>.md`. Use one ID and matching `en`, `zh-sg`, and `zh-tw` files, keep their publication `date` aligned, and add only the Frontmatter fields the document needs. Continue with [Start your site in ten minutes](/en/posts/start/) and [Put the site online](/en/posts/deploy/) for the beginner path.
+Keep stable pages in `content/pages/<id>/<locale>.md`, and keep dated tutorials, articles, and version updates in `content/posts/<id>/<locale>.md`. Add `category: update` to version updates, use one ID and matching `en`, `zh-sg`, and `zh-tw` files, keep their publication `date` aligned, and add only the Frontmatter fields the document needs. Continue with [Start your site in ten minutes](/en/posts/start/) and [Put the site online](/en/posts/deploy/) for the beginner path.
