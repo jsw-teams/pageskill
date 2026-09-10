@@ -17,6 +17,9 @@ export type StaticPathResult =
 
 const PRIVATE_ROOT_DIRECTORIES = new Set(['server', '_pagekiln', '.pagekiln']);
 const PRIVATE_ROOT_FILES = new Set([
+  'config.yml',
+  'config.yaml',
+  'config.json',
   '.assetsignore',
   '_worker.js',
   'cloudflare-worker.mjs',

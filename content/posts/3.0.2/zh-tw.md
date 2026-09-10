@@ -18,11 +18,13 @@ Pageskill 3.0.2 把教學和版本歷史放在同一個 post 集合中，再用 
 - 文章標題、說明、發佈日期和作者組成緊湊頁頭；封面和正文閱讀欄使用穩定的 1200:630 比例，彙整縮圖使用獨立的 16:9 容器，不再繼承原圖的像素高度。
 - 文章導覽標籤單獨佔行，不會再被誤認為連結標題的一部分。語言卡片預留推薦標籤行，小螢幕文章目錄預設折疊。
 - 主題可以透過結構化的 `plugins.chrome` 選項，在標準導覽和頁尾工具前後增加連結。編譯器會解析語言路由、限制連結數量和長度、拒絕不安全或目錄穿越 URL，殼層會轉義標籤；不支援原始 HTML、腳本、CSS 或任意屬性。
+- Cookie 外掛現在由程式碼登記 provider 能力，並由 `themes/default/theme.yml` 負責 provider 實例。內建同意控制適配 Google Analytics、Google Ads、Cloudflare Web Analytics、reCAPTCHA/hCaptcha/Turnstile 和按需 X 嵌入；額外 provider 欄位可以留給未來模組，但不會自行執行。
 
 ## 安全與本地化特性
 
 - 主題介面文案會從配置的回退語言合併缺少的鍵和帶 ID 的類別項目。缺少整篇語言文件時，可以在請求語言的路由提供回退文章；但 `hreflang` 只列出實際存在的翻譯。
 - Cookie 選擇器逐類別顯示提供者和保存期限。可選類別預設關閉，受信任腳本必須在明確同意後載入，選擇器不會取代經過審核的隱私政策頁面。
+- `config.yml` 繼續只保存網站政策／控制者資料：不會進入 `dist/public`，生成的 backend 也沒有寫入它的路由。provider secret 和驗證碼 token 驗證繼續放在伺服器端。
 
 ## 相容用法與遷移
 
@@ -34,7 +36,8 @@ Pageskill 3.0.2 把教學和版本歷史放在同一個 post 集合中，再用 
 4. 後續新增語言時，先把語言加入網站啟用語言列表，再按完成進度補 UI 和文章檔案。主題 UI 缺少的鍵從回退語言取得，整篇缺少的文章使用內容回退；已存在但只翻譯一部分的 Markdown 會按原文提供，Pageskill 不會靜默機器翻譯。
 5. 如果舊主題檔案仍有獨立的 `plugins.language.enabled` 開關，請刪除這個重複開關；語言選擇功能仍然存在，並繼續按照網站的啟用語言和回退行為工作。
 6. 教學明確增加 `category: tutorial`；不寫 `category` 的新 post 預設是 `uncategorized`（未分類）。既有主導覽保持相容，需要額外殼層連結時使用主題的結構化 `plugins.chrome` 插入點。
-7. 執行 `npm run g -- --profile`，檢查一般 post/更新彙整和兩個 Feed，再在正式發佈前執行 `npm run d -- --dry-run`。
+7. 在 `themes/<name>/theme.yml` 設定 provider 實例，保留可選類別預設關閉，並使用 Cookie 教學中的類別映射。擴充 provider schema 欄位可以保留，但 provider 只有在程式碼登記模組且取得同意後才會執行。
+8. 執行 `npm run g -- --profile`，檢查一般 post/更新彙整和兩個 Feed，再在正式發佈前執行 `npm run d -- --dry-run`。
 
 ## 已移除項目與替代方案
 
@@ -55,6 +58,6 @@ npm run s
 npm run d -- --dry-run
 ```
 
-3.0.2 檢查已完成：`npm run g -- --profile` 通過 runtime、theme、backend 編譯並報告 48 篇源文件；56 個 HTML 內部 `href`/`src` 檢查沒有缺失引用；posts 和 updates Feed 分別有 10 條和 3 條且彼此隔離，舊 posts 路徑已刪除。1280px 桌面和 390px 手機檢查確認語言卡片均為 136px、彙整封面為 144x81、文章中繼資料對齊，手機目錄預設折疊且可點擊展開，頁面沒有橫向溢出；根語言頁匹配繁體中文瀏覽器偏好，品牌和隱私連結指向 `zh-tw`。`git diff --check` 通過。`npm run d -- --dry-run` 因未設定 `deployment.targets` 以退出碼 1 結束，因此不聲稱已部署或發佈 npm。
+3.0.2 檢查已完成：`npm run g -- --profile` 通過 runtime、theme、backend 編譯並報告 48 篇源文件；臨時 provider 設定曾在選擇器和機器可讀隱私中繼資料中生成 Google Analytics、Google Ads、Cloudflare Web Analytics、Turnstile 和 X 記錄，隨後恢復目前主題為全部關閉。56 個 HTML 內部 `href`/`src` 檢查沒有缺失引用；生成的腳本通過 `node --check`；`/config.yml` 及其 public/static 別名會被判定為私有，公開快照沒有設定檔。posts 和 updates Feed 分別有 10 條和 3 條且彼此隔離，舊 posts 路徑已刪除。1280px 桌面和 390px 手機檢查確認語言卡片均為 136px、彙整封面為 144x81、文章中繼資料對齊，手機目錄預設折疊且可點擊展開，頁面沒有橫向溢出；根語言頁匹配繁體中文瀏覽器偏好，品牌和隱私連結指向 `zh-tw`。`git diff --check` 通過。`npm run d -- --dry-run` 因未設定 `deployment.targets` 以退出碼 1 結束，因此不聲稱已部署或發佈 npm。
 
 教學路徑請繼續閱讀[十分鐘開始你的網站](/zh-tw/posts/start/)，版本歷史請開啟[更新日誌彙整](/zh-tw/updates/)。

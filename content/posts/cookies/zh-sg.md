@@ -39,7 +39,7 @@ themes/default/plugins/cookies/
 
 ## 3. 在代码中登记能力
 
-插件定义由代码拥有。下面是实际定义的精简示例：
+插件定义由代码拥有。它负责登记能力、资源、本地化消息、默认值和实例数据形状，不包含本站的服务 ID 或启用选择。下面是实际定义的精简示例：
 
 ```ts
 import type { ThemePluginDefinition } from '../../../../src/theme-api.ts';
@@ -55,13 +55,17 @@ export const plugin: ThemePluginDefinition = {
     enabled: true,
     categories: [
       { id: 'essential', required: true, default: true },
-      { id: 'analytics', required: false, default: false }
+      { id: 'analytics', required: false, default: false },
+      { id: 'security', required: false, default: false },
+      { id: 'social', required: false, default: false }
     ],
+    integrations: {},
     gatedScripts: []
   },
   schema: {
     enabled: { type: 'boolean' },
     categories: { type: 'array' },
+    integrations: { type: 'object', additionalProperties: true },
     gatedScripts: { type: 'array' }
   }
 };
@@ -79,7 +83,7 @@ import { plugin as toc } from './toc/index.ts';
 export const plugins = { chrome, search, toc, privacyConsent: cookies, language };
 ```
 
-真实 schema 比这个阅读示例更具体，会在使用实例配置前校验类别和脚本字段。
+真实 schema 会描述 Google Analytics、Google Ads、Cloudflare Web Analytics、百度统计、验证码和 X 的内置字段，同时允许未来主题模块增加其他 provider 和 provider 专属字段。未知数据在代码登记对应渲染器之前不会产生作用；配置永远不是可执行代码。
 
 ## 4. 分离实例数据和站点数据
 
@@ -102,8 +106,41 @@ plugins:
         required: false
         default: false
         retentionDays: 0
+      - id: security
+        required: false
+        default: false
+        retentionDays: 0
+      - id: social
+        required: false
+        default: false
+        retentionDays: 0
+    integrations:
+      googleAnalytics:
+        enabled: false
+        measurementId: ''
+        category: analytics
+      googleAds:
+        enabled: false
+        conversionId: ''
+        category: advertising
+      cloudflareWebAnalytics:
+        enabled: false
+        token: ''
+        category: analytics
+      captcha:
+        - enabled: false
+          platform: turnstile
+          siteKey: ''
+          category: security
+      x:
+        enabled: false
+        category: social
     gatedScripts: []
 ```
+
+内置映射是明确的：Google Analytics 使用 `analytics`，Google Ads 使用 `advertising`，Cloudflare Web Analytics 使用 `analytics`，验证码使用 `security`，X 嵌入使用 `social`。只有在审核提供者条款、隐私说明、保存期限和 CSP 后，才把 `enabled` 改为 `true`。验证码平台支持 `recaptcha`、`hcaptcha` 和 `turnstile`；脚本会在同意后加载，页面可使用普通的 `.g-recaptcha`、`.h-captcha` 或 `.cf-turnstile` 标记。验证码 site key 是公开标识；secret key 和服务端 token 校验必须留在 `backend/handler.ts` 或其他私有服务中。
+
+X 集成按需加载：同意后，只有页面存在 X/Twitter 嵌入标记时才加载 `platform.x.com/widgets.js`。选择前不会加载社交嵌入。其他 provider 专属字段可以保留在主题配置中供未来代码使用，但不会仅因写入配置就发起网络请求。
 
 稳定的政策入口和控制者资料仍然是站点数据：
 
@@ -114,7 +151,7 @@ privacy:
     policyRoute: /:locale/privacy/
 ```
 
-把审核过的政策放在 `content/pages/privacy/<locale>.md`。不要在 YAML 或 Markdown 中放 HTML、JavaScript、CSS、提供者代码或隐藏的脚本 URL。配置是数据，可执行行为由插件模块负责。
+把审核过的政策放在 `content/pages/privacy/<locale>.md`。不要在 YAML 或 Markdown 中放 HTML、JavaScript、CSS、提供者代码或隐藏的脚本 URL。`config.yml` 只在生成时读取，不会复制到 `dist/public`；生成的 backend 也没有写入它的路由。配置是数据，可执行行为由插件模块负责。
 
 ## 5. 以安全边界渲染
 
@@ -125,7 +162,7 @@ const label = context.escapeHtml(category.label);
 const href = context.safeUrl(privacy.policyHref);
 ```
 
-标签和元数据作为文字转义；政策链接和受同意控制的脚本 URL 经过 `safeUrl`，不安全协议会被拒绝。浏览器脚本使用 DOM API 创建元素，并且只在同意后接受 `http` 或 `https` 来源。插件界面没有 `innerHTML`、`eval`、任意属性或配置注入的标记。
+标签和元数据作为文字转义；政策链接和受同意控制的脚本 URL 经过 `safeUrl`，不安全协议会被拒绝。内置 provider 的 URL 固定在已登记的浏览器实现中，服务 ID 和 token 只作为数据处理。浏览器脚本使用 DOM API 创建元素，并且只在同意后加载可选资源。插件界面没有 `innerHTML`、`eval`、任意属性或配置注入的标记。
 
 提供者和保存期限会直接显示在选择器中，帮助访客理解类别用途；法律政策仍然是人工审核的页面，而不是悄悄生成的法律文本。
 
@@ -179,15 +216,15 @@ npm run g
 npm run s
 ```
 
-用全新的浏览器会话确认选择前不会加载可选脚本。接受一个可选类别，确认经过审核的脚本加载；重新打开 Cookie 设置，保存“仅必要项”，确认后续加载停止。同时检查政策链接、键盘焦点、语言链接，以及每种启用语言中的 nav/footer 插入效果。
+用全新的浏览器会话确认选择前不会加载可选脚本。分别接受每个已配置类别，确认只有对应的经过审核的 provider 加载：Google Analytics、Google Ads、Cloudflare Web Analytics、验证码，或在存在嵌入标记时的 X。验证码要在服务端校验 token；X 要先确认页面确实有嵌入再观察 widget 请求。重新打开 Cookie 设置，保存“仅必要项”，确认后续加载停止。同时检查政策链接、键盘焦点、语言链接，以及每种启用语言中的 nav/footer 插入效果。
 
 ## 成功结果
 
-Cookie 选择器成为一个可复用的主题插件，拥有本地化界面、明确的类别元数据、安全的同意后加载和经过审核的政策链接。post 仍然是 Markdown，主题也可以增加少量壳层链接，而不会获得 HTML 或脚本注入入口。
+Cookie 选择器成为一个可复用的主题插件，拥有本地化界面、明确的类别元数据、可扩展的 provider 配置、安全的同意后加载和经过审核的政策链接。post 仍然是 Markdown，主题也可以增加少量壳层链接，而不会获得 HTML 或脚本注入入口。
 
 ## 常见坑
 
-不要默认开启分析，不要把未知第三方 URL 当成可信，也不要以为撤回同意可以撤销之前的脚本工作。不要给插件增加 `language` 设置，也不要在每个 post 复制选择器。如果翻译不完整，让配置的 fallback 填补缺少的界面 key，再有计划地完成内容翻译。
+不要默认开启分析、广告、验证码或社交嵌入，不要把未知第三方 URL 当成可信，也不要以为撤回同意可以撤销之前的脚本工作。扩展 integration 数据可以保留，但只有代码模块消费它时才会产生作用。不要把 provider secret 放进 `theme.yml`，不要给插件增加 `language` 设置，也不要在每个 post 复制选择器。如果翻译不完整，让配置的 fallback 填补缺少的界面 key，再有计划地完成内容翻译。
 
 ## 下一步
 

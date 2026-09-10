@@ -18,11 +18,13 @@ Pageskill 3.0.2 keeps tutorials and version history in one post collection while
 - Article titles, descriptions, publication dates, and authors form one compact header. The cover and reading column share a stable 1200:630 frame; archive thumbnails have their own bounded 16:9 frame and no longer inherit a source image's pixel height.
 - Post navigation labels now sit on their own line, so a relation label cannot be mistaken for part of the linked article title. Language cards reserve the recommendation line, and small-screen tables of contents start collapsed.
 - Themes can add links before or after the standard navigation and footer tools through the structured `plugins.chrome` option. The compiler resolves locale routes, bounds link size, rejects unsafe/traversal URLs, and the shell escapes labels; raw HTML, scripts, CSS, and arbitrary attributes are not supported.
+- The Cookie plugin now registers provider capabilities in code while `themes/default/theme.yml` owns provider instances. Built-in consent-aware adapters cover Google Analytics, Google Ads, Cloudflare Web Analytics, reCAPTCHA/hCaptcha/Turnstile, and on-demand X embeds; extra provider fields remain available for future modules but do not execute by themselves.
 
 ## Security and localization
 
 - Theme UI messages merge missing keys and keyed category entries from the configured fallback locale. If an entire locale document is missing, the fallback document can be rendered at the requested route; `hreflang` still lists only translations that actually exist.
 - The Cookie chooser shows each category's provider and retention explicitly. Optional categories remain off by default, gated scripts require affirmative consent, and the chooser does not replace the reviewed legal policy page.
+- `config.yml` remains site policy/controller data: it is not emitted to `dist/public`, and the generated backend has no route that writes it. Provider secrets and CAPTCHA token verification remain server-side.
 
 ## Compatibility and migration
 
@@ -34,7 +36,8 @@ Existing 3.0 sites can migrate the source layout without changing public update 
 4. When adding a locale, activate it in the site's locale list and add its UI/content files as they become available. Missing theme UI keys use the fallback locale; a missing whole document uses the content fallback. A Markdown file that exists but is only partly translated stays as authored; Pageskill does not silently machine-translate it.
 5. If an older theme file contains a separate `plugins.language.enabled` switch, remove that redundant switch; the language chooser is still available and follows the site's active locales and fallback behavior.
 6. For a tutorial, add `category: tutorial`; leave `category` out for the default `uncategorized` post. Existing primary navigation remains compatible, while optional shell links can be added through the theme's structured `plugins.chrome` slots.
-7. Run `npm run g -- --profile`, inspect both archives and feeds, then use `npm run d -- --dry-run` before a real publish.
+7. Configure provider instances in `themes/<name>/theme.yml`, keep optional categories disabled by default, and use the category mapping documented in the Cookie tutorial. Extra provider schema fields are accepted for extension, but a provider only runs after its code module is registered and consent is granted.
+8. Run `npm run g -- --profile`, inspect both archives and feeds, then use `npm run d -- --dry-run` before a real publish.
 
 ## Removed and replacements
 
@@ -55,6 +58,6 @@ npm run s
 npm run d -- --dry-run
 ```
 
-The 3.0.2 checks passed: `npm run g -- --profile` compiled runtime, theme, and backend and reported 48 source documents; the 56-file internal `href`/`src` check found no missing references; posts and updates Feeds contain 10 and 3 isolated items, and the old post routes are absent. At 1280px and 390px, language cards are equal at 136px, archive covers are 144x81, article metadata is aligned, mobile TOC starts collapsed and expands on click, and there is no horizontal overflow. The root chooser matched Traditional Chinese browser preference and localized its brand/privacy links to `zh-tw`; `git diff --check` passed. `npm run d -- --dry-run` exited 1 because `deployment.targets` is unset, so this does not claim deployment or npm publication.
+The 3.0.2 checks passed: `npm run g -- --profile` compiled runtime, theme, and backend and reported 48 source documents; a temporary provider configuration produced Google Analytics, Google Ads, Cloudflare Web Analytics, Turnstile, and X records in the chooser and machine-readable privacy metadata, then the active theme was restored with all providers disabled. The 56-file internal `href`/`src` check found no missing references; posts and updates Feeds contain 10 and 3 isolated items, and the old post routes are absent. The generated script passed `node --check`; `/config.yml` and its public/static aliases classify as private, and no generated public config file exists. At 1280px and 390px, language cards are equal at 136px, archive covers are 144x81, article metadata is aligned, mobile TOC starts collapsed and expands on click, and there is no horizontal overflow. The root chooser matched Traditional Chinese browser preference and localized its brand/privacy links to `zh-tw`; `git diff --check` passed. `npm run d -- --dry-run` exited 1 because `deployment.targets` is unset, so this does not claim deployment or npm publication.
 
 Continue with [Start your site in ten minutes](/en/posts/start/) for the tutorial path, or open [the update archive](/en/updates/) for version history.

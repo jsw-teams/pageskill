@@ -422,10 +422,20 @@ function legacyThemePluginSettings(config: Record<string, any>, name: string): R
   if (name === 'language') return {};
   const values: Record<string, any> = {};
   const legacyPlugins = isRecord(config.plugins) ? config.plugins : {};
-  if (isRecord(legacyPlugins[name])) Object.assign(values, legacyPlugins[name]);
+  if (isRecord(legacyPlugins[name])) {
+    const legacySettings = { ...legacyPlugins[name] };
+    // Provider instances and trusted script sources belong to theme.yml. Keep
+    // the old config path readable for non-executable legacy options, but do
+    // not let site config smuggle integration code into the privacy plugin.
+    if (name === 'privacyConsent') {
+      delete legacySettings.integrations;
+      delete legacySettings.gatedScripts;
+    }
+    Object.assign(values, legacySettings);
+  }
   if (name === 'search' && isRecord(config.search)) Object.assign(values, config.search);
   if (name === 'privacyConsent' && isRecord(config.privacy?.cookieConsent)) {
-    const { policyRoute: _policyRoute, agentRoute: _agentRoute, ...settings } = config.privacy.cookieConsent;
+    const { policyRoute: _policyRoute, agentRoute: _agentRoute, integrations: _integrations, gatedScripts: _gatedScripts, ...settings } = config.privacy.cookieConsent;
     Object.assign(values, settings);
   }
   return values;
@@ -1145,6 +1155,12 @@ const DEFAULT_COOKIE_CATEGORIES = [
   },
   {
     id: 'advertising', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
+  },
+  {
+    id: 'security', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
+  },
+  {
+    id: 'social', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
   }
 ];
 
@@ -1198,11 +1214,13 @@ function cookieCategories(settings: Record<string, any>, locale: string, localiz
   }).filter(Boolean);
 }
 
-const PRIVACY_INTEGRATION_LABELS: Record<string, string> = {
-  googleAnalytics: 'Google Analytics',
-  googleAds: 'Google Ads',
-  cloudflareWebAnalytics: 'Cloudflare Web Analytics',
-  baiduTongji: 'Baidu Tongji'
+const PRIVACY_INTEGRATION_LABELS: Record<string, Record<string, string>> = {
+  googleAnalytics: { en: 'Google Analytics', 'zh-sg': 'Google Analytics', 'zh-tw': 'Google Analytics' },
+  googleAds: { en: 'Google Ads', 'zh-sg': 'Google Ads', 'zh-tw': 'Google Ads' },
+  cloudflareWebAnalytics: { en: 'Cloudflare Web Analytics', 'zh-sg': 'Cloudflare Web Analytics', 'zh-tw': 'Cloudflare Web Analytics' },
+  baiduTongji: { en: 'Baidu Tongji', 'zh-sg': '百度统计', 'zh-tw': '百度統計' },
+  captcha: { en: 'Human verification', 'zh-sg': '人机验证', 'zh-tw': '人機驗證' },
+  x: { en: 'X embeds', 'zh-sg': 'X 嵌入', 'zh-tw': 'X 嵌入' }
 };
 
 function privacyIntegrations(settings: Record<string, any>, categories: Array<{ id: string; required: boolean } | null>) {
@@ -1213,21 +1231,56 @@ function privacyIntegrations(settings: Record<string, any>, categories: Array<{ 
     if (!raw || typeof raw !== 'object' || raw.enabled !== true) return;
     const value = String(raw[field] || '').trim();
     const category = String(raw.category || defaultCategory).trim().toLowerCase();
-    if (!value || value.length > 180 || !optional.has(category)) return;
+    if (!value || value.length > 256 || /[<>"'`\\\s]/.test(value) || !optional.has(category)) return;
     result.push({ provider, category, [field]: value });
   };
   add('googleAnalytics', source.googleAnalytics, 'measurementId', 'analytics');
   add('googleAds', source.googleAds, 'conversionId', 'advertising');
   add('cloudflareWebAnalytics', source.cloudflareWebAnalytics, 'token', 'analytics');
   add('baiduTongji', source.baiduTongji, 'siteId', 'analytics');
+  const captchaEntries = Array.isArray(source.captcha) ? source.captcha : [];
+  captchaEntries.forEach((raw: any) => {
+    if (!raw || typeof raw !== 'object' || raw.enabled !== true) return;
+    const platform = String(raw.platform || '').trim().toLowerCase();
+    const siteKey = String(raw.siteKey || '').trim();
+    const category = String(raw.category || 'security').trim().toLowerCase();
+    if (!['recaptcha', 'hcaptcha', 'turnstile'].includes(platform) || !siteKey || siteKey.length > 256 || /[<>"'`\\\s]/.test(siteKey) || !optional.has(category)) return;
+    result.push({ provider: 'captcha', platform, siteKey, category });
+  });
+  const x = source.x;
+  if (x && typeof x === 'object' && x.enabled === true) {
+    const category = String(x.category || 'social').trim().toLowerCase();
+    if (optional.has(category)) result.push({ provider: 'x', category });
+  }
   return result;
 }
 
-function decorateCookieCategories(categories: any[], integrations: Array<Record<string, string>>) {
+function privacyIntegrationLabel(integration: Record<string, string>, locale: string): string {
+  const language = locale.startsWith('zh-tw') ? 'zh-tw' : locale.startsWith('zh') ? 'zh-sg' : 'en';
+  const base = PRIVACY_INTEGRATION_LABELS[integration.provider]?.[language] || PRIVACY_INTEGRATION_LABELS[integration.provider]?.en || integration.provider;
+  if (integration.provider !== 'captcha') return base;
+  const platformLabels: Record<string, string> = {
+    recaptcha: 'reCAPTCHA',
+    hcaptcha: 'hCaptcha',
+    turnstile: 'Cloudflare Turnstile'
+  };
+  const platform = platformLabels[integration.platform] || '';
+  return platform ? `${base} (${platform})` : base;
+}
+
+function decorateCookieCategories(categories: any[], integrations: Array<Record<string, string>>, locale = 'en') {
   return categories.map(category => {
-    const providers = integrations.filter(integration => integration.category === category.id).map(integration => PRIVACY_INTEGRATION_LABELS[integration.provider] || integration.provider);
+    const providers = integrations.filter(integration => integration.category === category.id).map(integration => privacyIntegrationLabel(integration, locale));
     return providers.length ? { ...category, provider: providers.join(', ') } : category;
   });
+}
+
+function publicPrivacyIntegration(integration: Record<string, string>) {
+  return {
+    provider: integration.provider,
+    category: integration.category,
+    ...(integration.platform ? { platform: integration.platform } : {})
+  };
 }
 
 function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
@@ -1240,7 +1293,7 @@ function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
   const scriptHref = script.startsWith('/') || /^https?:\/\//i.test(script) ? script : themeResourceHref(ctx, themeBase, script);
   const baseCategories = cookieCategories(settings, doc.locale, Array.isArray(copy.categories) ? copy.categories : []) as Array<{ id: string; label: string; description: string; required: boolean; defaultValue: boolean; provider: string; retentionDays: number }>;
   const integrations = privacyIntegrations(settings, baseCategories);
-  const categories = decorateCookieCategories(baseCategories, integrations) as Array<{ id: string; label: string; description: string; required: boolean; defaultValue: boolean; provider: string; retentionDays: number }>;
+  const categories = decorateCookieCategories(baseCategories, integrations, doc.locale) as Array<{ id: string; label: string; description: string; required: boolean; defaultValue: boolean; provider: string; retentionDays: number }>;
   const optionalCategory = categories.find(category => !category.required);
   const retentionDays = Math.max(0, Number(settings.retentionDays || 365));
   const gatedScripts = (Array.isArray(settings.gatedScripts) ? settings.gatedScripts : []).map((entry: any) => {
@@ -1585,7 +1638,7 @@ function catalog(ctx: BuildContext) {
   const locale = ctx.config.defaultLocale || 'en';
   const basePrivacyCategories = cookieCategories(privacySettings, locale, themeLocaleData(ctx, locale).cookieConsent?.categories || []);
   const privacyIntegrationsData = privacyIntegrations(privacySettings, basePrivacyCategories);
-  const privacyCategories = decorateCookieCategories(basePrivacyCategories, privacyIntegrationsData);
+  const privacyCategories = decorateCookieCategories(basePrivacyCategories, privacyIntegrationsData, locale);
   return {
     version: 2,
     theme: {
@@ -1642,7 +1695,7 @@ function catalog(ctx: BuildContext) {
         storage: String(privacySettings.storage || 'cookie'),
         retentionDays: Math.max(0, Number(privacySettings.retentionDays || 365)),
         categories: privacyCategories,
-        integrations: privacyIntegrationsData.map(integration => ({ provider: integration.provider, category: integration.category })),
+        integrations: privacyIntegrationsData.map(publicPrivacyIntegration),
         policyRoute: String(privacySettings.policyRoute || '/:locale/privacy/'),
         agentRoute: String(privacySettings.agentRoute || '/.well-known/agent.json'),
         choices: { optionalDefault: false, rejectAvailable: true, withdrawAvailable: true }
@@ -1878,8 +1931,8 @@ async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
       enabled: settings.enabled === true && pluginEnabled(ctx, 'privacyConsent'),
       storage: String(settings.storage || 'cookie'),
       retentionDays: Math.max(0, Number(settings.retentionDays || 365)),
-      categories: decorateCookieCategories(baseCategories, integrations),
-      integrations: integrations.map(integration => ({ provider: integration.provider, category: integration.category })),
+      categories: decorateCookieCategories(baseCategories, integrations, locale),
+      integrations: integrations.map(publicPrivacyIntegration),
       noAnalyticsByDefault: true,
       policyRoute,
       policyRoutes,

@@ -30,6 +30,14 @@ messages:
           provider: 未配置广告服务
           label: 可选广告
           description: 只有主动同意后才允许广告或转化衡量服务。
+        - id: security
+          provider: 未配置人机验证服务
+          label: 人机验证
+          description: 只有主动同意后才允许验证码或反滥用服务。
+        - id: social
+          provider: 未配置社交嵌入
+          label: 社交内容
+          description: 只有主动同意后才允许 X 等第三方社交内容嵌入。
   zh-tw:
     cookieConsent:
       title: Cookie 偏好設定
@@ -61,6 +69,14 @@ messages:
           provider: 未設定廣告服務
           label: 可選廣告
           description: 廣告或轉換衡量服務只有在主動同意後才可啟用。
+        - id: security
+          provider: 未設定人機驗證服務
+          label: 人機驗證
+          description: 驗證碼或反濫用服務只有在主動同意後才可啟用。
+        - id: social
+          provider: 未設定社交嵌入
+          label: 社交內容
+          description: X 等第三方社交內容嵌入只有在主動同意後才可啟用。
   en:
     cookieConsent:
       title: Cookie preferences
@@ -92,3 +108,11 @@ messages:
           provider: No advertising service configured
           label: Optional advertising
           description: Advertising or conversion measurement may run only after an affirmative choice and only when configured.
+        - id: security
+          provider: No human-verification service configured
+          label: Human verification
+          description: CAPTCHA or anti-abuse services may run only after an affirmative choice and only when configured.
+        - id: social
+          provider: No social embeds configured
+          label: Social content
+          description: X and other third-party social embeds may run only after an affirmative choice and only when configured.

@@ -18,6 +18,7 @@ Pageskill 3.0.2 separates version history from tutorial content and tightens the
 - Fixed the language chooser's recommendation layout with a reserved label line and equal card heights. Article headers now align with the reading column and keep title, description, date, and author compact before the cover; mobile tables of contents start collapsed.
 - Constrained archive thumbnails to a stable 16:9 frame with `height: 100%`, `width: 100%`, and `object-fit: cover`, so source `height` attributes cannot create tall blank rows. Post cards and article covers use stable frames and preserve the full source artwork with `object-fit: contain`.
 - Added structured theme-level `plugins.chrome` slots for links before or after the standard navigation and footer tools. Locale substitution, size limits, traversal/protocol checks, and label escaping keep shell customization inside a safe link-only boundary; raw HTML, scripts, CSS, selectors, and arbitrary attributes are not accepted.
+- Extended the Cookie plugin as a code-registered capability with theme-owned provider instances. The consent-aware adapters cover Google Analytics, Google Ads, Cloudflare Web Analytics, reCAPTCHA/hCaptcha/Turnstile, and on-demand X embeds; extra integration fields remain extensible but inert until a registered module consumes them. Optional provider resources stay disabled until affirmative consent, and `config.yml` is neither emitted to `dist/public` nor writable through the runtime.
 
 ### Compatibility
 
@@ -30,6 +31,7 @@ Pageskill 3.0.2 separates version history from tutorial content and tightens the
 
 - The separate `content/updates` source collection is no longer used. It was replaced because release notes and ordinary posts need one date-ordered source without duplicate content mechanisms; use `content/posts` with `category: update`. The public updates index, routes, feeds, search entries, and language links were not removed.
 - No Cookie consent or language-choice visitor feature was removed. Provider/retention fields are explanatory metadata, while the reviewed localized privacy page remains the legal policy source.
+- Existing Cookie storage and `gatedScripts` behavior remains compatible. Move provider instances to `themes/<name>/theme.yml`; keep secrets and CAPTCHA verification server-side. A configured integration with an unsupported or incomplete provider field is ignored until its code module is registered; no provider is enabled by default.
 
 ### Verification
 

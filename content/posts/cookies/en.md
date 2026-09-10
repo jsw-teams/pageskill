@@ -39,7 +39,7 @@ themes/default/plugins/cookies/
 
 ## 3. Register the capability in code
 
-The plugin definition is code-owned. A shortened version of the real definition looks like this:
+The plugin definition is code-owned. It registers the capability, resources, localized messages, defaults, and the shape of the instance data; it does not contain this site's provider IDs or enablement choices. A shortened version of the real definition looks like this:
 
 ```ts
 import type { ThemePluginDefinition } from '../../../../src/theme-api.ts';
@@ -55,13 +55,17 @@ export const plugin: ThemePluginDefinition = {
     enabled: true,
     categories: [
       { id: 'essential', required: true, default: true },
-      { id: 'analytics', required: false, default: false }
+      { id: 'analytics', required: false, default: false },
+      { id: 'security', required: false, default: false },
+      { id: 'social', required: false, default: false }
     ],
+    integrations: {},
     gatedScripts: []
   },
   schema: {
     enabled: { type: 'boolean' },
     categories: { type: 'array' },
+    integrations: { type: 'object', additionalProperties: true },
     gatedScripts: { type: 'array' }
   }
 };
@@ -79,7 +83,7 @@ import { plugin as toc } from './toc/index.ts';
 export const plugins = { chrome, search, toc, privacyConsent: cookies, language };
 ```
 
-The real schema is more specific than this reading example: it validates category and script fields before the instance is used.
+The real schema describes the built-in Google Analytics, Google Ads, Cloudflare Web Analytics, Baidu Tongji, CAPTCHA, and X fields. It also permits extra provider entries and provider-specific fields for future theme modules. Unknown data is inert until code registers a renderer for it; configuration is never executable code.
 
 ## 4. Separate instance data from site data
 
@@ -102,8 +106,41 @@ plugins:
         required: false
         default: false
         retentionDays: 0
+      - id: security
+        required: false
+        default: false
+        retentionDays: 0
+      - id: social
+        required: false
+        default: false
+        retentionDays: 0
+    integrations:
+      googleAnalytics:
+        enabled: false
+        measurementId: ''
+        category: analytics
+      googleAds:
+        enabled: false
+        conversionId: ''
+        category: advertising
+      cloudflareWebAnalytics:
+        enabled: false
+        token: ''
+        category: analytics
+      captcha:
+        - enabled: false
+          platform: turnstile
+          siteKey: ''
+          category: security
+      x:
+        enabled: false
+        category: social
     gatedScripts: []
 ```
+
+The built-in mappings are deliberately explicit: Google Analytics uses `analytics`, Google Ads uses `advertising`, Cloudflare Web Analytics uses `analytics`, CAPTCHA uses `security`, and X embeds use `social`. Set `enabled: true` only after reviewing the provider's terms, privacy notice, retention, and CSP. The supported CAPTCHA platforms are `recaptcha`, `hcaptcha`, and `turnstile`. Their scripts load after consent; the page can use the normal `.g-recaptcha`, `.h-captcha`, or `.cf-turnstile` marker. CAPTCHA site keys are public identifiers; secret keys and server-side token verification stay in `backend/handler.ts` or another private service.
+
+The X integration is on-demand: after consent, `platform.x.com/widgets.js` loads only when the page contains an X/Twitter embed marker. The selector does not load social embeds before consent. Other provider-specific fields can remain in the theme configuration for a future registered integration, but they do not cause a network request by themselves.
 
 The stable policy route and controller data remain site data:
 
@@ -114,7 +151,7 @@ privacy:
     policyRoute: /:locale/privacy/
 ```
 
-Put the reviewed policy at `content/pages/privacy/<locale>.md`. Do not put HTML, JavaScript, CSS, provider code, or a hidden script URL in YAML or Markdown. Configuration is data; the plugin module owns executable behavior.
+Put the reviewed policy at `content/pages/privacy/<locale>.md`. Do not put HTML, JavaScript, CSS, provider code, or a hidden script URL in YAML or Markdown. `config.yml` is read during generation and is not copied into `dist/public`; the generated backend has no route that writes it. Configuration is data; the plugin module owns executable behavior.
 
 ## 5. Render with safe boundaries
 
@@ -125,7 +162,7 @@ const label = context.escapeHtml(category.label);
 const href = context.safeUrl(privacy.policyHref);
 ```
 
-Labels and metadata are escaped as text. Policy and gated-script URLs pass through `safeUrl`; unsafe protocols are rejected. The browser script creates elements with DOM APIs and only accepts `http` or `https` sources after consent. There is no `innerHTML`, `eval`, arbitrary attribute, or configuration-provided markup in the plugin surface.
+Labels and metadata are escaped as text. Policy and gated-script URLs pass through `safeUrl`; unsafe protocols are rejected. Built-in provider URLs are fixed in the registered browser implementation, while provider IDs and tokens are treated as data. The browser script creates elements with DOM APIs and only loads optional resources after consent. There is no `innerHTML`, `eval`, arbitrary attribute, or configuration-provided markup in the plugin surface.
 
 Provider and retention fields are deliberately visible in the selector. They help visitors understand what a category represents, while the legal policy remains a human-reviewed page rather than silently generated legal text.
 
@@ -179,15 +216,15 @@ npm run g
 npm run s
 ```
 
-In a fresh browser session, verify that no optional script loads before a choice. Accept an optional category and verify its reviewed script loads. Reopen Cookie settings, save “essential only,” and verify later loads stop. Also check the policy link, keyboard focus, language links, and the nav/footer insertion in each active locale.
+In a fresh browser session, verify that no optional script loads before a choice. Accept each configured category separately and verify only its reviewed provider loads: Google Analytics, Google Ads, Cloudflare Web Analytics, CAPTCHA, or an X embed when its marker exists. For CAPTCHA, verify the token on the server; for X, verify an embed is present before the widget request. Reopen Cookie settings, save “essential only,” and verify later loads stop. Also check the policy link, keyboard focus, language links, and the nav/footer insertion in each active locale.
 
 ## Expected result
 
-The Cookie selector is one reusable theme plugin with localized UI, explicit category metadata, safe consent-aware loading, and a reviewed policy link. Posts remain Markdown, and a theme can add small shell links without gaining an HTML or script injection surface.
+The Cookie selector is one reusable theme plugin with localized UI, explicit category metadata, extensible provider configuration, safe consent-aware loading, and a reviewed policy link. Posts remain Markdown, and a theme can add small shell links without gaining an HTML or script injection surface.
 
 ## Common traps
 
-Do not enable analytics by default, treat an unknown third-party URL as trusted, or assume withdrawal can undo an earlier script. Do not add a `language` setting to the plugin or duplicate the selector in individual posts. If a translation is incomplete, let the configured fallback fill missing keys and finish the content deliberately.
+Do not enable analytics, ads, CAPTCHA, or social embeds by default; do not treat an unknown third-party URL as trusted; and do not assume withdrawal can undo an earlier script. Extra integration data is allowed for extensibility, but it is inert until a code module consumes it. Do not put provider secrets in `theme.yml`, add a `language` setting to the plugin, or duplicate the selector in individual posts. If a translation is incomplete, let the configured fallback fill missing keys and finish the content deliberately.
 
 ## Next step
 

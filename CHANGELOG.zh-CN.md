@@ -18,6 +18,7 @@ Pageskill 3.0.2 把版本历史和教程内容分开，并收紧响应式阅读�
 - 修复语言选择页的推荐标签布局，预留标签行并保持卡片等高。文章页头现在和正文阅读栏对齐，在封面之前紧凑显示标题、说明、日期和作者；手机目录默认折叠。
 - 归档缩略图固定使用 16:9 容器并显式设置 `height: 100%`、`width: 100%` 和 `object-fit: cover`，不会让原图 `height` 属性撑出高空白行；post 卡片和文章封面使用稳定容器，并用 `object-fit: contain` 保留完整原图。
 - 增加主题级 `plugins.chrome` 结构化插槽，可在标准导航和页脚工具前后增加链接。语言替换、尺寸上限、路径穿越/协议检查和标签转义把自定义限制在安全链接范围；不接受 HTML、脚本、CSS、选择器或任意属性。
+- 扩展 Cookie 插件为由代码登记能力、由主题配置 provider 实例的同意控制模块。内置支持 Google Analytics、Google Ads、Cloudflare Web Analytics、reCAPTCHA/hCaptcha/Turnstile 和按需 X 嵌入；额外 integration 字段可以扩展，但只有登记对应模块后才会生效。可选 provider 资源必须在明确同意后加载，`config.yml` 不会进入 `dist/public`，也没有线上运行时写入路由。
 
 ### 兼容用法
 
@@ -30,6 +31,7 @@ Pageskill 3.0.2 把版本历史和教程内容分开，并收紧响应式阅读�
 
 - 不再使用独立的 `content/updates` 源 collection。原因是版本文章和普通文章需要共用一套按日期排序的来源，避免重复内容机制；替代用法是 `content/posts` 加 `category: update`。公开更新索引、路由、Feed、搜索结果和语言链接没有被删除。
 - 没有移除 Cookie 同意或语言选择功能。提供者/保存期限是说明性元数据，经过审核的本地化隐私页面仍然是法律政策来源。
+- 现有 Cookie 存储键和 `gatedScripts` 行为保持兼容。把 provider 实例移到 `themes/<name>/theme.yml`；secret 和验证码校验继续放在服务端。provider 字段不完整或尚未支持时会被忽略，默认不会启用任何 provider。
 
 ### 验证
 

@@ -31,8 +31,18 @@ export const plugin: ThemePluginDefinition = {
     categories: [
       { id: 'essential', required: true, default: true, retentionDays: 365 },
       { id: 'analytics', required: false, default: false, retentionDays: 0 },
-      { id: 'advertising', required: false, default: false, retentionDays: 0 }
+      { id: 'advertising', required: false, default: false, retentionDays: 0 },
+      { id: 'security', required: false, default: false, retentionDays: 0 },
+      { id: 'social', required: false, default: false, retentionDays: 0 }
     ],
+    integrations: {
+      googleAnalytics: { enabled: false, measurementId: '', category: 'analytics' },
+      googleAds: { enabled: false, conversionId: '', category: 'advertising' },
+      cloudflareWebAnalytics: { enabled: false, token: '', category: 'analytics' },
+      baiduTongji: { enabled: false, siteId: '', category: 'analytics' },
+      captcha: [],
+      x: { enabled: false, category: 'social' }
+    },
     gatedScripts: []
   },
   schema: {
@@ -56,7 +66,74 @@ export const plugin: ThemePluginDefinition = {
         }
       }
     },
-    integrations: { type: 'object', additionalProperties: true },
+    integrations: {
+      type: 'object',
+      // Known providers are documented below, while extra provider entries and
+      // provider-specific options remain available for future theme modules.
+      // Runtime code only consumes fields it explicitly supports.
+      additionalProperties: true,
+      properties: {
+        googleAnalytics: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            enabled: { type: 'boolean' },
+            measurementId: { type: 'string' },
+            category: { type: 'string' }
+          }
+        },
+        googleAds: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            enabled: { type: 'boolean' },
+            conversionId: { type: 'string' },
+            category: { type: 'string' }
+          }
+        },
+        cloudflareWebAnalytics: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            enabled: { type: 'boolean' },
+            token: { type: 'string' },
+            category: { type: 'string' }
+          }
+        },
+        baiduTongji: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            enabled: { type: 'boolean' },
+            siteId: { type: 'string' },
+            category: { type: 'string' }
+          }
+        },
+        captcha: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+              enabled: { type: 'boolean' },
+              // Keep this open for additional CAPTCHA platforms; the browser
+              // implementation consumes only the platforms it knows.
+              platform: { type: 'string' },
+              siteKey: { type: 'string' },
+              category: { type: 'string' }
+            }
+          }
+        },
+        x: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            enabled: { type: 'boolean' },
+            category: { type: 'string' }
+          }
+        }
+      }
+    },
     gatedScripts: {
       type: 'array',
       items: {
