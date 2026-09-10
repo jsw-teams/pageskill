@@ -1,8 +1,8 @@
-# Pageskill: write articles, build a site
+# Pageskill: write tutorials, build a site
 
 [简体中文](README.md) · [中文 changelog](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md)
 
-Pageskill 3.0.2 turns Markdown articles, site settings, and theme styles into a publishable website. Write the content first, then let the theme provide structure and visual behavior; ordinary sites do not need hand-written HTML for every article.
+Pageskill 3.0.2 turns Markdown content, site settings, and theme styles into a publishable website. Write the content first, then let the theme provide structure and visual behavior; ordinary sites do not need hand-written HTML for every post.
 
 ## Start in ten minutes
 
@@ -35,11 +35,11 @@ Read these short articles in order:
 
 - [Change the name and navigation](content/posts/site-settings/en.md)
 - [Markdown: write like a note](content/posts/markdown/en.md)
-- [Publish your first article](content/posts/first-post/en.md)
-- [Cookie choices: ask before loading](content/posts/cookies/en.md)
+- [Publish your first tutorial](content/posts/first-post/en.md)
+- [How we build a plugin: the Cookie selector as a reference](content/posts/cookies/en.md)
 - [Change the style, or ask an Agent](content/posts/customize/en.md)
-- [Let visitors search pages and articles](content/posts/search/en.md)
-- [Add a table of contents to long articles](content/posts/toc/en.md)
+- [Let visitors search pages and posts](content/posts/search/en.md)
+- [Add a table of contents to long posts](content/posts/toc/en.md)
 - [Develop a reusable plugin](content/posts/plugins/en.md)
 - [Put the site online](content/posts/deploy/en.md)
 - [About Pageskill](content/pages/about/en.md)
@@ -48,16 +48,16 @@ Read these short articles in order:
 - [3.0.1 update: article metadata and safer publishing](content/posts/3.0.1/en.md)
 - [3.0 update: a simpler entry](content/posts/3.0.0/en.md)
 
-The Simplified Chinese and Traditional Chinese versions sit beside each English article.
+The Simplified Chinese and Traditional Chinese versions sit beside each English tutorial or release note.
 
 ## Where content and source code live
 
-- `content/pages/<id>/<locale>.md` stores stable pages such as the home page, About, and the privacy policy. These pages do not need `date`; the pages collection supplies the default page pattern. All dated tutorials, blogs, product records, and version updates live in `content/posts/<id>/<locale>.md`; a version update uses `category: update` in Frontmatter and appears in the separate `/:locale/updates/<id>/` view. Every post requires a valid ISO `date`. Optional `author` and `cover` fields control the author and cover. A missing author falls back to the site author in `config.yml`; local covers live under `content/assets/` and use `assets/<path>` or `/assets/<path>` in Frontmatter.
+- `content/pages/<id>/<locale>.md` stores stable pages such as the home page, About, and the privacy policy. These pages do not need `date`; the pages collection supplies the default page pattern. All dated tutorials, blogs, product records, and version updates live in `content/posts/<id>/<locale>.md`; `category: tutorial` marks a tutorial, an omitted category defaults to `uncategorized`, and `category: update` marks a version update that appears in the separate `/:locale/updates/<id>/` view. Every post requires a valid ISO `date`. Optional `author` and `cover` fields control the author and cover. The current site's localized author is `toewpq`; a missing author falls back to it. Local covers live under `content/assets/` and use `assets/<path>` or `/assets/<path>` in Frontmatter.
 - `config.yml` stores site names, languages, i18n fallback, navigation, routes, privacy/controller data, images, and deployment targets; `theme.name` selects the theme. It is not a browser-script or HTML injection surface. Plugin instance options and switches belong together in `themes/<name>/theme.yml`; language lists and fallback are site configuration, not plugin settings.
 - `themes/<name>/` owns styles, article structures, and reusable Blocks. The root `index.ts` only assembles `components/index.ts`, `layouts/index.ts`, and `plugins/index.ts`; the site shell lives in `layouts/site/`, shared helpers in `components/shared/`, article relations beside their article component, components in `components/<id>/`, and plugins in `plugins/<id>/`, with each module carrying its `index.ts` plus the CSS, JS, and `messages.yml` it needs. Plugin definitions keep their code-owned `schema`, `implementation`, `resources`, localized messages, and `defaults`; `theme.yml` supplies only schema-whitelisted plugin options and no longer selects the theme name. People can reuse the theme directly, and Agents can extend it under the same contract; articles never need copied HTML.
 - `backend/handler.ts` owns dynamic business logic, writes, webhooks, and runtime secrets. Register any path with the existing `router.get(...)`, `router.post(...)`, or `router.all(...)` methods; runtime matching returns a `Response` or `null` when nothing matches, so generation does not need a per-route `dynamicRoutes` list in `config.yml`. When a backend is present, generated Worker/Pages/VPS entrypoints run the Router first for every pathname and set `run_worker_first = true`; unknown paths then fall through to public assets, while an unmatched `/api` stays 404. API errors and authorization responses remain API responses and do not fall back to static pages. The public static snapshot is `dist/public`; build/generation keeps nested server-side ESM inside the private boundary, and each public CSS/JS resource gets its own content hash so unchanged assets keep their URL and cache identity.
-- Cookie choices reuse the provided plugin. Optional categories start disabled, and the chooser shows each category's provider and retention explicitly. Trusted `gatedScripts` are declared by `plugin.defaults` and its schema in `themes/<name>/plugins/cookies/index.ts`, then configured in `themes/<name>/theme.yml`; this borrows a policy generator's transparent fields without pretending that a visitor chooser generates legal policy. The policy remains an authored page under `content/pages/privacy/`, and withdrawal cannot undo an action a script already performed.
+- The Cookie selector reuses the provided plugin. Optional categories start disabled, and the chooser shows each category's provider and retention explicitly. Trusted `gatedScripts` are declared by `plugin.defaults` and its schema in `themes/<name>/plugins/cookies/index.ts`, then configured in `themes/<name>/theme.yml`; this borrows a policy generator's transparent fields without pretending that a visitor chooser generates legal policy. The policy remains an authored page under `content/pages/privacy/`, and withdrawal cannot undo an action a script already performed. The Cookie tutorial explains how to build the module.
 
-Advanced authors can read `dist/.pagekiln/catalog.json` or `dist/.well-known/agent.json` after generation to discover reusable capabilities; internal integrations can use the exported `getCatalog` and `inspect`. Beginners can start with articles and settings.
+Advanced authors can read `dist/.pagekiln/catalog.json` or `dist/.well-known/agent.json` after generation to discover reusable capabilities; internal integrations can use the exported `getCatalog` and `inspect`. Beginners can start with tutorials, content, and settings.
 
 `src/runtime/`, `.pagekiln/`, and `dist/` are generated outputs; do not edit them by hand. The source of truth is `config.yml`, `content/`, and `themes/`. Pageskill is MIT licensed; see [LICENSE](LICENSE).

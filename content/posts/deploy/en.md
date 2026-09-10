@@ -2,6 +2,7 @@
 title: Put the site online
 description: Configure one deployment target, publish the public snapshot, and keep same-origin APIs separate from private code.
 date: 2026-09-07
+category: tutorial
 ---
 
 # Put the site online

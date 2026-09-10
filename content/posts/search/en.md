@@ -1,12 +1,13 @@
 ---
-title: Let visitors search pages and articles
+title: Let visitors search pages and posts
 description: Turn on the built-in local search and check the generated index in each language.
 date: 2026-09-08
+category: tutorial
 ---
 
-# Let visitors search pages and articles
+# Let visitors search pages and posts
 
-Pageskill search is generated from your pages and dated articles. The browser reads the current locale index; a search box does not require a custom API.
+Pageskill search is generated from your pages and dated posts. The browser reads the current locale index; a search box does not require a custom API.
 
 ## 1. Turn on the search settings
 
@@ -31,7 +32,7 @@ npm run g
 npm run s
 ```
 
-Open the preview in the same language as an article, type a complete word, and select a result. Search includes stable pages and dated posts from that locale.
+Open the preview in the same language as a post, type a complete word, and select a result. Search includes stable pages and dated posts from that locale.
 
 ## Expected result
 
@@ -43,4 +44,4 @@ Changing a Markdown file does not change an already generated preview until you 
 
 ## Next step
 
-Read [Add a table of contents to long articles](/en/posts/toc/) to make a long result easier to scan.
+Read [Add a table of contents to long posts](/en/posts/toc/) to make a long result easier to scan.

@@ -2,11 +2,12 @@
 title: 開發一個可重用外掛
 description: 增加一個自帶資源的主題外掛，只註冊一次，並在每個頁面重用。
 date: 2026-09-08
+category: tutorial
 ---
 
 # 開發一個可重用外掛
 
-主題外掛負責共用的瀏覽器行為、樣式和 messages。只註冊一次；文章繼續寫 Markdown，不複製 HTML。
+主題外掛負責共用的瀏覽器行為、樣式和 messages。只註冊一次；post 繼續寫 Markdown，不複製 HTML。
 
 ## 1. 建立一個模組目錄
 
@@ -55,7 +56,7 @@ export const plugins = { search, toc, privacyConsent: cookies, language, reading
 const marker = document.createElement('small');
 marker.className = 'reading-tip';
 marker.textContent = 'Reading tip enabled';
-document.querySelector('.site-footer')?.append(marker);
+document.querySelector('main')?.prepend(marker);
 ```
 
 `style.css`：
@@ -92,9 +93,15 @@ npm run s
 
 ## 成功結果
 
-產生的頁面會載入外掛腳本和樣式，頁尾出現標記。把 `theme.yml` 中的 `plugins.readingTip.enabled` 改為 `false` 後重新產生即可移除；新增文章不需要再寫 HTML。
+產生的頁面會載入外掛腳本和樣式，主要內容區域出現標記。把 `theme.yml` 中的 `plugins.readingTip.enabled` 改為 `false` 後重新產生即可移除；新增文章不需要再寫 HTML。
 
 產生時會把模組的資源和 messages 收集到公開主題資源中。伺服器端巢狀 ESM 留在建置/執行時邊界內，未變動的公開資源繼續使用原內容 hash 路徑和快取身分。
+
+## 5. 以 Cookie 選擇器作為參考
+
+本主題的 [Cookie 選擇器教學](/zh-tw/posts/cookies/)是一個完整參考實作。它在同樣的模組結構上加入 schema、本地化訊息、同意後瀏覽器行為和安全渲染；當外掛不只需要一個資源時，可以依照這個結構擴充。
+
+導覽和頁尾連結屬於 shell，因此應透過 `themes/default/theme.yml` 的 `plugins.chrome` 設定。不要讓外掛腳本向 `.site-header` 或 `.site-footer` 任意追加連結。chrome 外掛只接受結構化標籤和安全 URL；像本例這樣的頁面級行為仍可掛載到 `main` 內。
 
 ## 常見問題
 

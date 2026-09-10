@@ -1,25 +1,26 @@
 ---
 title: "Markdown: write like a note"
-description: Write one publishable article with headings, paragraphs, lists, and fenced code.
+description: Write one publishable post with headings, paragraphs, lists, and fenced code.
 date: 2026-09-07
+category: tutorial
 ---
 
 # Markdown: write like a note
 
-Markdown is a plain-text way to mark headings and paragraphs. The Frontmatter at the top is metadata that tells Pageskill the title, date, and other article information.
+Markdown is a plain-text way to mark headings and paragraphs. The Frontmatter at the top is metadata that tells Pageskill the title, date, and other post information.
 
-## 1. Create an article file
+## 1. Create a post file
 
 Write this complete example in `content/posts/hello/en.md`:
 
 ````markdown
 ---
-title: My first article
+title: My first post
 description: One thing I learned today.
 date: 2026-09-07
 ---
 
-# My first article
+# My first post
 
 Today I finished one small goal.
 
@@ -42,16 +43,16 @@ npm run g
 npm run s
 ```
 
-Open `/en/posts/hello/` and check that the title, paragraphs, and code block follow the article structure.
+Open `/en/posts/hello/` and check that the title, paragraphs, and code block follow the post structure.
 
 ## Expected result
 
-The article appears in the article list, Feed, search, and sitemap. The `hello` directory becomes its article route.
+The post appears in the post list, Feed, search, and sitemap. The `hello` directory becomes its post route.
 
 ## Common trap
 
-An article without `date` cannot be published as an article. Use `YYYY-MM-DD`, share one directory name across its language versions, and let the collection provide the default article pattern.
+A post without `date` cannot be published. Use `YYYY-MM-DD`, share one directory name across its language versions, and let the collection provide the default post pattern.
 
 ## Next step
 
-Follow [Publish your first article](/en/posts/first-post/) to add all three languages, then open it from the home page list.
+Follow [Publish your first tutorial](/en/posts/first-post/) to add all three languages, then open it from the home page list.

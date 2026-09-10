@@ -1,7 +1,8 @@
 ---
 title: Start your site in ten minutes
-description: Clone Pageskill, generate the site in place, and start editing your own pages and articles.
+description: Clone Pageskill, generate the site in place, and start editing your own pages and posts.
 date: 2026-09-07
+category: tutorial
 ---
 
 # Start your site in ten minutes
@@ -28,7 +29,7 @@ npm run g
 
 ## 3. Edit the site in place
 
-Change `content/pages/home/<locale>.md` for the home page and `content/posts/<id>/<locale>.md` for dated articles. Add `category: update` to version updates so they appear in the filtered update archive. Use `config.yml` for site data and switches. Reuse the theme capabilities before adding a new extension.
+Change `content/pages/home/<locale>.md` for the home page and `content/posts/<id>/<locale>.md` for dated posts. Add `category: tutorial` for a tutorial, leave it out for the default `uncategorized` category, and add `category: update` to version updates so they appear in the filtered update archive. Use `config.yml` for site data and switches. Reuse the theme capabilities before adding a new extension.
 
 ## 4. Open the preview
 

@@ -8,7 +8,7 @@ import { flattenDirectives, MarkdownError, parseMarkdown, renderInline } from '.
 import { planThemeStyles } from './lib/theme-styles.ts';
 import { isPublicPath } from './lib/static-security.ts';
 import type { MarkdownNode, SourcePosition, DirectiveNode } from './lib/markdown.ts';
-import type { PageskillTheme, ThemeBlockDefinition, ThemeI18nSource, ThemeOptionSchema, ThemePluginDefinition, ThemeRenderContext, ThemeResources, ThemeShellContext } from './theme-api.ts';
+import type { PageskillTheme, ThemeBlockDefinition, ThemeChromeConfig, ThemeChromeLink, ThemeI18nSource, ThemeOptionSchema, ThemePluginDefinition, ThemeRenderContext, ThemeResources, ThemeShellContext } from './theme-api.ts';
 
 export type Locale = string;
 export type Document = {
@@ -646,6 +646,60 @@ function themePluginSettings(ctx: BuildContext, name: string): Record<string, an
   return isRecord(settings) ? settings : {};
 }
 
+const MAX_CHROME_LINKS = 8;
+const MAX_CHROME_LABEL_LENGTH = 160;
+const MAX_CHROME_HREF_LENGTH = 2048;
+
+function emptyChromeSlot(): ThemeChromeConfig['navigation'] {
+  return { enabled: false, before: [], after: [] };
+}
+
+function chromeLabel(item: Record<string, any>, locale: string): string {
+  const labels = isRecord(item.labels) ? item.labels : {};
+  const candidates = [...new Set([locale, locale.replace('_', '-'), locale.split(/[-_]/)[0], 'en'])];
+  for (const candidate of candidates) {
+    if (typeof labels[candidate] === 'string' && labels[candidate].trim()) return labels[candidate].trim().slice(0, MAX_CHROME_LABEL_LENGTH);
+  }
+  return typeof item.label === 'string' ? item.label.trim().slice(0, MAX_CHROME_LABEL_LENGTH) : '';
+}
+
+function chromeHref(ctx: BuildContext, value: unknown, locale: string): string {
+  if (typeof value !== 'string') return '';
+  const raw = value.trim();
+  if (!raw || raw.length > MAX_CHROME_HREF_LENGTH || raw.startsWith('//') || raw.includes('\\') || /[\u0000-\u001f\u007f-\u009f]/.test(raw)) return '';
+  let decoded = raw;
+  try { decoded = decodeURIComponent(raw); } catch { return ''; }
+  if (decoded.includes('\\') || decoded.split('/').some(part => part === '..') || /[\u0000-\u001f\u007f-\u009f]/.test(decoded)) return '';
+  const href = raw.replaceAll(':locale', locale);
+  return safeUrl(href) === '#' ? '' : href;
+}
+
+function configuredChromeSlot(ctx: BuildContext, doc: Document, currentRoute: string, regionName: 'navigation' | 'footer'): ThemeChromeConfig['navigation'] {
+  const settings = themePluginSettings(ctx, 'chrome');
+  const region = isRecord(settings[regionName]) ? settings[regionName] : {};
+  const enabled = settings.enabled !== false && region.enabled !== false;
+  if (!enabled || !themePluginFor(ctx, 'chrome')) return emptyChromeSlot();
+  const links = (slot: 'before' | 'after'): ThemeChromeLink[] => {
+    const values = Array.isArray(region[slot]) ? region[slot] : [];
+    return values.slice(0, MAX_CHROME_LINKS).map((item: unknown) => {
+      if (!isRecord(item)) return null;
+      const label = chromeLabel(item, doc.locale);
+      const href = chromeHref(ctx, item.href, doc.locale);
+      if (!label || !href) return null;
+      return { label, href, current: href === currentRoute };
+    }).filter(Boolean) as ThemeChromeLink[];
+  };
+  return { enabled: true, before: links('before'), after: links('after') };
+}
+
+function configuredChrome(ctx: BuildContext, doc: Document, currentRoute: string, showSiteChrome: boolean): ThemeChromeConfig {
+  if (!showSiteChrome) return { navigation: emptyChromeSlot(), footer: configuredChromeSlot(ctx, doc, currentRoute, 'footer') };
+  return {
+    navigation: configuredChromeSlot(ctx, doc, currentRoute, 'navigation'),
+    footer: configuredChromeSlot(ctx, doc, currentRoute, 'footer')
+  };
+}
+
 function gatedScriptResourcePaths(ctx: BuildContext): string[] {
   const settings = cookieConsentSettings(ctx);
   if (!Array.isArray(settings.gatedScripts)) return [];
@@ -948,10 +1002,11 @@ function documentOutputs(ctx: BuildContext, doc: Document): string[] {
 }
 
 function slug(value: string) { return value.toLocaleLowerCase().normalize('NFKC').replace(/[^\p{Letter}\p{Number}\s-]/gu, '').trim().replace(/[\s_-]+/g, '-'); }
+const DEFAULT_POST_CATEGORY = 'uncategorized';
 function postCategory(doc: Pick<Document, 'collection' | 'data'>): string {
   if (doc.collection !== 'posts') return '';
   const value = doc.data?.category ?? doc.data?.type ?? '';
-  return String(value).trim().toLocaleLowerCase();
+  return String(value).trim().toLocaleLowerCase() || DEFAULT_POST_CATEGORY;
 }
 
 function contentViewSettings(ctx: BuildContext, name: string): Record<string, any> {
@@ -1014,8 +1069,8 @@ function blogRelationsFor(ctx: BuildContext, doc: Document): string {
     if (related.length === 3) break;
   }
   const relationLink = (label: string, candidate: Document | undefined) => candidate ? `<a class="post-pagination-link" href="${safeUrl(routeFor(ctx, candidate))}" aria-label="${escapeHtml(`${label}: ${candidate.title}`)}"><span class="post-pagination-label">${escapeHtml(label)}</span><strong>${escapeHtml(candidate.title)}</strong></a>` : '';
-  const previousLabel = themeText(ctx, doc.locale, 'previous', 'Previous article');
-  const nextLabel = themeText(ctx, doc.locale, 'next', 'Next article');
+  const previousLabel = themeText(ctx, doc.locale, 'previous', 'Previous post');
+  const nextLabel = themeText(ctx, doc.locale, 'next', 'Next post');
   const relatedLabel = themeText(ctx, doc.locale, 'related', 'Related');
   return `<footer class="post-relations"><nav class="post-pagination">${relationLink(previousLabel, newer)}${relationLink(nextLabel, older)}</nav>${related.length ? `<section class="related-posts"><h2>${escapeHtml(relatedLabel)}</h2><ul>${related.map(candidate => `<li><a href="${safeUrl(routeFor(ctx, candidate))}">${escapeHtml(candidate.title)}</a></li>`).join('')}</ul></section>` : ''}</footer>`;
 }
@@ -1056,18 +1111,28 @@ function validateThemeAttrs(node: DirectiveNode, definition: ThemeBlockDefinitio
   }
 }
 
+function renderChromeLinks(context: ThemeShellContext, links: ThemeChromeLink[], className: string): string {
+  return links.map(link => {
+    const href = context.safeUrl(link.href);
+    if (href === '#') return '';
+    return `<a class="${className}" href="${href}"${link.current ? ' aria-current="page"' : ''}>${context.escapeHtml(link.label)}</a>`;
+  }).join('');
+}
+
 function fallbackShell(context: ThemeShellContext): string {
+  const chrome = context.chrome || { navigation: { enabled: true, before: [], after: [] }, footer: { enabled: true, before: [], after: [] } };
   const pageLanguages = isPostCollectionConfig(context.config, context.doc.collection) ? context.languageLinks : '';
   const languageNav = pageLanguages ? `<nav class="languages" aria-label="${context.escapeHtml(context.languageLabel)}"><span class="languages-heading" aria-hidden="true">${context.escapeHtml(context.languageLabel)}</span><div class="languages-list">${pageLanguages}</div></nav>` : '';
   const archiveCollection = String(context.config.archive?.collection || 'posts');
   const collectionKeyName = context.doc.collection === 'archive' ? archiveCollection : context.doc.collection;
   const collectionLabel = context.translate(`collections.${collectionKeyName}`, collectionKeyName);
   const pageHeader = context.doc.source.startsWith('generated:') ? '' : `<header class="page-header"><p class="eyebrow">${context.escapeHtml(collectionLabel)}</p><h1>${context.escapeHtml(context.doc.title)}</h1>${context.doc.description ? `<p>${context.escapeHtml(context.doc.description)}</p>` : ''}${languageNav}</header>`;
-  const primaryNav = context.navigationLinks ? `<nav class="primary-nav" aria-label="${context.escapeHtml(context.navigationLabel)}">${context.navigationLinks}</nav>` : '';
+  const navLinks = `${renderChromeLinks(context, chrome.navigation.before, 'primary-nav-link')}${context.navigationLinks}${renderChromeLinks(context, chrome.navigation.after, 'primary-nav-link')}`;
+  const primaryNav = navLinks ? `<nav class="primary-nav" aria-label="${context.escapeHtml(context.navigationLabel)}">${navLinks}</nav>` : '';
   const headerActions = `${context.searchMarkup}${primaryNav}`;
   const siteMapLabel = context.doc.locale.startsWith('zh-tw') ? '網站地圖' : context.doc.locale.startsWith('zh') ? '站点地图' : 'Site map';
   const privacyPolicy = context.privacy.enabled ? `<a class="footer-tool-link" href="${context.safeUrl(context.privacy.policyHref)}">${context.escapeHtml(context.privacy.policyLabel)}</a>` : '';
-  const footerTools = `<nav class="footer-tools" aria-label="${context.escapeHtml(siteMapLabel)}"><a class="footer-tool-link" href="/sitemap.xml">${context.escapeHtml(siteMapLabel)}</a>${privacyPolicy}${context.privacyTriggerMarkup || ''}</nav>`;
+  const footerTools = `<nav class="footer-tools" aria-label="${context.escapeHtml(siteMapLabel)}">${renderChromeLinks(context, chrome.footer.before, 'footer-tool-link')}<a class="footer-tool-link" href="/sitemap.xml">${context.escapeHtml(siteMapLabel)}</a>${privacyPolicy}${context.privacyTriggerMarkup || ''}${renderChromeLinks(context, chrome.footer.after, 'footer-tool-link')}</nav>`;
   return `<!doctype html><html lang="${context.escapeHtml(context.doc.locale)}"><head>${context.head}</head><body class="${context.bodyClass}" data-pattern="${context.escapeHtml(context.doc.pattern)}">${context.privacyMarkup}<a class="skip" href="#main">${context.escapeHtml(context.skipLabel)}</a><header class="site-header"><div class="header-inner"><a class="brand" href="${context.homeHref}"><img class="brand-mark" src="${context.brandIcon}" alt="" width="32" height="32"><span class="brand-copy"><strong>${context.escapeHtml(context.siteName)}</strong><small>${context.escapeHtml(context.headerNote)}</small></span></a>${headerActions ? `<div class="header-actions">${headerActions}</div>` : ''}</div></header><main id="main" class="${context.mainClass}">${pageHeader}${context.content}</main><footer class="site-footer"><div class="footer-grid">${footerTools}</div>${context.showAttribution ? `<div class="footer-bottom"><span class="footer-credit">${context.attribution}</span></div>` : ''}</footer></body></html>`;
 }
 
@@ -1239,7 +1304,7 @@ function localSearchData(ctx: BuildContext, doc: Document, themeBase: string) {
     indexHref: `/assets/search-index.${doc.locale}.json`,
     scriptSrc: safeUrl(scriptHref),
     label: text('label', doc.locale.startsWith('zh') ? '站内搜索' : 'Search this site'),
-    placeholder: text('placeholder', doc.locale.startsWith('zh-tw') ? '搜尋頁面和文章' : doc.locale.startsWith('zh') ? '搜索页面和文章' : 'Search pages and articles'),
+    placeholder: text('placeholder', doc.locale.startsWith('zh-tw') ? '搜尋頁面和內容' : doc.locale.startsWith('zh') ? '搜索页面和内容' : 'Search pages and posts'),
     submitLabel: text('submitLabel', doc.locale.startsWith('zh') ? '搜索' : 'Search'),
     noResultsLabel: text('noResultsLabel', doc.locale.startsWith('zh') ? '没有找到匹配内容。' : 'No matching content.'),
     resultLabel: text('resultLabel', doc.locale.startsWith('zh') ? '搜索结果' : 'Search results'),
@@ -1420,6 +1485,7 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
     const current = href === currentRoute ? ' aria-current="page"' : '';
     return `<a href="${safeUrl(href)}"${current}>${escapeHtml(themeText(ctx, doc.locale, `navigation.${item.key}`, item.key || item.href || 'Link'))}</a>`;
   }).join('') : '';
+  const chrome = configuredChrome(ctx, doc, currentRoute, showSiteChrome);
   const headIconLinks = [
     icons.favicon ? `<link rel="icon" href="${safeUrl(icons.favicon)}">` : '',
     icons.icon32 ? `<link rel="icon" type="image/png" sizes="32x32" href="${safeUrl(icons.icon32)}">` : '',
@@ -1481,7 +1547,7 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const headWithFeed = head.replace('<link rel="sitemap" type="application/xml" href="/sitemap.xml">', `<link rel="sitemap" type="application/xml" href="/sitemap.xml">${postsFeedLink}`);
   const privacyData = privacyShellData(ctx, doc, themeBase);
   const bodyClass = `theme-${escapeHtml(configuredThemeName(ctx.config))}`;
-  const shellContext = { ...themeContextFor(ctx, doc), content, head: headWithFeed, bodyClass, mainClass: `pattern-${escapeHtml(doc.pattern)}`, siteName, siteDescription, currentRoute, homeHref, brandIcon, navigationLinks, languageLinks, navigationLabel, languageLabel, skipLabel, headerNote, footerNote, footerKicker, attribution, showAttribution, ...searchData, searchMarkup: showSiteChrome ? searchData.searchMarkup : '', ...privacyData } as ThemeShellContext;
+  const shellContext = { ...themeContextFor(ctx, doc), content, head: headWithFeed, bodyClass, mainClass: `pattern-${escapeHtml(doc.pattern)}`, siteName, siteDescription, currentRoute, homeHref, brandIcon, navigationLinks, languageLinks, navigationLabel, languageLabel, skipLabel, headerNote, footerNote, footerKicker, attribution, showAttribution, chrome, ...searchData, searchMarkup: showSiteChrome ? searchData.searchMarkup : '', ...privacyData } as ThemeShellContext;
   if (ctx.themeDefinition.shell) return ctx.themeDefinition.shell(shellContext);
   return fallbackShellWithPrivacy(shellContext);
 }
@@ -1503,8 +1569,8 @@ function discoveryBoundaries() {
 function agentFunctionMap() {
   return [
     { id: 'write-page', purpose: 'Write current site content for a page, guide, reference, or directory', paths: ['content/pages/<id>/<locale>.md'], commands: ['pageskill g'] },
-    { id: 'write-post', purpose: 'Record a dated tutorial, article, or note for the Feed, archive, and search', paths: ['content/posts/<id>/<locale>.md'], commands: ['pageskill g'] },
-    { id: 'write-update', purpose: 'Record a version update as a post with category: update; the updates view keeps it separate from ordinary articles', paths: ['content/posts/<version>/<locale>.md'], frontmatter: { category: 'update', date: 'YYYY-MM-DD' }, commands: ['pageskill g'] },
+    { id: 'write-post', purpose: 'Record a dated post; use category: tutorial for a tutorial and omit it for uncategorized content', paths: ['content/posts/<id>/<locale>.md'], commands: ['pageskill g'] },
+    { id: 'write-update', purpose: 'Record a version update as a post with category: update; the updates view keeps it separate from ordinary posts', paths: ['content/posts/<version>/<locale>.md'], frontmatter: { category: 'update', date: 'YYYY-MM-DD' }, commands: ['pageskill g'] },
     { id: 'change-layout', purpose: 'Change page structure or visual language', paths: ['themes/<name>/index.ts', 'themes/<name>/components/', 'themes/<name>/layouts/'], commands: ['pageskill g --profile'] },
     { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, theme plugin options, or deployment settings', paths: ['config.yml', 'themes/<name>/theme.yml'], commands: ['pageskill g --profile'] },
     { id: 'discover-extension', purpose: 'Read active theme Patterns, Blocks, collections, plugin switches, contexts, and resource dependencies', paths: ['themes/<name>/index.ts', 'themes/<name>/theme.yml', 'config.yml'], commands: ['import { getCatalog, inspect } from "pageskill"'] },

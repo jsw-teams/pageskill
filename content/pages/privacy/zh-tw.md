@@ -21,4 +21,4 @@ description: 說明 Pageskill 網站處理哪些資料、為什麼處理以及�
 
 ## 聯絡我們
 
-隱私問題請透過 [Pageskill GitHub](https://github.com/jsw-teams/pageskill) 聯絡 Site Owner。如果頁面設定了其他服務，網站負責人應在此處補充真實的聯絡人和處理說明。
+隱私問題請透過 [Pageskill GitHub](https://github.com/jsw-teams/pageskill) 聯絡 toewpq。如果頁面設定了其他服務，網站負責人應在此處補充真實的聯絡人和處理說明。

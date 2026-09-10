@@ -1,19 +1,20 @@
 ---
-title: Add a table of contents to long articles
-description: Use real Markdown headings so the theme can build a useful article outline.
+title: Add a table of contents to long posts
+description: Use real Markdown headings so the theme can build a useful post outline.
 date: 2026-09-08
+category: tutorial
 ---
 
-# Add a table of contents to long articles
+# Add a table of contents to long posts
 
-A table of contents is built from real Markdown headings. It gives readers links to sections without copying anchors into the article.
+A table of contents is built from real Markdown headings. It gives readers links to sections without copying anchors into the post.
 
 ## 1. Write a heading structure
 
 Use one title, then level-two sections and level-three details:
 
 ```markdown
-# Cookie choices
+# Consent choices
 
 ## Choose a category
 
@@ -22,16 +23,16 @@ Use one title, then level-two sections and level-three details:
 ## Check withdrawal
 ```
 
-Keep each heading short and make the same heading level mean the same kind of section throughout the article.
+Keep each heading short and make the same heading level mean the same kind of section throughout the post.
 
-## 2. Generate the article
+## 2. Generate the post
 
 ```powershell
 npm run g
 npm run s
 ```
 
-The active article pattern can show the outline beside the body. If the active theme exposes the `toc` Block and you need an explicit position, add this small directive where the outline should appear:
+The active post pattern can show the outline beside the body. If the active theme exposes the `toc` Block and you need an explicit position, add this small directive where the outline should appear:
 
 ```markdown
 :::toc

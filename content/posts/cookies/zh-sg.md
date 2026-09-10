@@ -1,90 +1,194 @@
 ---
-title: Cookie 选择：先问访客再加载
-description: 启用 Cookie 插件，让可选类别默认关闭，并检查撤回同意的行为。
+title: 我们如何构建插件：以 Cookie 选择器为例
+description: 从 Cookie 选择器的行为约定和模块文件开始，学习安全渲染、主题配置和部分翻译的处理方式。
 date: 2026-09-07
+category: tutorial
 ---
 
-# Cookie 选择：先问访客再加载
+# 我们如何构建插件：以 Cookie 选择器为例
 
-Cookie 同意是访客的选择。Pageskill 可以让可选服务默认关闭，访客同意后才加载；撤回选择后不再加载后续脚本。
+Cookie 选择器是我们构建可复用插件时的参考实现。它把访客界面、浏览器状态、可选脚本、本地化消息和政策链接组合起来，同时不需要每个 post 重复 HTML。
 
-## 1. 启用现成插件
+我们借鉴 Cookie 政策生成器的一项透明展示思路：把类别、提供者、保存期限和同意要求放在一起，方便访客查看。选择器仍然只是同意控制，不是法律建议或政策生成器。经过审核的政策继续用 Markdown 维护。
 
-把插件选项放在 `themes/default/theme.yml`，把稳定政策入口留在 `config.yml`：
+## 1. 先定义行为约定
+
+写模块之前，先明确它要支持的状态：
+
+- 必要功能立即可用；
+- 可选类别默认关闭；
+- 可选脚本加载前必须得到明确选择；
+- 访客可以重新打开选择器并保存“仅必要项”；
+- 撤回选择会阻止后续加载，但不能撤销脚本已经完成的工作。
+
+这个约定让插件可以复用。post 只说明能力，不复制它的标记或浏览器逻辑。
+
+## 2. 把模块文件放在一起
+
+默认主题把实现集中在一个目录：
+
+```text
+themes/default/plugins/cookies/
+  index.ts
+  script.js
+  style.css
+  messages.yml
+```
+
+`index.ts` 定义能力和资源；`script.js` 负责同意状态的保存与加载判断；`style.css` 负责选择器外观；`messages.yml` 负责界面翻译。
+
+## 3. 在代码中登记能力
+
+插件定义由代码拥有。下面是实际定义的精简示例：
+
+```ts
+import type { ThemePluginDefinition } from '../../../../src/theme-api.ts';
+
+export const plugin: ThemePluginDefinition = {
+  implementation: 'plugins/cookies/index.ts',
+  resources: {
+    styles: ['plugins/cookies/style.css'],
+    scripts: ['plugins/cookies/script.js']
+  },
+  i18n: 'plugins/cookies/messages.yml',
+  defaults: {
+    enabled: true,
+    categories: [
+      { id: 'essential', required: true, default: true },
+      { id: 'analytics', required: false, default: false }
+    ],
+    gatedScripts: []
+  },
+  schema: {
+    enabled: { type: 'boolean' },
+    categories: { type: 'array' },
+    gatedScripts: { type: 'array' }
+  }
+};
+```
+
+在 `themes/default/plugins/index.ts` 中只登记一次：
+
+```ts
+import { plugin as chrome } from './chrome/index.ts';
+import { plugin as cookies } from './cookies/index.ts';
+import { plugin as language } from './language/index.ts';
+import { plugin as search } from './search/index.ts';
+import { plugin as toc } from './toc/index.ts';
+
+export const plugins = { chrome, search, toc, privacyConsent: cookies, language };
+```
+
+真实 schema 比这个阅读示例更具体，会在使用实例配置前校验类别和脚本字段。
+
+## 4. 分离实例数据和站点数据
+
+活动主题在配置文件中设置插件实例。可选类别只有在明确接入并审核过的服务后才开启：
 
 ```yaml
 # themes/default/theme.yml
 plugins:
   privacyConsent:
     enabled: true
+    provider: Pageskill
+    storage: cookie
+    retentionDays: 365
+    categories:
+      - id: essential
+        required: true
+        default: true
+        retentionDays: 365
+      - id: analytics
+        required: false
+        default: false
+        retentionDays: 0
+    gatedScripts: []
+```
 
+稳定的政策入口和控制者资料仍然是站点数据：
+
+```yaml
 # config.yml
 privacy:
   cookieConsent:
     policyRoute: /:locale/privacy/
 ```
 
-在每个启用语言的 `content/pages/privacy/` 下准备政策页面。
+把审核过的政策放在 `content/pages/privacy/<locale>.md`。不要在 YAML 或 Markdown 中放 HTML、JavaScript、CSS、提供者代码或隐藏的脚本 URL。配置是数据，可执行行为由插件模块负责。
 
-默认实现是 `themes/default/plugins/cookies/` 模块；它的 `index.ts`、CSS、脚本和 messages 放在一起。
+## 5. 以安全边界渲染
 
-## 2. 让可选类别保持关闭
-
-在 `themes/default/theme.yml` 中让必要存储使用 `essential`，可选类别设置 `default: false`：
-
-```yaml
-plugins:
-  privacyConsent:
-    categories:
-      - id: essential
-        required: true
-        default: true
-      - id: analytics
-        required: false
-        default: false
-      - id: advertising
-        required: false
-        default: false
-```
-
-站点服务的 ID 等实例数据放在 `config.yml`。不要把服务 ID 写进文章，也不要默认打开可选类别。
-
-选择器会明确显示每个类别的提供者和保存期限，借鉴政策生成器的透明信息展示；它仍然只是访客同意控制，不会悄悄生成法律文本。经过审核的政策请继续维护在 `content/pages/privacy/<locale>.md`。
-
-## 3. 登记受信脚本
-
-需要在同意后才加载的脚本，放在主题插件中，不要放进站点配置。在 `themes/default/plugins/cookies/index.ts` 的现有 `plugin` 导出中加入：
+`renderCookieConsent` 根据经过校验的 context 生成固定的弹窗和横幅。动态值遵循两条不同规则：
 
 ```ts
-// 在现有 plugin 导出中加入这个属性。
-defaults: {
-  gatedScripts: [{ src: 'plugins/cookies/analytics.js', category: 'analytics' }]
-}
+const label = context.escapeHtml(category.label);
+const href = context.safeUrl(privacy.policyHref);
 ```
 
-`gatedScripts` 要留在主题拥有的 `defaults` 中；政策/控制者资料放在 `config.yml`，插件选项放在 `theme.yml`。
+标签和元数据作为文字转义；政策链接和受同意控制的脚本 URL 经过 `safeUrl`，不安全协议会被拒绝。浏览器脚本使用 DOM API 创建元素，并且只在同意后接受 `http` 或 `https` 来源。插件界面没有 `innerHTML`、`eval`、任意属性或配置注入的标记。
 
-在 `themes/default/plugins/cookies/analytics.js` 创建并审查这个文件。相对 `src` 从主题根目录解析，生成后位于带指纹的 `/assets/theme/default/` 下。
+提供者和保存期限会直接显示在选择器中，帮助访客理解类别用途；法律政策仍然是人工审核的页面，而不是悄悄生成的法律文本。
 
-类别必须是可选类别。加入前先检查脚本来源和用途；同意检查不会让未知的第三方脚本自动安全。
+## 6. 用主题配置控制 nav 和 footer 插入
 
-## 4. 检查三种状态
+壳层插入点也是结构化的主题选项。主导航链接仍由 `config.yml` 管理；这个功能允许主题在标准链接前后添加安全链接：
+
+```yaml
+# themes/default/theme.yml
+plugins:
+  chrome:
+    enabled: true
+    navigation:
+      enabled: true
+      before: []
+      after:
+        - label: Plugin tutorial
+          labels:
+            zh-sg: 插件教程
+            zh-tw: 外掛教學
+          href: /:locale/posts/cookies/
+    footer:
+      enabled: true
+      before: []
+      after: []
+```
+
+这里只接受 `label`、可选的本地化 `labels` 和 `href`。编译器会解析 `:locale`，限制链接数量和长度，拒绝不安全协议或目录穿越 URL；壳层输出前还会转义最终标签。原始 HTML、脚本、样式、选择器和任意属性都没有配置字段。
+
+## 7. 不要让翻译进度阻塞发布
+
+站点语言放在 `config.yml`，不放在插件设置中：
+
+```yaml
+activeLocales:
+  - zh-sg
+  - zh-tw
+  - en
+i18n:
+  fallbackLocale: en
+  contentFallback: true
+```
+
+Cookie 界面消息放在插件旁边的 `messages.yml`。如果新增语言只翻译了 50%，缺少的界面 key 会从 `en` 合并；整篇内容文档缺失时使用配置的内容回退。已经存在但只翻译了一部分的 Markdown 会完全按原文显示，不会静默按段落混入机器翻译或回退内容。
+
+## 8. 检查同意状态
 
 ```powershell
+npm run compile-theme
 npm run g
 npm run s
 ```
 
-用全新的浏览器会话确认访客未选择前不会加载可选脚本。接受分析类别后确认脚本加载，再打开 Cookie 设置，保存“仅必要项”，确认后续加载会停止。
+用全新的浏览器会话确认选择前不会加载可选脚本。接受一个可选类别，确认经过审核的脚本加载；重新打开 Cookie 设置，保存“仅必要项”，确认后续加载停止。同时检查政策链接、键盘焦点、语言链接，以及每种启用语言中的 nav/footer 插入效果。
 
 ## 成功结果
 
-必要功能立即工作；可选类别默认关闭，只有明确同意后才加载，页脚仍可打开政策页和 Cookie 设置。
+Cookie 选择器成为一个可复用的主题插件，拥有本地化界面、明确的类别元数据、安全的同意后加载和经过审核的政策链接。post 仍然是 Markdown，主题也可以增加少量壳层链接，而不会获得 HTML 或脚本注入入口。
 
 ## 常见坑
 
-撤回同意会阻止后续加载，但不能撤销脚本已经完成的工作。不要把脚本 URL 藏在 Markdown 中，不要用必要类别承载分析，也不要在每篇文章重复配置插件。
+不要默认开启分析，不要把未知第三方 URL 当成可信，也不要以为撤回同意可以撤销之前的脚本工作。不要给插件增加 `language` 设置，也不要在每个 post 复制选择器。如果翻译不完整，让配置的 fallback 填补缺少的界面 key，再有计划地完成内容翻译。
 
 ## 下一步
 
-Cookie 流程稳定后，阅读[让访客搜到页面和文章](/zh-sg/posts/search/)。
+阅读[开发可复用插件](/zh-sg/posts/plugins/)，用同样的模块模式构建更小的能力。

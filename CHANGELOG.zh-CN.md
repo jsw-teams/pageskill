@@ -11,11 +11,25 @@ Pageskill 3.0.2 把版本历史和教程内容分开，并收紧响应式阅读�
 ### 变更
 
 - 将版本更新改为 `posts` collection 中的 `updates` 过滤视图，源文件位于 `content/posts/<version>/<locale>.md` 并使用 `category: update`。它拥有独立的本地化索引/详情路由、归档、Feed、搜索结果、语言链接、导航和首页栏目；教程仍在同一个源 collection 中，不带 update 分类。
+- 增加由 Markdown Frontmatter 驱动的 post 分类：`category: tutorial` 标记教程，`category: update` 标记版本更新，省略分类默认是 `uncategorized`（未分类）；不会从 pages collection 猜测 post 分类。
 - 复用现有 collection 驱动的归档、Feed 和文章列表机制，没有新增第二套内容 collection 或页面 Pattern。更新日志的前后文章关系只在过滤视图内，生成的归档页现在有可见标题、说明和本地化链接。
-- 将发布站点 URL 设为 `https://pageskill.openjsu.com`，三种语言的站点作者设为 `toewpq`；文章没有显式 `author` 时会继承这个值，增量文档缓存已预留重新计算逻辑。根级 `i18n` 现在负责回退语言和缺失内容处理；主题界面只翻译一部分时，会从回退语言合并缺失键，同时不会把回退页面错误宣称为已翻译页面。
-- 语言能力的资源仍由主题代码拥有，但已经从 `theme.yml` 移除语言选项。Cookie 选择器现在逐类别显示提供者和保存期限，借鉴政策生成器的透明字段，但经过审核的法律政策仍由内容页面维护。
+- 增加了部分本地化的回退行为：缺少的界面翻译键会从回退语言合并，缺少整篇文章时可以使用回退内容，但不会把回退页面错误标成已经翻译的页面。
+- 语言选择现在统一遵循启用语言和回退行为。Cookie 选择器现在逐类别显示提供者和保存期限，借鉴政策生成器的透明字段，但经过审核的法律政策仍由内容页面维护。
 - 修复语言选择页的推荐标签布局，预留标签行并保持卡片等高。文章页头现在和正文阅读栏对齐，在封面之前紧凑显示标题、说明、日期和作者；手机目录默认折叠。
-- 归档缩略图固定使用 16:9 容器并显式设置 `height: 100%`、`width: 100%` 和 `object-fit: cover`，不会让原图 `height` 属性撑出高空白行；文章封面使用稳定的 1200:630 容器，不会被拉伸。
+- 归档缩略图固定使用 16:9 容器并显式设置 `height: 100%`、`width: 100%` 和 `object-fit: cover`，不会让原图 `height` 属性撑出高空白行；post 卡片和文章封面使用稳定容器，并用 `object-fit: contain` 保留完整原图。
+- 增加主题级 `plugins.chrome` 结构化插槽，可在标准导航和页脚工具前后增加链接。语言替换、尺寸上限、路径穿越/协议检查和标签转义把自定义限制在安全链接范围；不接受 HTML、脚本、CSS、选择器或任意属性。
+
+### 兼容用法
+
+- 仍放在 `content/updates/<version>/` 的旧版本文章，迁移到 `content/posts/<version>/`，保留语言、日期、作者和封面字段，并给每种语言增加 `category: update`。现有公开的 `/:locale/updates/<version>/` 链接继续作为更新视图链接；普通 post 继续使用 `/:locale/posts/<id>/`。教程增加 `category: tutorial`，想使用默认未分类时省略 `category`。
+- 新增语言可以在尚未完成翻译前启用。随着翻译进度补上界面和内容文件；缺失的界面键使用回退语言，缺失整篇文档使用回退内容，已经部分翻译的 Markdown 则保持原样，不会静默机器翻译。
+- 如果旧主题有语言启用/禁用开关，请删除这个重复设置；访客语言选择仍来自有效语言列表，并保留回退行为。
+- 发布前运行 `npm run g -- --profile`，检查文章和更新归档/Feed，再运行 `npm run d -- --dry-run`。
+
+### 已移除项与替代方案
+
+- 不再使用独立的 `content/updates` 源 collection。原因是版本文章和普通文章需要共用一套按日期排序的来源，避免重复内容机制；替代用法是 `content/posts` 加 `category: update`。公开更新索引、路由、Feed、搜索结果和语言链接没有被删除。
+- 没有移除 Cookie 同意或语言选择功能。提供者/保存期限是说明性元数据，经过审核的本地化隐私页面仍然是法律政策来源。
 
 ### 验证
 
@@ -30,17 +44,28 @@ Pageskill 3.0.1 是 3.0 版本线上的修订版，把当前编译器、内容�
 
 ### 变更
 
-- 让 `config.yml` 继续负责站点元数据、导航、collection schema、隐私/控制者资料、图片和发布设置；主题入口与模块自带的界面/资源留在 `themes/default/`，插件实例选项留在 `theme.yml`。
 - 加固增量工作流：backend 和嵌套主题使用隔离的私有运行时，公开 CSS/JS 资源各自保留内容 hash，持续预览的 SSE 重载路径在源码变化后仍然有效。
 - 保持运行时路由由源码驱动：生成的 Worker/Pages/VPS 入口先运行 Fetch Router，未匹配的 `/api` 仍返回 404，公开输出继续位于 `dist/public`，私有发布文件不进入公开快照。
 - 文章排序改为使用有效 ISO 发布日期，按新到旧排列；同日文章按稳定的 ID 次序排列。现有日期没有被改成今天；无效文章日期现在会在校验阶段失败，不会被悄悄排成当前文章。
 - 让文章 collection schema、文档/缓存映射、文章页、文章列表和归档都支持可选的 `author`、`cover` Frontmatter。作者缺省时回退到对应语言的站点作者；封面只接受安全的本地资源路径或 HTTPS URL，并提供 alt、尺寸和加载策略；没有封面时干净隐藏。
-- 更新三语内容路径和 Cloudflare Pages 说明。Git 集成使用 `npm run g`，只发布 `dist/public`；同包 backend 使用配置好的 CLI 目标和 `npm run d` 打包。退休的 `npm run build` 别名和发布整个 `dist` 都不是当前契约。
+- 更新三语内容路径和发布说明。Git 集成使用 `npm run g`，只发布 `dist/public`；同包 backend 使用 `npm run d`，让私有运行时单独暂存。退休的 `npm run build` 别名和发布整个 `dist` 都不是当前契约。
+
+### 兼容用法
+
+- 旧文章不需要批量补新字段：保留有效 ISO `date`，没有特别作者时可省略 `author`，只有需要图片时才增加安全的本地资源或 HTTPS `cover`。
+- 用 `npm run g` 替代 `npm run build`；预览使用 `npm run s`，真实发布前使用 `npm run d -- --dry-run`。静态托管接收 `dist/public`，包含 backend 的发布使用 `npm run d` 正确暂存私有文件。
+- 保留现有文章 ID、日期和 `/:locale/posts/<id>/` 链接。封面路径不安全时，改成 `content/assets/` 下的本地路径、HTTPS URL，或直接省略封面。
+
+### 已移除项与替代方案
+
+- `npm run build` 别名已移除，原因是避免同一生成步骤存在两个名称；替代用法是 `npm run g`。
+- 不支持发布整个 `dist/` 目录，因为其中可能包含私有运行时文件；静态输出使用 `dist/public`，需要 backend 时使用 `npm run d` 生成发布包。
+- 没有移除文章元数据能力。没有 `author` 或 `cover` 的文章仍按作者回退和无封面行为显示。
 
 ### 验证
 
 - 本次在本地实际观察到：`npm run compile-runtime`、`npm run compile-theme` 和 `npm run g`（其中包含 backend 编译），生成 42 篇文档；局部检查确认了新到旧及同日稳定排序、标题/摘要/日期/作者分离、封面与缺省回退、三语标签、没有重复文章标题，以及危险封面 URL 会被拒绝。
-- 本条不声称 npm 发布或 Cloudflare 部署。旧的 `test/` 树仍保持删除状态；本次也实际运行了 `npm run d -- --dry-run`，由于当前 checkout 没有发布目标而正确提示 `Set deployment.targets in config.yml` 并退出。配置目标后仍需重新 dry-run，再执行 `npm run d`。
+- 本条不声称 npm 发布或 Cloudflare 部署。旧的 `test/` 树仍保持删除状态；本次也实际运行了 `npm run d -- --dry-run`，由于当前 checkout 没有发布目标而正确拒绝并退出。准备好发布目标后仍需重新 dry-run，再执行 `npm run d`。
 
 ## 3.0.0 — 2026-09-07
 
@@ -52,10 +77,10 @@ Pageskill 3.0.0 沿用 3.0 版本线，让第一次搭站更容易开始。
 - 重组当前内容树。稳定页面保留三语首页、About 和隐私政策。教程、普通博客文章和产品记录统一放在 `content/posts/<id>/<locale>.md`，保留必填 `date`，使用语言文章路由。旧的冗长 guide、development 页面副本和旧 prompt 笔记从当前树移除，不建立 redirect 影子；历史留在 Git 和本更新日志。
 - 围绕开始、站点设置、Markdown、第一篇文章、Cookie 选择、主题自定义、搜索、文章目录、插件开发、部署和本篇 3.0 说明重写本地化新手路径。隐私政策是稳定页面；每篇教程文章提供步骤、最小可用例子、成功结果、常见坑和下一步链接。
 - 首页学习路径换成六张可复用的小熊插图，并链接前六个步骤。这是内容和主题视觉更新，不暗示 benchmark 或性能结果。
-- 保留静态与公开边界：`dist/public` 是公开快照，`backend/handler.ts` 保存动态逻辑和运行时秘密，同源 API 在服务边界运行。Backend 路径使用现有的 `router.get(...)`、`router.post(...)` 和 `router.all(...)` 注册任意路径；运行时匹配返回 `Response` 或 `null`，生成时不需要在 `config.yml` 逐条列出 `dynamicRoutes`。生成的 Worker/Pages/VPS 入口对所有路径先运行 Router，并设置 `run_worker_first = true`；未知路径再交给公开静态资源，未匹配的 `/api` 路径保持 404。API 错误和鉴权响应不会回退到静态输出。构建/生成会把服务端嵌套 ESM 留在私有边界内，持续运行的 `pageskill s` 会在隔离的新私有运行时重编译嵌套主题 TypeScript；每个公开 CSS/JS 资源独立使用内容 hash，未变化资源继续保留 URL 和缓存身份。`config.yml` 仍然只是数据和设置入口。
-- 保留现有 Cookie 插件。可选类别默认关闭，受信的 `gatedScripts` 由 `themes/<name>/plugins/cookies/index.ts` 中代码拥有的 `defaults` 和 schema 声明；主题实例选项放在 `themes/<name>/theme.yml`，站点配置只保存政策/控制者数据。撤回同意不能撤销已经执行的脚本动作。政策入口是稳定页面路由 `/:locale/privacy/`。
+- 保留静态与公开边界：`dist/public` 是公开快照，`backend/handler.ts` 保存动态逻辑和运行时秘密，同源 API 在服务边界运行。Backend 路径使用现有的 `router.get(...)`、`router.post(...)` 和 `router.all(...)` 注册任意路径；运行时匹配返回 `Response` 或 `null`，生成时不需要逐条维护路由清单。生成的 Worker/Pages/VPS 入口对所有路径先运行 Router，并设置 `run_worker_first = true`；未知路径再交给公开静态资源，未匹配的 `/api` 路径保持 404。API 错误和鉴权响应不会回退到静态输出。构建/生成会把服务端嵌套 ESM 留在私有边界内，持续运行的 `pageskill s` 会在隔离的新私有运行时重编译嵌套主题 TypeScript；每个公开 CSS/JS 资源独立使用内容 hash，未变化资源继续保留 URL 和缓存身份。
+- 保留现有 Cookie 插件。可选类别默认关闭，受信的 gated scripts 需要明确同意，撤回同意不能撤销已经执行的脚本动作。政策入口仍是本地化隐私页面 `/:locale/privacy/`。
 - 修复 Cookie 提示和页脚布局；语言选择页优先采用访客手动选择，再回退到浏览器语言，同时保持语言 URL 不变。
-- 简化主题契约：`themes/<name>/index.ts` 组装已导出的能力，`layouts/site/` 保存共用 shell，`components/shared/` 保存共享辅助函数，文章关系跟随文章布局/组件，插件目录自带样式、脚本和 `messages.yml`，`theme.yml` 保存经过 schema 校验的插件实例数据和开关。个人或 Agent 可以复用一次扩展，不必给每个页面复制 HTML。
+- 简化主题契约：主题入口组装已导出的能力，`layouts/site/` 保存共用 shell，`components/shared/` 保存共享辅助函数，文章关系跟随文章布局/组件，插件目录自带样式、脚本和本地化 messages。个人或 Agent 可以复用一次扩展，不必给每个页面复制 HTML。
 - 增加本地搜索、文章目录和开发可复用插件的实用三语文章；文章只引用当前主题契约中已经存在的路径和命令。
 - 高级作者可读取生成的 `dist/.pagekiln/catalog.json` 和 `dist/.well-known/agent.json`，或使用内部 `getCatalog`/`inspect` 集成；这些发现细节不放进新手日常步骤。
 
@@ -63,8 +88,16 @@ Pageskill 3.0.0 沿用 3.0 版本线，让第一次搭站更容易开始。
 
 1. 克隆仓库，运行 `npm install` 和 `npm run g`；之后直接在克隆的站点目录修改。
 2. 稳定页面放在 `content/pages/<id>/<locale>.md`，不需要日期。教程、博客文章、产品记录和版本文章放在 `content/posts/<id>/<locale>.md`，补上必填的 ISO 日期，并让多个语言共用同一个 id。
-3. 将 Cookie 政策设置改为 `/:locale/privacy/`，把示例联系人和服务替换为真实内容。
-4. 源码检查运行各 compile 命令、`npm run g -- --profile` 和 `npm run s`；部署检查使用 `npm run d -- --dry-run`，配置好目标后才运行 `npm run d`。
+3. 如果版本文章仍在 `content/updates/<version>/`，移到 `content/posts/<version>/` 并增加 `category: update`；保留公开更新链接，普通文章使用文章路由。
+4. Cookie 政策继续使用 `/:locale/privacy/`，把示例联系人和服务替换为真实且经过审核的内容，并保留现有同意存储键。
+5. 旧工作流如果使用 `npm run build`，改用 `npm run g`；预览使用 `npm run s`，发布前使用 `npm run d -- --dry-run`。
+
+### 已移除项与替代方案
+
+- 旧的 `npm run build` 入口已移除，兼容替代是 `npm run g`。
+- 冗长的 guide/development 页面副本和旧 prompt 笔记不再作为 redirect 影子保留。原因是重复来源容易漂移；替代内容是本地化短教程，需要旧版本时查阅 Git 历史。
+- 不要求作者维护生成的 `dynamicRoutes` 清单；使用现有 Router 方法即可，backend 路由和同源 API 行为仍然可用。
+- Cookie 同意和语言选择仍受支持；使用本地化隐私页面，以及“手动选择优先、浏览器语言回退”的语言选择行为。
 
 ### 验证流程
 

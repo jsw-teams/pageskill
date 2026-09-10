@@ -18,14 +18,16 @@ messages:
       home: 首页
       about: 关于
       start: 开始使用
-      posts: 文章
+      posts: 内容
       customize: 自定义
       updates: 更新日志
     collections:
       pages: 页面
-      posts: 文章
+      posts: 内容
+      tutorials: 教程
+      uncategorized: 未分类
       updates: 更新日志
-    continue: 阅读文章
+    continue: 阅读内容
     siteMap: 站点地图
     notFound:
       title: 这页没有找到
@@ -33,9 +35,9 @@ messages:
       home: 返回首页
       guide: 打开开始使用
     archive:
-      title: 文章归档
-      description: 按日期整理 Pageskill 的教程与文章
-      continue: 阅读文章
+      title: 内容归档
+      description: 按日期整理 Pageskill 的教程、笔记与其他内容
+      continue: 阅读内容
       updates:
         title: 更新日志
         description: 按版本整理 Pageskill 的更新记录
@@ -56,14 +58,16 @@ messages:
       home: 首頁
       about: 關於
       start: 開始使用
-      posts: 文章
+      posts: 內容
       customize: 自訂
       updates: 更新日誌
     collections:
       pages: 頁面
-      posts: 文章
+      posts: 內容
+      tutorials: 教學
+      uncategorized: 未分類
       updates: 更新日誌
-    continue: 閱讀文章
+    continue: 閱讀內容
     siteMap: 網站地圖
     notFound:
       title: 找不到這個頁面
@@ -71,9 +75,9 @@ messages:
       home: 返回首頁
       guide: 開啟開始使用
     archive:
-      title: 文章彙整
-      description: 按日期整理 Pageskill 的教學與文章
-      continue: 閱讀文章
+      title: 內容彙整
+      description: 按日期整理 Pageskill 的教學、筆記與其他內容
+      continue: 閱讀內容
       updates:
         title: 更新日誌
         description: 按版本整理 Pageskill 的更新記錄
@@ -94,14 +98,16 @@ messages:
       home: Home
       about: About
       start: Get started
-      posts: Articles
+      posts: Posts
       customize: Customize
       updates: Updates
     collections:
       pages: Pages
-      posts: Articles
+      posts: Posts
+      tutorials: Tutorials
+      uncategorized: Uncategorized
       updates: Release updates
-    continue: Read article
+    continue: Read post
     siteMap: Site map
     notFound:
       title: This page is not here
@@ -109,9 +115,9 @@ messages:
       home: Back to home
       guide: Open getting started
     archive:
-      title: Article archive
-      description: Dated Pageskill tutorials and articles
-      continue: Read article
+      title: Post archive
+      description: Dated Pageskill tutorials, notes, and other posts
+      continue: Read post
       updates:
         title: Release updates
         description: Versioned Pageskill release notes

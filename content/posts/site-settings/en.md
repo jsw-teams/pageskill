@@ -2,12 +2,13 @@
 title: Change the name and navigation
 description: Set the site name, languages, and navigation in config.yml so the home page reaches your articles.
 date: 2026-09-07
+category: tutorial
 ---
 
 # Change the name and navigation
 
 `config.yml` is a settings file: it stores site data and switches, and it does not run code. Change the name and navigation first; add other settings later.
-The localized `author` value is the default for articles that do not set their own Frontmatter author; replace `Site Owner` with the real site owner before publishing.
+The localized `author` value is the default for posts that do not set their own Frontmatter author. This site uses `toewpq`; replace it with the real owner when adapting the example.
 
 ## 1. Open the settings file
 
@@ -29,9 +30,9 @@ description:
   zh-tw: 寫下我的文章。
   en: Notes from my work.
 author:
-  zh-sg: Site Owner
-  zh-tw: Site Owner
-  en: Site Owner
+  zh-sg: toewpq
+  zh-tw: toewpq
+  en: toewpq
 ```
 
 ## 2. Change the navigation
@@ -50,6 +51,21 @@ navigation:
 ```
 
 `:locale` is replaced with `zh-sg`, `zh-tw`, or `en` during generation. Do not splice visitor input into the settings file.
+
+Primary navigation is site data, so it belongs here. A theme-owned insertion before or after the standard navigation or footer tools belongs in `themes/default/theme.yml` under `plugins.chrome`:
+
+```yaml
+plugins:
+  chrome:
+    navigation:
+      after:
+        - label: Plugin tutorial
+          href: /:locale/posts/cookies/
+    footer:
+      after: []
+```
+
+The chrome option accepts structured labels and safe links only. It does not accept HTML, scripts, CSS, selectors, or arbitrary attributes.
 
 ## 3. Generate and preview
 

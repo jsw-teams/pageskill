@@ -2,12 +2,13 @@
 title: 改成你的名稱和導覽
 description: 在 config.yml 設定網站名稱、語言和導覽，讓首頁連到你的文章。
 date: 2026-09-07
+category: tutorial
 ---
 
 # 改成你的名稱和導覽
 
 `config.yml` 是設定檔：它保存網站資料和開關，不執行程式碼。先修改名稱和導覽，其他設定之後再加入。
-文章沒有在 Frontmatter 寫作者時，會使用對應語言的 `author`；發佈前請把 `Site Owner` 換成真實的網站作者。
+post 沒有在 Frontmatter 寫作者時，會使用對應語言的 `author`。目前網站使用 `toewpq`；套用範例時請換成真實的網站作者。
 
 ## 1. 開啟設定檔
 
@@ -29,9 +30,9 @@ description:
   zh-tw: 寫下我的文章。
   en: Notes from my work.
 author:
-  zh-sg: Site Owner
-  zh-tw: Site Owner
-  en: Site Owner
+  zh-sg: toewpq
+  zh-tw: toewpq
+  en: toewpq
 ```
 
 ## 2. 修改導覽
@@ -50,6 +51,21 @@ navigation:
 ```
 
 `:locale` 會在產生時換成 `zh-sg`、`zh-tw` 或 `en`。不要把訪客輸入拼進設定檔。
+
+主導覽是網站資料，因此放在這裡。主題需要在標準導覽或頁尾工具前後增加插入連結時，應在 `themes/default/theme.yml` 的 `plugins.chrome` 下設定：
+
+```yaml
+plugins:
+  chrome:
+    navigation:
+      after:
+        - label: Plugin tutorial
+          href: /:locale/posts/cookies/
+    footer:
+      after: []
+```
+
+chrome 選項只接受結構化標籤和安全連結，不接受 HTML、腳本、CSS、選擇器或任意屬性。
 
 ## 3. 產生並預覽
 

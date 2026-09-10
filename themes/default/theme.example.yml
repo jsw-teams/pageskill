@@ -1,4 +1,14 @@
 plugins:
+  chrome:
+    enabled: true
+    navigation:
+      enabled: true
+      before: []
+      after: []
+    footer:
+      enabled: true
+      before: []
+      after: []
   search:
     enabled: true
     provider: Pageskill

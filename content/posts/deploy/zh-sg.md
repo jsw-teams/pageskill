@@ -2,6 +2,7 @@
 title: 把网站放到网上
 description: 配置一个发布目标，生成公开快照，并保持同源 API 与私有代码隔离。
 date: 2026-09-07
+category: tutorial
 ---
 
 # 把网站放到网上

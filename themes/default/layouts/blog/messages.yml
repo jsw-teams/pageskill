@@ -4,22 +4,22 @@ messages:
       published: 发布于
       author: 作者
       coverAlt: 封面图片
-    related: 相关文章
-    previous: 上一篇文章
-    next: 下一篇文章
+    related: 相关内容
+    previous: 上一篇
+    next: 下一篇
   zh-tw:
     post:
       published: 發布於
       author: 作者
       coverAlt: 封面圖片
-    related: 相關文章
-    previous: 上一篇文章
-    next: 下一篇文章
+    related: 相關內容
+    previous: 上一篇
+    next: 下一篇
   en:
     post:
       published: Published
       author: Author
       coverAlt: Cover image
-    related: Related articles
-    previous: Previous article
-    next: Next article
+    related: Related posts
+    previous: Previous post
+    next: Next post

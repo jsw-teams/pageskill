@@ -21,4 +21,4 @@ The essential choice lasts up to 365 days. Optional categories stay off without 
 
 ## Contact
 
-For privacy questions, contact the Site Owner through [Pageskill GitHub](https://github.com/jsw-teams/pageskill). If the site configures another service, its owner should add the real contact and processing details here.
+For privacy questions, contact toewpq through [Pageskill GitHub](https://github.com/jsw-teams/pageskill). If the site configures another service, its owner should add the real contact and processing details here.

@@ -11,26 +11,35 @@ cover: assets/og-default-product.webp
 
 Pageskill 3.0.2 把教學和版本歷史放在同一個 post 集合中，再用 Frontmatter 分類和篩選視圖區分它們；同時收緊文章頁頭，為封面提供可預測的響應式容器，並讓語言選擇頁在出現推薦標籤時仍然整齊。
 
-## 這次改了什麼
+## 功能特性
 
-- 版本說明現在放在 `content/posts/<version>/<locale>.md`，並在 Frontmatter 寫 `category: update`，使用 `/:locale/updates/<version>/` 路由。教學、日誌和產品記錄使用同一個 posts 集合，不寫這個分類。
-- 更新日誌有獨立的 `/:locale/updates/` 索引、Feed、搜尋結果、語言連結、導覽入口和首頁欄目；教學文章彙整仍然是 `/:locale/posts/`。
-- 文章標題、說明、發佈日期和作者組成緊湊的頁頭；封面和正文閱讀欄共用寬度，並使用穩定的 1200:630 容器。
-- 彙整縮圖現在同時限制寬度和高度，不會把原圖的 `height` 屬性當成渲染像素高度，圖片保持 `object-fit: cover`，不會被拉伸。
-- 語言卡片預留推薦標籤的行高，並使用固定行高；推薦語言不會把其中一張卡片撐高。小螢幕文章的目錄預設折疊。
-- `config.yml` 現在發佈網站 URL `https://pageskill.openjsu.com`，網站作者為 `toewpq`；文章沒有明確 `author` 時會繼承這個值。根級 `i18n` 為只翻譯一部分的主題介面和缺少的語言文件提供回退，同時 `hreflang` 只列出實際存在的翻譯。
-- Cookie 選擇器會明確顯示每個類別的提供者和保存期限，借鑑政策產生器的透明資訊，但訪客選擇器仍然和經過審核的法律政策頁面分開。
+- 版本說明使用一般 posts 流程並增加 `category: update`。更新視圖會把它們排除在一般 post 列表之外，同時保留 `/:locale/updates/<version>/` 公開路由、Feed、搜尋結果、語言連結、導覽入口和首頁欄目。
+- post 分類現在來自 Markdown Frontmatter：`category: tutorial` 表示教學，`category: update` 表示版本說明，省略分類時會渲染並索引為 `uncategorized`（未分類），不會再從 pages collection 猜測。
+- 文章標題、說明、發佈日期和作者組成緊湊頁頭；封面和正文閱讀欄使用穩定的 1200:630 比例，彙整縮圖使用獨立的 16:9 容器，不再繼承原圖的像素高度。
+- 文章導覽標籤單獨佔行，不會再被誤認為連結標題的一部分。語言卡片預留推薦標籤行，小螢幕文章目錄預設折疊。
+- 主題可以透過結構化的 `plugins.chrome` 選項，在標準導覽和頁尾工具前後增加連結。編譯器會解析語言路由、限制連結數量和長度、拒絕不安全或目錄穿越 URL，殼層會轉義標籤；不支援原始 HTML、腳本、CSS 或任意屬性。
 
-## 內容放在哪裡
+## 安全與本地化特性
 
-依照文件類型選擇集合：
+- 主題介面文案會從配置的回退語言合併缺少的鍵和帶 ID 的類別項目。缺少整篇語言文件時，可以在請求語言的路由提供回退文章；但 `hreflang` 只列出實際存在的翻譯。
+- Cookie 選擇器逐類別顯示提供者和保存期限。可選類別預設關閉，受信任腳本必須在明確同意後載入，選擇器不會取代經過審核的隱私政策頁面。
 
-```text
-content/posts/<id>/<locale>.md        教學、文章、日誌和版本更新
-                                      （版本更新增加 `category: update`）
-```
+## 相容用法與遷移
 
-現有的 3.0.0 和 3.0.1 說明已改為 posts 路徑並增加 `category: update`，發佈日期、作者和封面中繼資料保持不變；本語言的連結仍然是 `/zh-tw/updates/3.0.0/` 和 `/zh-tw/updates/3.0.1/`，由更新視圖提供，不保留重複內容。
+現有 3.0 網站可以遷移來源資料夾，同時保持更新文章的公開 URL：
+
+1. 將 `content/updates/<version>/<locale>.md` 移到 `content/posts/<version>/<locale>.md`。
+2. 保留原來的 ID、語言檔案、`date`、`author` 和 `cover`；每個版本說明的 Frontmatter 增加 `category: update`。
+3. 繼續使用 `/zh-tw/updates/<version>/`、`/zh-sg/updates/<version>/` 或 `/en/updates/<version>/` 連結。更新視圖會提供這些路由，不需要建立 redirect 影子或複製文章；一般文章仍使用 `/:locale/posts/<id>/`。
+4. 後續新增語言時，先把語言加入網站啟用語言列表，再按完成進度補 UI 和文章檔案。主題 UI 缺少的鍵從回退語言取得，整篇缺少的文章使用內容回退；已存在但只翻譯一部分的 Markdown 會按原文提供，Pageskill 不會靜默機器翻譯。
+5. 如果舊主題檔案仍有獨立的 `plugins.language.enabled` 開關，請刪除這個重複開關；語言選擇功能仍然存在，並繼續按照網站的啟用語言和回退行為工作。
+6. 教學明確增加 `category: tutorial`；不寫 `category` 的新 post 預設是 `uncategorized`（未分類）。既有主導覽保持相容，需要額外殼層連結時使用主題的結構化 `plugins.chrome` 插入點。
+7. 執行 `npm run g -- --profile`，檢查一般 post/更新彙整和兩個 Feed，再在正式發佈前執行 `npm run d -- --dry-run`。
+
+## 已移除項目與替代方案
+
+- 已移除獨立的 `content/updates` 來源 collection；相容替代方式是 `content/posts` 加 `category: update`。公開更新路由和訪客看到的更新功能沒有移除。
+- 沒有移除 Cookie 同意功能；借鑑政策產生器的提供者和保存期限只是展示中繼資料，法律文字仍維護在經過審核的隱私政策頁面。
 
 ## 發佈前驗證
 

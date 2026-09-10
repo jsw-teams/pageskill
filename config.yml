@@ -108,7 +108,7 @@ feed:
 
 privacy:
   controller:
-    name: Site Owner
+    name: toewpq
     contactUrl: https://github.com/jsw-teams/pageskill
     supervisoryAuthorityUrl: https://edpb.europa.eu/about-edpb/about-edpb_en
   cookieConsent:

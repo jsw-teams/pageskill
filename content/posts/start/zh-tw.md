@@ -1,7 +1,8 @@
 ---
 title: 十分鐘開始你的網站
-description: 複製 Pageskill，在原目錄產生網站，再開始修改頁面和文章。
+description: 複製 Pageskill，在原目錄產生網站，再開始修改頁面和 post。
 date: 2026-09-07
+category: tutorial
 ---
 
 # 十分鐘開始你的網站
@@ -28,7 +29,7 @@ npm run g
 
 ## 3. 直接修改網站
 
-首頁改 `content/pages/home/<locale>.md`，帶日期的教學和文章改 `content/posts/<id>/<locale>.md`；版本更新也放在這裡，並加上 `category: update` 進入更新封存。網站資料和開關改 `config.yml`。先重用主題已有能力，再增加新的擴充。
+首頁改 `content/pages/home/<locale>.md`，帶日期的教學和其他 post 改 `content/posts/<id>/<locale>.md`；教學明確寫 `category: tutorial`，省略它的 post 預設是 `uncategorized`（未分類），版本更新則加上 `category: update` 進入更新封存。網站資料和開關改 `config.yml`。先重用主題已有能力，再增加新的擴充。
 
 ## 4. 開啟預覽
 

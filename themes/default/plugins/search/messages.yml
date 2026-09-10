@@ -2,7 +2,7 @@ messages:
   zh-sg:
     search:
       label: 站内搜索
-      placeholder: 搜索页面和文章
+      placeholder: 搜索页面和内容
       submitLabel: 搜索
       noResultsLabel: 没有找到匹配内容
       resultLabel: 搜索结果
@@ -15,7 +15,7 @@ messages:
   zh-tw:
     search:
       label: 站內搜尋
-      placeholder: 搜尋頁面和文章
+      placeholder: 搜尋頁面和內容
       submitLabel: 搜尋
       noResultsLabel: 沒有找到符合內容
       resultLabel: 搜尋結果
@@ -28,7 +28,7 @@ messages:
   en:
     search:
       label: Search this site
-      placeholder: Search pages and articles
+      placeholder: Search pages and posts
       submitLabel: Search
       noResultsLabel: No matching content.
       resultLabel: Search results

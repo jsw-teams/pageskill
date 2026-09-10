@@ -2,6 +2,7 @@
 title: 換樣式，或讓 Agent 幫你改
 description: 直接修改模組化主題，重用元件，讓一次改動作用到每個頁面。
 date: 2026-09-07
+category: tutorial
 ---
 
 # 換樣式，或讓 Agent 幫你改
@@ -41,6 +42,32 @@ npm run compile-theme
 npm run g
 npm run s
 ```
+
+## 4. 在 theme.yml 中安全增加 shell 連結
+
+主導覽仍然是 `config.yml` 中的網站資料。如果主題需要在標準導覽或頁尾工具前後增加連結，請使用結構化的 `plugins.chrome` 選項：
+
+```yaml
+# themes/default/theme.yml
+plugins:
+  chrome:
+    enabled: true
+    navigation:
+      enabled: true
+      before: []
+      after:
+        - label: Plugin tutorial
+          labels:
+            zh-sg: 插件教程
+            zh-tw: 外掛教學
+          href: /:locale/posts/cookies/
+    footer:
+      enabled: true
+      before: []
+      after: []
+```
+
+這裡只接受 `label`、本地化 `labels` 和 `href`。連結數量和長度有上限，編譯器會解析 `:locale`，拒絕不安全協定和目錄穿越路徑，並轉義標籤。原始 HTML、腳本、樣式、選擇器和任意屬性都不支援。
 
 ## 成功結果
 

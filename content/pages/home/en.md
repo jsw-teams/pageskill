@@ -1,15 +1,15 @@
 ---
-title: Write your first article and build your site
-description: Preview, generate, and publish an article-based site with three commands.
+title: Publish your first tutorial and build your site
+description: Preview, generate, and publish a tutorial-friendly site with three commands.
 pattern: landing
 ---
 
 :::hero{tone="brand" align="left"}
-*Pageskill 3.0.2 · Build with articles*
+*Pageskill 3.0.2 · Build with tutorials*
 
-# Write your first article and build your site
+# Publish your first tutorial and build your site
 
-Pageskill turns Markdown articles, site settings, and styles into a website. Clone the repository, generate it in place, and adapt the content to your project; when you need dynamic behavior, pages and same-origin APIs still keep a clear boundary.
+Pageskill turns Markdown posts, site settings, and styles into a website. Clone the repository, generate it in place, and adapt the content to your project; when you need dynamic behavior, pages and same-origin APIs still keep a clear boundary.
 
 [Start in ten minutes](/en/posts/start/) [Browse all tutorials](/en/posts/)
 :::
@@ -24,11 +24,11 @@ Change the site name, languages, and navigation; settings hold data, not code.
 ### [Markdown](/en/posts/markdown/)
 Write with headings, paragraphs, lists, and fenced code, starting with one small page.
 
-### [First article](/en/posts/first-post/)
-Add a dated article under `content/posts/`, generate the site, and open it from the article list.
+### [First tutorial](/en/posts/first-post/)
+Add a dated post under `content/posts/`, choose its Frontmatter category, generate the site, and open it from the post list.
 
-### [Cookie choices](/en/posts/cookies/)
-Reuse the Cookie plugin that is already provided. Optional scripts stay off until a visitor agrees.
+### [How we build a plugin](/en/posts/cookies/)
+Use the Cookie selector as a reference for module resources, safe rendering, partial translations, and consent-aware scripts.
 
 ### [Change the style](/en/posts/customize/)
 Reuse the theme capabilities you have; when a new structure is needed, implement it once for later pages.
@@ -49,7 +49,7 @@ Reuse the theme capabilities you have; when a new structure is needed, implement
 :::
 
 :::cta{href="/en/posts/start/"}
-## Start with one article
+## Start with one tutorial
 
-Begin with [Start in ten minutes](/en/posts/start/), then follow site settings, Markdown, and your first article. Each tutorial includes a smallest useful example, the expected result, one common trap, and a next step.
+Begin with [Start in ten minutes](/en/posts/start/), then follow site settings, Markdown, and your first post. Each tutorial includes a smallest useful example, the expected result, one common trap, and a next step.
 :::

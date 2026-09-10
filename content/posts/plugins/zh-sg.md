@@ -2,11 +2,12 @@
 title: 开发一个可复用插件
 description: 增加一个自带资源的主题插件，只注册一次，并在每个页面复用。
 date: 2026-09-08
+category: tutorial
 ---
 
 # 开发一个可复用插件
 
-主题插件负责共享的浏览器行为、样式和 messages。只注册一次；文章继续写 Markdown，不复制 HTML。
+主题插件负责共享的浏览器行为、样式和 messages。只注册一次；post 继续写 Markdown，不复制 HTML。
 
 ## 1. 创建一个模块目录
 
@@ -55,7 +56,7 @@ export const plugins = { search, toc, privacyConsent: cookies, language, reading
 const marker = document.createElement('small');
 marker.className = 'reading-tip';
 marker.textContent = 'Reading tip enabled';
-document.querySelector('.site-footer')?.append(marker);
+document.querySelector('main')?.prepend(marker);
 ```
 
 `style.css`：
@@ -92,9 +93,15 @@ npm run s
 
 ## 成功结果
 
-生成的页面会加载插件脚本和样式，页脚出现标记。把 `theme.yml` 中的 `plugins.readingTip.enabled` 改为 `false` 后重新生成即可移除；新增文章不需要再写 HTML。
+生成的页面会加载插件脚本和样式，主要内容区域出现标记。把 `theme.yml` 中的 `plugins.readingTip.enabled` 改为 `false` 后重新生成即可移除；新增文章不需要再写 HTML。
 
 生成时会把模块的资源和 messages 收集到公开主题资源中。服务端嵌套 ESM 留在构建/运行时边界内，未变化的公开资源继续使用原内容 hash 路径和缓存身份。
+
+## 5. 以 Cookie 选择器作为参考
+
+本主题的[Cookie 选择器教程](/zh-sg/posts/cookies/)是一个完整参考实现。它在同样的模块结构上加入了 schema、本地化消息、同意后浏览器行为和安全渲染；当插件不止需要一个资源时，可以照这个结构扩展。
+
+导航和页脚链接属于 shell，因此应通过 `themes/default/theme.yml` 的 `plugins.chrome` 配置。不要让插件脚本向 `.site-header` 或 `.site-footer` 任意追加链接。chrome 插件只接受结构化标签和安全 URL；像本例这样的页面级行为仍可挂载到 `main` 内。
 
 ## 常见坑
 

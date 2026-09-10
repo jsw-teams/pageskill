@@ -2,6 +2,7 @@
 title: Change the style, or ask an Agent
 description: Edit the modular theme directly, reuse components, and make one shared change for every page.
 date: 2026-09-07
+category: tutorial
 ---
 
 # Change the style, or ask an Agent
@@ -41,6 +42,32 @@ npm run compile-theme
 npm run g
 npm run s
 ```
+
+## 4. Add safe shell links from theme.yml
+
+Primary navigation remains site data in `config.yml`. If a theme needs an extra link before or after the standard navigation or footer tools, use the structured `plugins.chrome` option:
+
+```yaml
+# themes/default/theme.yml
+plugins:
+  chrome:
+    enabled: true
+    navigation:
+      enabled: true
+      before: []
+      after:
+        - label: Plugin tutorial
+          labels:
+            zh-sg: 插件教程
+            zh-tw: 外掛教學
+          href: /:locale/posts/cookies/
+    footer:
+      enabled: true
+      before: []
+      after: []
+```
+
+Only `label`, localized `labels`, and `href` are accepted. Link counts and lengths are bounded, `:locale` is resolved by the compiler, unsafe protocols and traversal paths are rejected, and labels are escaped. Raw HTML, scripts, styles, selectors, and arbitrary attributes are not supported.
 
 ## Expected result
 

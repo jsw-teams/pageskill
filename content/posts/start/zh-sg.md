@@ -1,7 +1,8 @@
 ---
 title: 十分钟开始你的站点
-description: 克隆 Pageskill，在原目录生成网站，然后开始修改页面和文章。
+description: 克隆 Pageskill，在原目录生成网站，然后开始修改页面和 post。
 date: 2026-09-07
+category: tutorial
 ---
 
 # 十分钟开始你的站点
@@ -28,7 +29,7 @@ npm run g
 
 ## 3. 直接修改站点
 
-首页改 `content/pages/home/<locale>.md`，带日期的教程和文章改 `content/posts/<id>/<locale>.md`；版本更新也放在这里，并加上 `category: update` 进入更新归档。站点数据和开关改 `config.yml`。先复用主题已有能力，再增加新的扩展。
+首页改 `content/pages/home/<locale>.md`，带日期的教程和其他 post 改 `content/posts/<id>/<locale>.md`；教程明确写 `category: tutorial`，省略它的 post 默认是 `uncategorized`（未分类），版本更新则加上 `category: update` 进入更新归档。站点数据和开关改 `config.yml`。先复用主题已有能力，再增加新的扩展。
 
 ## 4. 打开预览
 

@@ -2,6 +2,7 @@
 title: 把網站放到網路上
 description: 設定一個發佈目標，產生公開快照，並保持同源 API 與私有程式碼隔離。
 date: 2026-09-07
+category: tutorial
 ---
 
 # 把網站放到網路上

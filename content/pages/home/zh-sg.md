@@ -1,15 +1,15 @@
 ---
-title: 写下第一篇文章，搭好你的网站
-description: 用三条命令预览、生成并发布一个由文章组成的网站。
+title: 发布第一篇教程，搭好你的网站
+description: 用三条命令预览、生成并发布一个适合教程内容的网站。
 pattern: landing
 ---
 
 :::hero{tone="brand" align="left"}
-*Pageskill 3.0.2 · 用文章搭站*
+*Pageskill 3.0.2 · 用教程搭站*
 
-# 写下第一篇文章，搭好你的网站
+# 发布第一篇教程，搭好你的网站
 
-Pageskill 把 Markdown 文章、站点设置和样式组装成一个网站。你可以先克隆仓库、在原目录生成，再按自己的内容修改；需要动态功能时，页面和同源 API 仍然各自放在清楚的边界里。
+Pageskill 把 Markdown post、站点设置和样式组装成一个网站。你可以先克隆仓库、在原目录生成，再按自己的内容修改；需要动态功能时，页面和同源 API 仍然各自放在清楚的边界里。
 
 [十分钟开始](/zh-sg/posts/start/) [查看全部教程](/zh-sg/posts/)
 :::
@@ -24,11 +24,11 @@ Pageskill 把 Markdown 文章、站点设置和样式组装成一个网站。你
 ### [Markdown](/zh-sg/posts/markdown/)
 用标题、段落、列表和代码围栏写文章，先做出一个最小页面。
 
-### [第一篇文章](/zh-sg/posts/first-post/)
-在 `content/posts/` 新建带日期的文章，生成后从文章列表打开它。
+### [第一篇教程](/zh-sg/posts/first-post/)
+在 `content/posts/` 新建带日期的 post，选择 Frontmatter 分类，生成后从 post 列表打开它。
 
-### [Cookie 选择](/zh-sg/posts/cookies/)
-沿用现成的 Cookie 插件，可选脚本默认关闭，访客同意后才加载。
+### [我们如何构建插件](/zh-sg/posts/cookies/)
+以 Cookie 选择器为参考，学习模块资源、安全渲染、部分翻译和同意后加载脚本。
 
 ### [换样式](/zh-sg/posts/customize/)
 先复用主题已有能力；需要新结构时实现一次，让之后的页面继续使用。
@@ -51,5 +51,5 @@ Pageskill 把 Markdown 文章、站点设置和样式组装成一个网站。你
 :::cta{href="/zh-sg/posts/start/"}
 ## 现在就开始
 
-先完成 [十分钟开始你的站点](/zh-sg/posts/start/)，再按站点设置、Markdown 和第一篇文章继续。每篇教程都给出最小例子、成功结果和一个常见坑。
+先完成 [十分钟开始你的站点](/zh-sg/posts/start/)，再按站点设置、Markdown 和第一个 post 继续。每篇教程都给出最小例子、成功结果和一个常见坑。
 :::

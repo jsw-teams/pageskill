@@ -92,9 +92,19 @@ export function postCoverImage(post: ThemeRenderContext['doc'], context: ThemeRe
 }
 
 export function postCover(post: ThemeRenderContext['doc'], context: ThemeRenderContext, index?: number, collection = 'posts'): string {
-  const markerLabel = context.translate(`collections.${collection}`, collection === 'updates' ? 'Updates' : 'Articles');
+  const rawCategory = String(post.data?.category ?? post.data?.type ?? '').trim().toLocaleLowerCase();
+  const category = rawCategory || 'uncategorized';
+  const markerKey = collection === 'updates'
+    ? 'collections.updates'
+    : category === 'tutorial'
+      ? 'collections.tutorials'
+      : category === 'uncategorized'
+        ? 'collections.uncategorized'
+        : `categories.${category}`;
+  const fallback = collection === 'updates' ? 'Updates' : category === 'tutorial' ? 'Tutorials' : category === 'uncategorized' ? 'Uncategorized' : category;
+  const markerLabel = context.translate(markerKey, fallback);
   const cover = coverUrl(post.cover || post.data?.cover || post.data?.ogImage, context);
-  if (!cover) return '';
+  if (!cover) return `<div class="post-card-cover"><span>${context.escapeHtml(markerLabel)}</span></div>`;
   const alt = context.escapeHtml(`${context.translate('post.coverAlt', 'Cover image')}: ${post.title}`);
   const eager = index === 0 || index === undefined;
   const image = `<img src="${cover}" alt="${alt}" width="1200" height="630" sizes="(max-width: 600px) 100vw, (max-width: 980px) 50vw, 33vw" loading="${eager ? 'eager' : 'lazy'}"${eager ? ' fetchpriority="high"' : ''} decoding="async">`;

@@ -54,6 +54,7 @@ export type ThemeShellContext = ThemeRenderContext & {
   brandIcon: string;
   navigationLinks: string;
   languageLinks: string;
+  chrome: ThemeChromeConfig;
   navigationLabel: string;
   languageLabel: string;
   skipLabel: string;
@@ -113,6 +114,26 @@ export type ThemeShellContext = ThemeRenderContext & {
     integrations: Array<Record<string, string>>;
     gatedScripts: Array<{ category: string; href: string }>;
   };
+};
+
+/** Safe, structured links contributed by a theme's shell configuration.  The
+ * compiler resolves the locale and rejects unsafe URLs before the shell sees
+ * them; theme renderers still escape the label when they emit markup. */
+export type ThemeChromeLink = {
+  label: string;
+  href: string;
+  current?: boolean;
+};
+
+export type ThemeChromeSlot = {
+  enabled: boolean;
+  before: ThemeChromeLink[];
+  after: ThemeChromeLink[];
+};
+
+export type ThemeChromeConfig = {
+  navigation: ThemeChromeSlot;
+  footer: ThemeChromeSlot;
 };
 
 export type ThemeResource = string | {

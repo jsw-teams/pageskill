@@ -2,12 +2,13 @@
 title: 改成你的名字和导航
 description: 在 config.yml 里设置站点名称、语言和导航，让首页链接到你的文章。
 date: 2026-09-07
+category: tutorial
 ---
 
 # 改成你的名字和导航
 
 `config.yml` 是设置文件：它保存站点数据和开关，不执行代码。先改名称和导航，其他设置以后再加。
-文章没有在 Frontmatter 写作者时，会使用对应语言的 `author`；发布前请把 `Site Owner` 换成真实的站点作者。
+post 没有在 Frontmatter 写作者时，会使用对应语言的 `author`。当前站点使用 `toewpq`；套用示例时请换成真实的站点作者。
 
 ## 1. 打开设置文件
 
@@ -29,9 +30,9 @@ description:
   zh-tw: 寫下我的文章。
   en: Notes from my work.
 author:
-  zh-sg: Site Owner
-  zh-tw: Site Owner
-  en: Site Owner
+  zh-sg: toewpq
+  zh-tw: toewpq
+  en: toewpq
 ```
 
 ## 2. 改导航
@@ -50,6 +51,21 @@ navigation:
 ```
 
 `:locale` 会在生成时换成 `zh-sg`、`zh-tw` 或 `en`。不要把访客输入拼进设置文件。
+
+主导航是站点数据，因此放在这里。主题需要在标准导航或页脚工具前后增加插入链接时，应在 `themes/default/theme.yml` 的 `plugins.chrome` 下配置：
+
+```yaml
+plugins:
+  chrome:
+    navigation:
+      after:
+        - label: Plugin tutorial
+          href: /:locale/posts/cookies/
+    footer:
+      after: []
+```
+
+chrome 选项只接受结构化标签和安全链接，不接受 HTML、脚本、CSS、选择器或任意属性。
 
 ## 3. 生成并预览
 
