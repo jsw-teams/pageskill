@@ -92,11 +92,12 @@ if (root) {
       setDirectText(link, privacy.policyLabel);
       if (privacy.policyHref) link.setAttribute('href', privacy.policyHref);
     });
-    const categories = new Map((Array.isArray(privacy.categories) ? privacy.categories : []).map(category => [String(category.id), category]));
+    const categories = new Map((Array.isArray(privacy.categories) ? privacy.categories : []).map(category => [String(category.purpose || category.id), category]));
     const isChinese = String(document.documentElement.lang || '').startsWith('zh');
     consent.querySelectorAll('.cookie-option').forEach(option => {
-      const input = option.querySelector('input[data-cookie-category]');
-      const category = categories.get(input?.dataset.cookieCategory || '');
+      const input = option.querySelector('input[data-cookie-purpose],input[data-cookie-category]');
+      const purpose = input?.dataset.cookiePurpose || input?.dataset.cookieCategory || '';
+      const category = categories.get(purpose);
       if (!category) return;
       setText('strong', category.label, option);
       const details = [category.description, category.provider, category.retentionDays ? `${category.retentionDays} ${isChinese ? '天' : 'days'}` : ''].filter(Boolean).join(' · ');

@@ -2,7 +2,7 @@ messages:
   zh-sg:
     cookieConsent:
       title: Cookie 偏好设置
-      description: 选择哪些可选类别可以工作；必要功能不用于广告或追踪
+      description: 选择哪些可选用途可以工作；必要功能不用于广告或追踪
       bannerLabel: 隐私选择
       settingsLabel: Cookie 设置
       acceptLabel: 接受可选项
@@ -11,37 +11,37 @@ messages:
       closeLabel: 关闭
       essentialLabel: 必要功能
       essentialDescription: 保存你的选择；不启用追踪。
-      optionalLabel: 可选项目
+      optionalLabel: 可选用途
       optionalDescription: 默认关闭；只有同意后才可启用。
       policyLabel: 隐私政策
       providerLabel: 提供者
       retentionLabel: 保存期限
       retentionSession: 会话期间
       categories:
-        - id: essential
+        - purpose: essential
           provider: Pageskill
           label: 必要功能
           description: 保存你的 Cookie 选择；不用于广告或追踪。
-        - id: analytics
+        - purpose: measurement
           provider: 未配置第三方服务
-          label: 可选分析
-          description: 只有主动同意后才允许主题或后端启用分析。
-        - id: advertising
+          label: 可选访问量测量
+          description: Google Analytics、Cloudflare Web Analytics 或百度统计只有在主动同意后才可测量访问量。
+        - purpose: advertising
           provider: 未配置广告服务
           label: 可选广告
           description: 只有主动同意后才允许广告或转化衡量服务。
-        - id: security
+        - purpose: fraud-prevention
           provider: 未配置人机验证服务
-          label: 人机验证
-          description: 只有主动同意后才允许验证码或反滥用服务。
-        - id: social
+          label: 反滥用与人机验证
+          description: reCAPTCHA、hCaptcha 或 Turnstile 只有在主动同意后才可执行挑战或反滥用检查。
+        - purpose: social-embedding
           provider: 未配置社交嵌入
           label: 社交内容
           description: 只有主动同意后才允许 X 等第三方社交内容嵌入。
   zh-tw:
     cookieConsent:
       title: Cookie 偏好設定
-      description: 選擇哪些可選類別可以運作；必要功能不用於廣告或追蹤
+      description: 選擇哪些可選用途可以運作；必要功能不用於廣告或追蹤
       bannerLabel: 隱私選擇
       settingsLabel: Cookie 設定
       acceptLabel: 接受可選項目
@@ -50,37 +50,37 @@ messages:
       closeLabel: 關閉
       essentialLabel: 必要功能
       essentialDescription: 儲存你的選擇；不啟用追蹤。
-      optionalLabel: 可選項目
+      optionalLabel: 可選用途
       optionalDescription: 預設關閉；只有同意後才可啟用。
       policyLabel: 隱私政策
       providerLabel: 提供者
       retentionLabel: 保存期限
       retentionSession: 工作階段
       categories:
-        - id: essential
+        - purpose: essential
           provider: Pageskill
           label: 必要功能
           description: 儲存你的 Cookie 選擇；不用於廣告或追蹤。
-        - id: analytics
+        - purpose: measurement
           provider: 未設定第三方服務
-          label: 可選分析
-          description: 只有主動同意後才允許主題或後端啟用分析。
-        - id: advertising
+          label: 可選訪問量測量
+          description: Google Analytics、Cloudflare Web Analytics 或百度統計只有在主動同意後才可測量訪問量。
+        - purpose: advertising
           provider: 未設定廣告服務
           label: 可選廣告
           description: 廣告或轉換衡量服務只有在主動同意後才可啟用。
-        - id: security
+        - purpose: fraud-prevention
           provider: 未設定人機驗證服務
-          label: 人機驗證
-          description: 驗證碼或反濫用服務只有在主動同意後才可啟用。
-        - id: social
+          label: 反濫用與人機驗證
+          description: reCAPTCHA、hCaptcha 或 Turnstile 只有在主動同意後才可執行挑戰或反濫用檢查。
+        - purpose: social-embedding
           provider: 未設定社交嵌入
           label: 社交內容
           description: X 等第三方社交內容嵌入只有在主動同意後才可啟用。
   en:
     cookieConsent:
       title: Cookie preferences
-      description: Choose which optional categories may run; essential functions are not used for advertising or tracking.
+      description: Choose which optional purposes may run; essential functions are not used for advertising or tracking.
       bannerLabel: Privacy choices
       settingsLabel: Cookie settings
       acceptLabel: Accept optional
@@ -89,30 +89,30 @@ messages:
       closeLabel: Close
       essentialLabel: Essential
       essentialDescription: Stores your choice; does not enable tracking.
-      optionalLabel: Optional
+      optionalLabel: Optional purposes
       optionalDescription: Off by default; enabled only after consent.
       policyLabel: Privacy policy
       providerLabel: Provider
       retentionLabel: Retention
       retentionSession: Session
       categories:
-        - id: essential
+        - purpose: essential
           provider: Pageskill
           label: Essential
           description: Stores your Cookie choice; it is not used for advertising or tracking.
-        - id: analytics
+        - purpose: measurement
           provider: No third-party service configured
-          label: Optional analytics
-          description: Analytics may run only after an affirmative choice and only when configured.
-        - id: advertising
+          label: Optional audience measurement
+          description: Google Analytics, Cloudflare Web Analytics, or Baidu Tongji may measure visits only after an affirmative choice.
+        - purpose: advertising
           provider: No advertising service configured
           label: Optional advertising
           description: Advertising or conversion measurement may run only after an affirmative choice and only when configured.
-        - id: security
+        - purpose: fraud-prevention
           provider: No human-verification service configured
-          label: Human verification
-          description: CAPTCHA or anti-abuse services may run only after an affirmative choice and only when configured.
-        - id: social
+          label: Fraud prevention and human verification
+          description: reCAPTCHA, hCaptcha, or Turnstile may run challenges or anti-abuse checks only after an affirmative choice.
+        - purpose: social-embedding
           provider: No social embeds configured
           label: Social content
           description: X and other third-party social embeds may run only after an affirmative choice and only when configured.

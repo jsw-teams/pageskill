@@ -106,7 +106,8 @@ export type ThemeShellContext = ThemeRenderContext & {
     optionalDescription: string;
     policyLabel: string;
     categories: Array<{
-      id: string;
+      /** Code-owned reason for a provider request, not an account identifier. */
+      purpose: string;
       label: string;
       description: string;
       required: boolean;
@@ -115,7 +116,7 @@ export type ThemeShellContext = ThemeRenderContext & {
       retentionDays: number;
     }>;
     integrations: Array<Record<string, string>>;
-    gatedScripts: Array<{ category: string; href: string }>;
+    gatedScripts: Array<{ purpose: string; href: string }>;
   };
 };
 

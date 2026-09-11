@@ -484,6 +484,45 @@ const PRIVACY_PROVIDER_ALIASES: Record<string, string> = {
   turnstile: 'turnstile'
 };
 
+// Consent purposes describe the real reason a provider can make a request.
+// They are code-owned vocabulary, not account IDs invented in theme.yml.
+const PRIVACY_PURPOSE_ALIASES: Record<string, string> = {
+  essential: 'essential',
+  measurement: 'measurement',
+  analytics: 'measurement',
+  advertising: 'advertising',
+  security: 'fraud-prevention',
+  'fraud-prevention': 'fraud-prevention',
+  'fraud_prevention': 'fraud-prevention',
+  social: 'social-embedding',
+  'social-embedding': 'social-embedding',
+  'social_embed': 'social-embedding'
+};
+
+function canonicalPrivacyPurpose(value: unknown): string {
+  const source = String(value || '').trim().toLowerCase();
+  if (!source) return '';
+  const alias = PRIVACY_PURPOSE_ALIASES[source];
+  if (alias) return alias;
+  // Custom purposes are allowed for third-party modules, but only a matching
+  // category and a registered provider can make one active.
+  return source.replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
+}
+
+// Each built-in adapter maps to a documented web-service purpose.  A theme
+// may choose a more specific registered purpose, but it cannot make an
+// unregistered provider execute merely by adding an arbitrary field.
+const PRIVACY_PROVIDER_DEFINITIONS: Record<string, { field?: string; defaultPurpose: string }> = {
+  'google-analytics': { field: 'measurementId', defaultPurpose: 'measurement' },
+  'google-ads': { field: 'tagId', defaultPurpose: 'advertising' },
+  'cloudflare-web-analytics': { field: 'token', defaultPurpose: 'measurement' },
+  'baidu-tongji': { field: 'siteSignature', defaultPurpose: 'measurement' },
+  recaptcha: { field: 'siteKey', defaultPurpose: 'fraud-prevention' },
+  hcaptcha: { field: 'siteKey', defaultPurpose: 'fraud-prevention' },
+  turnstile: { field: 'siteKey', defaultPurpose: 'fraud-prevention' },
+  'x-for-websites': { defaultPurpose: 'social-embedding' }
+};
+
 function canonicalPrivacyProvider(value: unknown): string {
   const source = String(value || '').trim();
   if (!source) return '';
@@ -500,6 +539,9 @@ function normalizePrivacyIntegrations(value: unknown): Array<Record<string, any>
     const provider = canonicalPrivacyProvider(candidate);
     if (!provider) return null;
     const normalized: Record<string, any> = { ...raw, provider };
+    const purpose = canonicalPrivacyPurpose(raw.purpose ?? raw.category);
+    if (purpose) normalized.purpose = purpose;
+    delete normalized.category;
     // Preserve the old object-shaped configuration during migration while
     // translating names that had been too generic for the real web contract.
     if (provider === 'google-ads') {
@@ -531,8 +573,29 @@ function normalizePrivacyIntegrations(value: unknown): Array<Record<string, any>
 }
 
 function normalizePrivacyPluginSettings(settings: Record<string, any>): Record<string, any> {
-  if (settings.integrations === undefined) return settings;
-  return { ...settings, integrations: normalizePrivacyIntegrations(settings.integrations) };
+  const normalized: Record<string, any> = { ...settings };
+  if (settings.categories !== undefined && Array.isArray(settings.categories)) {
+    normalized.categories = settings.categories.map((raw: unknown) => {
+      if (!isRecord(raw)) return raw;
+      const purpose = canonicalPrivacyPurpose(raw.purpose ?? raw.id);
+      const category = { ...raw };
+      if (purpose) category.purpose = purpose;
+      delete category.id;
+      return category;
+    });
+  }
+  if (settings.gatedScripts !== undefined && Array.isArray(settings.gatedScripts)) {
+    normalized.gatedScripts = settings.gatedScripts.map((raw: unknown) => {
+      if (!isRecord(raw)) return raw;
+      const purpose = canonicalPrivacyPurpose(raw.purpose ?? raw.category);
+      const script = { ...raw };
+      if (purpose) script.purpose = purpose;
+      delete script.category;
+      return script;
+    });
+  }
+  if (settings.integrations !== undefined) normalized.integrations = normalizePrivacyIntegrations(settings.integrations);
+  return normalized;
 }
 
 function themeOptionValueMatches(value: unknown, type: ThemeOptionSchema['type']): boolean {
@@ -1244,19 +1307,19 @@ function fallbackShell(context: ThemeShellContext): string {
 
 const DEFAULT_COOKIE_CATEGORIES = [
   {
-    id: 'essential', required: true, defaultValue: true, provider: 'Pageskill', retentionDays: 365
+    purpose: 'essential', required: true, defaultValue: true, provider: 'Pageskill', retentionDays: 365
   },
   {
-    id: 'analytics', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
+    purpose: 'measurement', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
   },
   {
-    id: 'advertising', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
+    purpose: 'advertising', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
   },
   {
-    id: 'security', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
+    purpose: 'fraud-prevention', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
   },
   {
-    id: 'social', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
+    purpose: 'social-embedding', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
   }
 ];
 
@@ -1287,22 +1350,24 @@ function cookieConsentSettings(ctx: BuildContext): Record<string, any> {
 
 function cookieCategories(settings: Record<string, any>, locale: string, localizedCategories: any[] = [], configuredCopy: Record<string, any> = {}) {
   const source = Array.isArray(settings.categories) && settings.categories.length ? settings.categories : DEFAULT_COOKIE_CATEGORIES;
-  const localizedById = new Map(localizedCategories.map(category => [String(category?.id || '').trim().toLowerCase(), category]));
-  const configuredById = new Map((Array.isArray(configuredCopy.categories) ? configuredCopy.categories : []).map(category => [String(category?.id || '').trim().toLowerCase(), category]));
+  const localizedByPurpose = new Map(localizedCategories.map(category => [canonicalPrivacyPurpose(category?.purpose ?? category?.id), category]));
+  const configuredByPurpose = new Map((Array.isArray(configuredCopy.categories) ? configuredCopy.categories : []).map(category => [canonicalPrivacyPurpose(category?.purpose ?? category?.id), category]));
   const seen = new Set<string>();
   return source.map((raw: any) => {
-    const rawId = String(raw?.id || '').trim().toLowerCase();
-    const id = rawId.replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'category';
-    if (seen.has(id)) return null;
-    seen.add(id);
-    const localized = localizedById.get(id) || {};
-    const configured = configuredById.get(id) || {};
+    const purpose = canonicalPrivacyPurpose(raw?.purpose ?? raw?.id) || 'custom';
+    if (seen.has(purpose)) return null;
+    seen.add(purpose);
+    const localized = localizedByPurpose.get(purpose) || {};
+    const configured = configuredByPurpose.get(purpose) || {};
     const copy = { ...localized, ...configured, ...raw };
-    const required = raw?.required === true || (id === 'essential' && raw?.required !== false);
+    const required = raw?.required === true || (purpose === 'essential' && raw?.required !== false);
     const retentionDays = Number.isFinite(Number(raw?.retentionDays)) ? Math.max(0, Number(raw.retentionDays)) : Math.max(0, Number(settings.retentionDays || (required ? 365 : 0)));
     return {
-      id,
-      label: localizedValue(copy.label, locale, id),
+      // id remains an internal compatibility key; public theme data exposes
+      // the purpose that explains why a provider may run.
+      id: purpose,
+      purpose,
+      label: localizedValue(copy.label, locale, purpose),
       description: localizedValue(copy.description, locale, required ? 'Required for the site to work.' : 'Optional; off until you choose it.'),
       required,
       defaultValue: required || raw?.default === true || raw?.defaultValue === true,
@@ -1323,20 +1388,10 @@ const PRIVACY_INTEGRATION_LABELS: Record<string, Record<string, string>> = {
   'x-for-websites': { en: 'X for Websites', 'zh-sg': 'X for Websites', 'zh-tw': 'X for Websites' }
 };
 
-function privacyIntegrations(settings: Record<string, any>, categories: Array<{ id: string; required: boolean } | null>) {
+function privacyIntegrations(settings: Record<string, any>, categories: Array<{ purpose: string; required: boolean } | null>) {
   const source = normalizePrivacyIntegrations(settings.integrations);
-  const optional = new Set(categories.filter(category => category && !category.required).map(category => category!.id));
+  const optional = new Set(categories.filter(category => category && !category.required).map(category => category!.purpose));
   const result: Array<Record<string, string>> = [];
-  const definitions: Record<string, { field?: string; defaultCategory: string }> = {
-    'google-analytics': { field: 'measurementId', defaultCategory: 'analytics' },
-    'google-ads': { field: 'tagId', defaultCategory: 'advertising' },
-    'cloudflare-web-analytics': { field: 'token', defaultCategory: 'analytics' },
-    'baidu-tongji': { field: 'siteSignature', defaultCategory: 'analytics' },
-    recaptcha: { field: 'siteKey', defaultCategory: 'security' },
-    hcaptcha: { field: 'siteKey', defaultCategory: 'security' },
-    turnstile: { field: 'siteKey', defaultCategory: 'security' },
-    'x-for-websites': { defaultCategory: 'social' }
-  };
   const valueAllowed = (provider: string, value: string) => {
     if (!value || value.length > 256 || /[<>"'`\\\s]/.test(value)) return false;
     // The first two adapters use the identifier formats documented by Google;
@@ -1348,17 +1403,17 @@ function privacyIntegrations(settings: Record<string, any>, categories: Array<{ 
   source.forEach((raw: any) => {
     if (!raw || typeof raw !== 'object' || raw.enabled !== true) return;
     const provider = canonicalPrivacyProvider(raw.provider);
-    const definition = definitions[provider];
+    const definition = PRIVACY_PROVIDER_DEFINITIONS[provider];
     if (!definition) return;
-    const category = String(raw.category || definition.defaultCategory).trim().toLowerCase();
-    if (!optional.has(category)) return;
+    const purpose = canonicalPrivacyPurpose(raw.purpose) || definition.defaultPurpose;
+    if (!optional.has(purpose)) return;
     if (!definition.field) {
-      result.push({ provider, category });
+      result.push({ provider, purpose });
       return;
     }
     const value = String(raw[definition.field] || '').trim();
     if (!valueAllowed(provider, value)) return;
-    result.push({ provider, category, [definition.field]: value });
+    result.push({ provider, purpose, [definition.field]: value });
   });
   return result;
 }
@@ -1371,7 +1426,7 @@ function privacyIntegrationLabel(integration: Record<string, string>, locale: st
 
 function decorateCookieCategories(categories: any[], integrations: Array<Record<string, string>>, locale = 'en') {
   return categories.map(category => {
-    const providers = integrations.filter(integration => integration.category === category.id).map(integration => privacyIntegrationLabel(integration, locale));
+    const providers = integrations.filter(integration => integration.purpose === category.purpose).map(integration => privacyIntegrationLabel(integration, locale));
     return providers.length ? { ...category, provider: providers.join(', ') } : category;
   });
 }
@@ -1379,9 +1434,14 @@ function decorateCookieCategories(categories: any[], integrations: Array<Record<
 function publicPrivacyIntegration(integration: Record<string, string>) {
   return {
     provider: integration.provider,
-    category: integration.category,
+    purpose: integration.purpose,
     ...(integration.platform ? { platform: integration.platform } : {})
   };
+}
+
+function publicPrivacyCategory(category: Record<string, any>) {
+  const { id: _internalId, ...publicCategory } = category;
+  return publicCategory;
 }
 
 function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
@@ -1393,20 +1453,21 @@ function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
   const policyRoute = String(settings.policyRoute || '/:locale/privacy/').replace(':locale', doc.locale);
   const script = String(pluginResourcePaths(ctx, ['privacyConsent', 'cookies'], 'scripts')[0] || 'scripts/cookie-consent.js').trim();
   const scriptHref = script.startsWith('/') || /^https?:\/\//i.test(script) ? script : themeResourceHref(ctx, themeBase, script);
-  const baseCategories = cookieCategories(settings, doc.locale, Array.isArray(copy.categories) ? copy.categories : [], configuredCopy) as Array<{ id: string; label: string; description: string; required: boolean; defaultValue: boolean; provider: string; retentionDays: number }>;
+  const baseCategories = cookieCategories(settings, doc.locale, Array.isArray(copy.categories) ? copy.categories : [], configuredCopy) as Array<{ id: string; purpose: string; label: string; description: string; required: boolean; defaultValue: boolean; provider: string; retentionDays: number }>;
   const integrations = privacyIntegrations(settings, baseCategories);
-  const categories = decorateCookieCategories(baseCategories, integrations, doc.locale) as Array<{ id: string; label: string; description: string; required: boolean; defaultValue: boolean; provider: string; retentionDays: number }>;
+  // Remove the compiler-only compatibility id before handing data to a theme.
+  const categories = decorateCookieCategories(baseCategories, integrations, doc.locale).map(({ id: _internalId, ...category }) => category) as Array<{ purpose: string; label: string; description: string; required: boolean; defaultValue: boolean; provider: string; retentionDays: number }>;
   const optionalCategory = categories.find(category => !category.required);
   const retentionDays = Math.max(0, Number(settings.retentionDays || 365));
   const gatedScripts = (Array.isArray(settings.gatedScripts) ? settings.gatedScripts : []).map((entry: any) => {
     const source = typeof entry === 'string' ? entry : entry?.src || entry?.source;
-    const category = typeof entry === 'string' ? 'analytics' : entry?.category || 'analytics';
-    if (!source || !categories.some(item => item.id === category && !item.required)) return null;
+    const purpose = typeof entry === 'string' ? 'measurement' : canonicalPrivacyPurpose(entry?.purpose ?? entry?.category) || 'measurement';
+    if (!source || !categories.some(item => item.purpose === purpose && !item.required)) return null;
     const href = String(source).startsWith('/') || /^https?:\/\//i.test(String(source)) ? String(source) : themeResourceHref(ctx, themeBase, String(source));
     // Keep the runtime payload as a raw, protocol-checked URL. Renderers call
     // safeUrl exactly once when placing it in an HTML attribute.
-    return { category: String(category), href: String(href) };
-  }).filter(Boolean) as Array<{ category: string; href: string }>;
+    return { purpose: String(purpose), href: String(href) };
+  }).filter(Boolean) as Array<{ purpose: string; href: string }>;
   const privacy = {
     enabled,
     scriptSrc: safeUrl(scriptHref),
@@ -1414,7 +1475,7 @@ function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
     retentionDays,
     policyHref: safeUrl(policyRoute),
     title: text('title', doc.locale.startsWith('zh-tw') ? 'Cookie 偏好設定' : doc.locale.startsWith('zh') ? 'Cookie 偏好设置' : 'Cookie preferences'),
-    description: text('description', doc.locale.startsWith('zh-tw') ? '此網站只在你選擇後儲存偏好；必要功能不會用於追蹤。' : doc.locale.startsWith('zh') ? '本网站只在你选择后保存偏好；必要功能不会用于追踪。' : 'This site stores a preference only after you choose; essential functions are not used for tracking.'),
+    description: text('description', doc.locale.startsWith('zh-tw') ? '選擇哪些可選用途可以運作；必要功能不用於廣告或追蹤。' : doc.locale.startsWith('zh') ? '选择哪些可选用途可以工作；必要功能不用于广告或追踪。' : 'Choose which optional purposes may run; essential functions are not used for advertising or tracking.'),
     bannerLabel: text('bannerLabel', doc.locale.startsWith('zh') ? '隐私选择' : 'Privacy choices'),
     settingsLabel: text('settingsLabel', doc.locale.startsWith('zh-tw') ? 'Cookie 設定' : doc.locale.startsWith('zh') ? 'Cookie 设置' : 'Cookie settings'),
     acceptLabel: text('acceptLabel', doc.locale.startsWith('zh') ? '接受可选项' : 'Accept optional'),
@@ -1423,7 +1484,7 @@ function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
     closeLabel: text('closeLabel', doc.locale.startsWith('zh') ? '关闭' : 'Close'),
     essentialLabel: text('essentialLabel', doc.locale.startsWith('zh-tw') ? '必要功能' : doc.locale.startsWith('zh') ? '必要功能' : 'Essential'),
     essentialDescription: text('essentialDescription', doc.locale.startsWith('zh-tw') ? '儲存你的選擇；不啟用追蹤。' : doc.locale.startsWith('zh') ? '保存你的选择；不启用追踪。' : 'Stores your choice; does not enable tracking.'),
-    optionalLabel: text('optionalLabel', optionalCategory?.label || (doc.locale.startsWith('zh-tw') ? '可選項目' : doc.locale.startsWith('zh') ? '可选项目' : 'Optional')),
+    optionalLabel: text('optionalLabel', optionalCategory?.label || (doc.locale.startsWith('zh-tw') ? '可選用途' : doc.locale.startsWith('zh') ? '可选用途' : 'Optional purposes')),
     optionalDescription: text('optionalDescription', optionalCategory?.description || (doc.locale.startsWith('zh-tw') ? '預設關閉；只有同意後才可啟用。' : doc.locale.startsWith('zh') ? '默认关闭；只有同意后才可启用。' : 'Off by default; enabled only after consent.')),
     policyLabel: text('policyLabel', doc.locale.startsWith('zh-tw') ? '隱私政策' : doc.locale.startsWith('zh') ? '隐私政策' : 'Privacy policy'),
     categories,
@@ -1438,10 +1499,10 @@ function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
   const categoryMarkup = privacy.categories.map(category => {
     const retention = category.retentionDays > 0 ? `${category.retentionDays} ${retentionUnit}` : retentionSession;
     const metadata = `<span class="cookie-option-meta">${category.provider ? `<span><span class="cookie-option-meta-label">${escape(providerLabel)}</span>${escape(category.provider)}</span>` : ''}<span><span class="cookie-option-meta-label">${escape(retentionLabel)}</span>${escape(retention)}</span></span>`;
-    return `<label class="cookie-option"><input type="checkbox" data-cookie-category="${escape(category.id)}"${category.required ? ' checked disabled' : category.defaultValue ? ' checked' : ''}><span><strong>${escape(category.label)}</strong><small>${escape(category.description)}</small>${metadata}</span></label>`;
+    return `<label class="cookie-option"><input type="checkbox" data-cookie-purpose="${escape(category.purpose)}"${category.required ? ' checked disabled' : category.defaultValue ? ' checked' : ''}><span><strong>${escape(category.label)}</strong><small>${escape(category.description)}</small>${metadata}</span></label>`;
   }).join('');
-  const gatedScriptMarkup = gatedScripts.map(script => `<template data-cookie-script data-cookie-category="${escape(script.category)}" data-cookie-src="${safeUrl(script.href)}"></template>`).join('');
-  const privacyMarkup = enabled ? `<section class="privacy-consent" data-cookie-consent data-cookie-audience="human" data-cookie-version="1" data-cookie-storage="${escape(privacy.storage)}" data-cookie-retention-days="${privacy.retentionDays}" data-cookie-integrations="${escape(JSON.stringify(integrations))}" aria-label="${escape(privacy.bannerLabel)}"><div class="cookie-banner" data-cookie-banner hidden role="region" aria-labelledby="cookie-banner-title"><div class="cookie-banner-copy"><p id="cookie-banner-title"><strong>${escape(privacy.title)}</strong></p><p>${escape(privacy.description)}</p></div><div class="cookie-actions"><button class="button-secondary" type="button" data-cookie-action="reject-optional">${escape(privacy.rejectLabel)}</button><button class="button-primary" type="button" data-cookie-action="open" aria-controls="cookie-dialog">${escape(privacy.settingsLabel)}</button><button class="button-primary" type="button" data-cookie-action="accept-all">${escape(privacy.acceptLabel)}</button></div><p class="privacy-links"><a href="${privacy.policyHref}">${escape(privacy.policyLabel)}</a></p></div><dialog id="cookie-dialog" class="cookie-dialog" data-cookie-dialog aria-labelledby="cookie-dialog-title" aria-describedby="cookie-dialog-description"><form method="dialog" class="cookie-dialog-card"><div class="cookie-dialog-heading"><h2 id="cookie-dialog-title">${escape(privacy.title)}</h2><button class="cookie-close" type="button" data-cookie-action="close" aria-label="${escape(privacy.closeLabel)}">×</button></div><p id="cookie-dialog-description">${escape(privacy.description)}</p><fieldset><legend>${escape(privacy.bannerLabel)}</legend>${categoryMarkup}</fieldset><p class="privacy-links"><a href="${privacy.policyHref}">${escape(privacy.policyLabel)}</a></p><div class="cookie-actions"><button class="button-secondary" type="button" data-cookie-action="reject-optional">${escape(privacy.rejectLabel)}</button><button class="button-primary" type="button" data-cookie-action="save">${escape(privacy.saveLabel)}</button></div></form></dialog>${gatedScriptMarkup}<script type="module" src="${privacy.scriptSrc}"></script></section>` : '';
+  const gatedScriptMarkup = gatedScripts.map(script => `<template data-cookie-script data-cookie-purpose="${escape(script.purpose)}" data-cookie-src="${safeUrl(script.href)}"></template>`).join('');
+  const privacyMarkup = enabled ? `<section class="privacy-consent" data-cookie-consent data-cookie-audience="human" data-cookie-version="2" data-cookie-storage="${escape(privacy.storage)}" data-cookie-retention-days="${privacy.retentionDays}" data-cookie-integrations="${escape(JSON.stringify(integrations))}" aria-label="${escape(privacy.bannerLabel)}"><div class="cookie-banner" data-cookie-banner hidden role="region" aria-labelledby="cookie-banner-title"><div class="cookie-banner-copy"><p id="cookie-banner-title"><strong>${escape(privacy.title)}</strong></p><p>${escape(privacy.description)}</p></div><div class="cookie-actions"><button class="button-secondary" type="button" data-cookie-action="reject-optional">${escape(privacy.rejectLabel)}</button><button class="button-primary" type="button" data-cookie-action="open" aria-controls="cookie-dialog">${escape(privacy.settingsLabel)}</button><button class="button-primary" type="button" data-cookie-action="accept-all">${escape(privacy.acceptLabel)}</button></div><p class="privacy-links"><a href="${privacy.policyHref}">${escape(privacy.policyLabel)}</a></p></div><dialog id="cookie-dialog" class="cookie-dialog" data-cookie-dialog aria-labelledby="cookie-dialog-title" aria-describedby="cookie-dialog-description"><form method="dialog" class="cookie-dialog-card"><div class="cookie-dialog-heading"><h2 id="cookie-dialog-title">${escape(privacy.title)}</h2><button class="cookie-close" type="button" data-cookie-action="close" aria-label="${escape(privacy.closeLabel)}">×</button></div><p id="cookie-dialog-description">${escape(privacy.description)}</p><fieldset><legend>${escape(privacy.bannerLabel)}</legend>${categoryMarkup}</fieldset><p class="privacy-links"><a href="${privacy.policyHref}">${escape(privacy.policyLabel)}</a></p><div class="cookie-actions"><button class="button-secondary" type="button" data-cookie-action="reject-optional">${escape(privacy.rejectLabel)}</button><button class="button-primary" type="button" data-cookie-action="save">${escape(privacy.saveLabel)}</button></div></form></dialog>${gatedScriptMarkup}<script type="module" src="${privacy.scriptSrc}"></script></section>` : '';
   const privacyTriggerMarkup = enabled ? `<button class="privacy-trigger" type="button" data-cookie-action="open" aria-controls="cookie-dialog">${escape(privacy.settingsLabel)}</button>` : '';
   return { privacy, privacyMarkup, privacyTriggerMarkup };
 }
@@ -1527,7 +1588,7 @@ function languagePickerCopy(ctx: BuildContext, locale: string, themeBase: string
       policyLabel: privacy.policyLabel,
       policyHref: privacy.policyHref,
       categories: privacy.categories.map(category => ({
-        id: category.id,
+        purpose: category.purpose,
         label: category.label,
         description: category.description,
         provider: category.provider,
@@ -2148,7 +2209,7 @@ function catalog(ctx: BuildContext) {
         enabled: privacySettings.enabled === true && pluginEnabled(ctx, 'privacyConsent'),
         storage: String(privacySettings.storage || 'cookie'),
         retentionDays: Math.max(0, Number(privacySettings.retentionDays || 365)),
-        categories: privacyCategories,
+        categories: privacyCategories.map(publicPrivacyCategory),
         integrations: privacyIntegrationsData.map(publicPrivacyIntegration),
         policyRoute: String(privacySettings.policyRoute || '/:locale/privacy/'),
         agentRoute: String(privacySettings.agentRoute || '/.well-known/agent.json'),
@@ -2404,7 +2465,7 @@ async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
       enabled: settings.enabled === true && pluginEnabled(ctx, 'privacyConsent'),
       storage: String(settings.storage || 'cookie'),
       retentionDays: Math.max(0, Number(settings.retentionDays || 365)),
-      categories: decorateCookieCategories(baseCategories, integrations, locale),
+      categories: decorateCookieCategories(baseCategories, integrations, locale).map(publicPrivacyCategory),
       integrations: integrations.map(publicPrivacyIntegration),
       noAnalyticsByDefault: true,
       policyRoute,

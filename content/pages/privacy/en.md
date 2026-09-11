@@ -13,11 +13,11 @@ The site processes only what it needs to serve pages, save a Cookie choice, and 
 
 ## Cookie choices
 
-Essential Cookies save your choice; analytics, advertising, human-verification, and social-content categories start disabled. Open Cookie settings from the footer to save a new choice or withdraw optional categories. Withdrawal stops later loads but cannot undo an action a script already performed.
+Essential Cookies save your choice; the `measurement`, `advertising`, `fraud-prevention`, and `social-embedding` purposes start disabled. Open Cookie settings from the footer to save a new choice or withdraw optional purposes. Withdrawal stops later loads but cannot undo an action a script already performed.
 
 ## Retention
 
-The essential choice lasts up to 365 days. Optional categories stay off without consent; follow each third-party service's policy for its own retention and request behavior, including analytics, advertising, CAPTCHA, or X embeds when configured. The selector's category and display retention are not a promise that every provider creates a Cookie or retains data for the same period.
+The essential choice lasts up to 365 days. Optional purposes stay off without consent; follow each third-party service's policy for its own retention and request behavior, including audience measurement, advertising, CAPTCHA, or X embeds when configured. The selector's purpose and display retention are not a promise that every provider creates a Cookie or retains data for the same period.
 
 ## Contact
 

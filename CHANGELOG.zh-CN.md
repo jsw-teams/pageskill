@@ -14,11 +14,12 @@ Pageskill 3.0.2 把版本历史和教程内容分开，并收紧响应式阅读�
 - 增加由 Markdown Frontmatter 驱动的 post 分类：`category: tutorial` 标记教程，`category: update` 标记版本更新，省略分类默认是 `uncategorized`（未分类）；不会从 pages collection 猜测 post 分类。
 - 复用现有 collection 驱动的归档、Feed 和文章列表机制，没有新增第二套内容 collection 或页面 Pattern。更新日志的前后文章关系只在过滤视图内，生成的归档页现在有可见标题、说明和本地化链接。
 - 增加了部分本地化的回退行为：缺少的界面翻译键会从回退语言合并，缺少整篇文章时可以使用回退内容，但不会把回退页面错误标成已经翻译的页面。
-- 语言选择现在统一遵循启用语言和回退行为。Cookie 选择器现在逐类别显示提供者和保存期限，借鉴政策生成器的透明字段，但经过审核的法律政策仍由内容页面维护。
+- 语言选择现在统一遵循启用语言和回退行为。Cookie 选择器现在逐用途显示 provider 和保存期限，借鉴政策生成器的透明字段，但经过审核的法律政策仍由内容页面维护。
 - 修复语言选择页的推荐标签布局，预留标签行并保持卡片等高。文章页头现在和正文阅读栏对齐，在封面之前紧凑显示标题、说明、日期和作者；手机目录默认折叠。
 - 归档缩略图固定使用 16:9 容器并显式设置 `height: 100%`、`width: 100%` 和 `object-fit: cover`，不会让原图 `height` 属性撑出高空白行；post 卡片和文章封面使用稳定容器，并用 `object-fit: contain` 保留完整原图。
 - 增加主题级 `plugins.chrome` 结构化插槽，可在标准导航和页脚工具前后增加链接。语言替换、尺寸上限、路径穿越/协议检查和标签转义把自定义限制在安全链接范围；不接受 HTML、脚本、CSS、选择器或任意属性。
 - 扩展 Cookie 插件为由代码登记能力、由主题配置 provider 实例的同意控制模块。内置配置使用 provider 数组和真实网页接入字段：GA4 的 `measurementId`（`G-...`）、Google Ads 的 `tagId`（`AW-...`/`GT-...`）、Cloudflare Web Analytics 的 `token`、百度统计的 `siteSignature`、验证码的 `siteKey`，以及不需要账户 ID 的 X for Websites widget。额外 integration 字段可以扩展，但只有登记对应模块后才会生效。可选 provider 资源必须在明确同意后加载，`config.yml` 不会进入 `dist/public`，也没有线上运行时写入路由。
+- 将 Cookie 分类改为代码登记的用途契约：`measurement`、`advertising`、`fraud-prevention` 和 `social-embedding` 分别绑定真实 provider 行为；主题配置使用 `purpose`，不再要求作者凭空填写无实际含义的 `id`。旧 `id`/`category` 和浏览器中已有的旧同意状态会迁移到新用途键。
 - 让 Agent 发现信息归渲染器负责：编译器根据配置和实际输出生成 `.well-known/agent.json`、ARD、条件生成的 RFC 9727 API catalog、Agent Skills 索引、`robots.txt` 和 `llms.txt`。共享 Fetch Router 生成 RFC 8288 `Link`，用 `Vary: Accept` 协商 `Accept: text/markdown` 镜像，并把 robots 策略中的 `Content-Signal` 带到响应中。生成的 Skill 会遍历代码登记能力表和配置段落，不再维护第二份手写字段映射。
 - 让日常插件和样式工作优先配置化。`search`、`toc`、`privacyConsent` 和 `chrome` 在 `theme.yml` 公开受 schema 约束的实例选项和部分 `copy.<locale>` 映射；新增、修改、删除样式都通过所属模块的资源登记完成，不修改生成输出。
 
@@ -30,6 +31,7 @@ Pageskill 3.0.2 把版本历史和教程内容分开，并收紧响应式阅读�
 - 发布前运行 `npm run g -- --profile`，检查文章和更新归档/Feed，再运行 `npm run d -- --dry-run`。
 - 不要把生成的发现文件复制回源码。需要 API 条目、可选 ARD 查询或条件 OAuth/MCP 元数据时，在 `config.yml` 配置后重新生成，让文件、媒体类型和响应头保持一致。
 - 把旧的对象形 `privacyConsent.integrations` 迁移为 Cookie 教程中的数组。迁移期间编译器会接受旧 provider key，并把 `conversionId` 映射到 Google Ads 的 `tagId`、把 `siteId` 映射到百度的 `siteSignature`；新配置应使用 canonical provider 名称和 provider 自己提供的真实值。Google Ads 转化事件仍需单独审核并实现事件逻辑，同意适配器只初始化 Google tag。
+- Cookie 的新配置使用 `purpose`：`measurement` 对应访问量测量，`advertising` 对应广告信号，`fraud-prevention` 对应验证码/反滥用，`social-embedding` 对应 X widget；这些键是同意状态的稳定用途键，不是账户 ID、Cookie 名称或 provider 自造标识。
 
 ### 已移除项与替代方案
 

@@ -16,7 +16,7 @@ We use the Cookie selector as the reference implementation and borrow a useful t
 Before writing the module, define the states it must support:
 
 - essential functionality is available immediately;
-- optional categories are off by default;
+- optional purposes are off by default;
 - an affirmative choice is required before an optional script loads;
 - visitors can reopen the selector and save “essential only”;
 - withdrawal prevents later loads but cannot undo work a script already performed.
@@ -55,14 +55,15 @@ export const plugin: ThemePluginDefinition = {
   defaults: {
     enabled: true,
     categories: [
-      { id: 'essential', required: true, default: true },
-      { id: 'analytics', required: false, default: false },
-      { id: 'security', required: false, default: false },
-      { id: 'social', required: false, default: false }
+      { purpose: 'essential', required: true, default: true },
+      { purpose: 'measurement', required: false, default: false },
+      { purpose: 'advertising', required: false, default: false },
+      { purpose: 'fraud-prevention', required: false, default: false },
+      { purpose: 'social-embedding', required: false, default: false }
     ],
     integrations: [
-      { provider: 'google-analytics', enabled: false, measurementId: '', category: 'analytics' },
-      { provider: 'google-ads', enabled: false, tagId: '', category: 'advertising' }
+      { provider: 'google-analytics', enabled: false, measurementId: '', purpose: 'measurement' },
+      { provider: 'google-ads', enabled: false, tagId: '', purpose: 'advertising' }
     ],
     gatedScripts: []
   },
@@ -78,7 +79,7 @@ export const plugin: ThemePluginDefinition = {
         properties: {
           provider: { type: 'string', required: true },
           enabled: { type: 'boolean' },
-          category: { type: 'string' },
+          purpose: { type: 'string' },
           measurementId: { type: 'string' },
           tagId: { type: 'string' },
           token: { type: 'string' },
@@ -106,9 +107,9 @@ export const plugins = { chrome, search, toc, privacyConsent: cookies, language 
 
 The real schema describes an array of provider instances. Built-in provider values are `google-analytics`, `google-ads`, `cloudflare-web-analytics`, `baidu-tongji`, `recaptcha`, `hcaptcha`, `turnstile`, and `x-for-websites`. These are code-owned adapter names, not IDs invented for a site. Unknown entries and extra fields remain inert until a theme module registers their behavior; configuration is never executable code.
 
-## 4. Use real provider identifiers in theme data
+## 4. Use real provider fields and purposes in theme data
 
-The active theme configures the plugin instance. Keep optional categories disabled until they are intentionally wired to a reviewed service:
+The active theme configures the plugin instance. Keep optional purposes disabled until they are intentionally wired to a reviewed service:
 
 ```yaml
 # themes/default/theme.yml
@@ -119,19 +120,23 @@ plugins:
     storage: cookie
     retentionDays: 365
     categories:
-      - id: essential
+      - purpose: essential
         required: true
         default: true
         retentionDays: 365
-      - id: analytics
+      - purpose: measurement
         required: false
         default: false
         retentionDays: 0
-      - id: security
+      - purpose: advertising
         required: false
         default: false
         retentionDays: 0
-      - id: social
+      - purpose: fraud-prevention
+        required: false
+        default: false
+        retentionDays: 0
+      - purpose: social-embedding
         required: false
         default: false
         retentionDays: 0
@@ -139,42 +144,44 @@ plugins:
       - provider: google-analytics
         enabled: false
         measurementId: '' # GA4 value such as G-XXXXXXXXXX
-        category: analytics
+        purpose: measurement
       - provider: google-ads
         enabled: false
         tagId: '' # Google tag value such as AW-XXXXXXXXXX or GT-XXXXXXXX
-        category: advertising
+        purpose: advertising
       - provider: cloudflare-web-analytics
         enabled: false
         token: '' # token from the Cloudflare beacon snippet
-        category: analytics
+        purpose: measurement
       - provider: baidu-tongji
         enabled: false
         siteSignature: '' # the value after hm.baidu.com/hm.js?
-        category: analytics
+        purpose: measurement
       - provider: recaptcha
         enabled: false
         siteKey: ''
-        category: security
+        purpose: fraud-prevention
       - provider: hcaptcha
         enabled: false
         siteKey: ''
-        category: security
+        purpose: fraud-prevention
       - provider: turnstile
         enabled: false
         siteKey: ''
-        category: security
+        purpose: fraud-prevention
       - provider: x-for-websites
         enabled: false
-        category: social
+        purpose: social-embedding
     gatedScripts: []
 ```
 
-The fields follow the provider's actual web contract: [Google Analytics measurement IDs](https://support.google.com/analytics/answer/12270356) use `G-...`; a Google Ads `tagId` is a Google tag identifier such as `AW-...` or `GT-...`, not a made-up `conversionId`. The plugin uses Google's basic consent-mode flow: it blocks the tag before a choice, then sends the documented `analytics_storage`, `ad_storage`, `ad_user_data`, and `ad_personalization` states. It initializes the consent-aware Google tag; it does not invent a conversion event or label. [Cloudflare Web Analytics](https://developers.cloudflare.com/web-analytics/get-started/) supplies the public beacon `token`, while [Baidu Tongji](https://tongji.baidu.com/web/help/article?id=219) supplies the `siteSignature` used after `hm.js?`. If Cloudflare proxy or Pages automatic Web Analytics injection is enabled, disable that separate injection or it will bypass this chooser. The category is a site policy choice, not a provider identifier.
+The fields follow the provider's actual web contract: [Google Analytics measurement IDs](https://support.google.com/analytics/answer/12270356) use `G-...`; a Google Ads `tagId` is a Google tag identifier such as `AW-...` or `GT-...`, not a made-up `conversionId`. The plugin uses Google's basic consent-mode flow: it blocks the tag before a choice, then sends the documented `analytics_storage`, `ad_storage`, `ad_user_data`, and `ad_personalization` states. It initializes the consent-aware Google tag; it does not invent a conversion event or label. [Cloudflare Web Analytics](https://developers.cloudflare.com/web-analytics/get-started/) supplies the public beacon `token`, while [Baidu Tongji](https://tongji.baidu.com/web/help/article?id=219) supplies the `siteSignature` used after `hm.js?`. If Cloudflare proxy or Pages automatic Web Analytics injection is enabled, disable that separate injection or it will bypass this chooser. `purpose` is not an account ID or cookie name: it is the code-registered reason for processing, mapped to the provider's real behavior (`measurement`, `advertising`, `fraud-prevention`, or `social-embedding`).
+
+The built-in purpose registry is deliberately small and evidence-based: `measurement` covers GA4 `analytics_storage`, Cloudflare Web Analytics, and Baidu Tongji; `advertising` covers Google Ads storage and advertising signals; `fraud-prevention` covers reCAPTCHA, hCaptcha, and Turnstile challenges; `social-embedding` covers the X for Websites widget; `essential` covers the Pageskill choice record. A provider is active only when its code adapter, real public value, matching optional purpose, and affirmative consent all exist.
 
 Set `enabled: true` only after reviewing the provider's terms, privacy notice, retention, and CSP. The CAPTCHA adapters use the official scripts and markers for [reCAPTCHA](https://developers.google.com/recaptcha/docs/display), [hCaptcha](https://docs.hcaptcha.com/), and [Turnstile](https://developers.cloudflare.com/turnstile/get-started/). Their `siteKey` is public; secret keys and server-side token verification stay in `backend/handler.ts` or another private service. X has no account ID in this adapter: [X for Websites](https://help.x.com/en/using-x/embed-x-feed) is loaded on demand from its official widget resource only when an X marker exists.
 
-Not every integration is literally a cookie. Cloudflare Web Analytics is designed around a beacon token, Turnstile performs a challenge, and X may receive request or cookie information when its widget runs. Keep the category and retention explanation aligned with the provider's current notice instead of claiming that every optional provider creates the same cookie.
+Not every integration is literally a cookie. Cloudflare Web Analytics is designed around a beacon token, Turnstile performs a challenge, and X may receive request or cookie information when its widget runs. Keep the purpose and retention explanation aligned with the provider's current notice instead of claiming that every optional provider creates the same cookie. The browser consent state uses these purpose keys only as stable storage keys; it does not turn them into invented provider identifiers.
 
 The X integration is on-demand: after consent, `platform.x.com/widgets.js` loads only when the page contains an X/Twitter embed marker. The selector does not load social embeds before consent. Other provider-specific fields can remain in the theme configuration for a future registered integration, but they do not cause a network request by themselves.
 

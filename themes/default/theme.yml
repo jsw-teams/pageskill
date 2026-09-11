@@ -27,61 +27,61 @@ plugins:
     storage: cookie
     retentionDays: 365
     categories:
-      - id: essential
+      - purpose: essential
         required: true
         default: true
         retentionDays: 365
-      - id: analytics
+      - purpose: measurement
         required: false
         default: false
         retentionDays: 0
-      - id: advertising
+      - purpose: advertising
         required: false
         default: false
         retentionDays: 0
-      - id: security
+      - purpose: fraud-prevention
         required: false
         default: false
         retentionDays: 0
-      - id: social
+      - purpose: social-embedding
         required: false
         default: false
         retentionDays: 0
-    # Each provider value is the real adapter name used by its web service;
-    # the identifier fields are copied from that provider's dashboard/snippet.
+    # The purpose is registered by the provider adapter; identifier fields
+    # are copied from that provider's dashboard or official snippet.
     integrations:
       - provider: google-analytics
         enabled: false
         measurementId: ''
-        category: analytics
+        purpose: measurement
       - provider: google-ads
         enabled: false
         tagId: ''
-        category: advertising
+        purpose: advertising
       - provider: cloudflare-web-analytics
         enabled: false
         token: ''
-        category: analytics
+        purpose: measurement
       - provider: baidu-tongji
         enabled: false
         siteSignature: ''
-        category: analytics
+        purpose: measurement
       - provider: recaptcha
         enabled: false
         siteKey: ''
-        category: security
+        purpose: fraud-prevention
       - provider: hcaptcha
         enabled: false
         siteKey: ''
-        category: security
+        purpose: fraud-prevention
       - provider: turnstile
         enabled: false
         siteKey: ''
-        category: security
+        purpose: fraud-prevention
       - provider: x-for-websites
         enabled: false
-        category: social
+        purpose: social-embedding
     gatedScripts: []
-    # Optional localized consent labels/categories; code keeps provider
+    # Optional localized consent labels/purposes; code keeps provider
     # capability registration in plugins/cookies/index.ts.
     copy: {}

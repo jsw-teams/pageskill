@@ -16,7 +16,7 @@ Cookie 选择器是我们构建可复用插件时的参考实现。它把访客�
 写模块之前，先明确它要支持的状态：
 
 - 必要功能立即可用；
-- 可选类别默认关闭；
+- 可选用途默认关闭；
 - 可选脚本加载前必须得到明确选择；
 - 访客可以重新打开选择器并保存“仅必要项”；
 - 撤回选择会阻止后续加载，但不能撤销脚本已经完成的工作。
@@ -55,14 +55,15 @@ export const plugin: ThemePluginDefinition = {
   defaults: {
     enabled: true,
     categories: [
-      { id: 'essential', required: true, default: true },
-      { id: 'analytics', required: false, default: false },
-      { id: 'security', required: false, default: false },
-      { id: 'social', required: false, default: false }
+      { purpose: 'essential', required: true, default: true },
+      { purpose: 'measurement', required: false, default: false },
+      { purpose: 'advertising', required: false, default: false },
+      { purpose: 'fraud-prevention', required: false, default: false },
+      { purpose: 'social-embedding', required: false, default: false }
     ],
     integrations: [
-      { provider: 'google-analytics', enabled: false, measurementId: '', category: 'analytics' },
-      { provider: 'google-ads', enabled: false, tagId: '', category: 'advertising' }
+      { provider: 'google-analytics', enabled: false, measurementId: '', purpose: 'measurement' },
+      { provider: 'google-ads', enabled: false, tagId: '', purpose: 'advertising' }
     ],
     gatedScripts: []
   },
@@ -78,7 +79,7 @@ export const plugin: ThemePluginDefinition = {
         properties: {
           provider: { type: 'string', required: true },
           enabled: { type: 'boolean' },
-          category: { type: 'string' },
+          purpose: { type: 'string' },
           measurementId: { type: 'string' },
           tagId: { type: 'string' },
           token: { type: 'string' },
@@ -106,9 +107,9 @@ export const plugins = { chrome, search, toc, privacyConsent: cookies, language 
 
 真实 schema 描述的是 provider 实例数组。内置 provider 值是 `google-analytics`、`google-ads`、`cloudflare-web-analytics`、`baidu-tongji`、`recaptcha`、`hcaptcha`、`turnstile` 和 `x-for-websites`。这些是代码拥有的适配器名称，不是站点凭空生成的 ID。未知条目和额外字段在主题模块登记对应行为之前保持惰性；配置永远不是可执行代码。
 
-## 4. 在主题数据中使用真实 provider 标识
+## 4. 在主题数据中使用真实 provider 字段和用途
 
-活动主题在配置文件中设置插件实例。可选类别只有在明确接入并审核过的服务后才开启：
+活动主题在配置文件中设置插件实例。可选用途只有在明确接入并审核过的服务后才开启：
 
 ```yaml
 # themes/default/theme.yml
@@ -119,19 +120,23 @@ plugins:
     storage: cookie
     retentionDays: 365
     categories:
-      - id: essential
+      - purpose: essential
         required: true
         default: true
         retentionDays: 365
-      - id: analytics
+      - purpose: measurement
         required: false
         default: false
         retentionDays: 0
-      - id: security
+      - purpose: advertising
         required: false
         default: false
         retentionDays: 0
-      - id: social
+      - purpose: fraud-prevention
+        required: false
+        default: false
+        retentionDays: 0
+      - purpose: social-embedding
         required: false
         default: false
         retentionDays: 0
@@ -139,42 +144,44 @@ plugins:
       - provider: google-analytics
         enabled: false
         measurementId: '' # GA4 值，例如 G-XXXXXXXXXX
-        category: analytics
+        purpose: measurement
       - provider: google-ads
         enabled: false
         tagId: '' # Google tag 值，例如 AW-XXXXXXXXXX 或 GT-XXXXXXXX
-        category: advertising
+        purpose: advertising
       - provider: cloudflare-web-analytics
         enabled: false
         token: '' # Cloudflare beacon 代码中的 token
-        category: analytics
+        purpose: measurement
       - provider: baidu-tongji
         enabled: false
         siteSignature: '' # hm.baidu.com/hm.js? 后面的值
-        category: analytics
+        purpose: measurement
       - provider: recaptcha
         enabled: false
         siteKey: ''
-        category: security
+        purpose: fraud-prevention
       - provider: hcaptcha
         enabled: false
         siteKey: ''
-        category: security
+        purpose: fraud-prevention
       - provider: turnstile
         enabled: false
         siteKey: ''
-        category: security
+        purpose: fraud-prevention
       - provider: x-for-websites
         enabled: false
-        category: social
+        purpose: social-embedding
     gatedScripts: []
 ```
 
-这些字段跟随 provider 实际的网页接入约定：[Google Analytics measurement ID](https://support.google.com/analytics/answer/12270356) 使用 `G-...`；Google Ads 的 `tagId` 使用 Ads 显示的 Google tag 标识，例如 `AW-...` 或 `GT-...`，不是自造的 `conversionId`。插件使用 Google 的 basic consent mode：选择前阻止 tag，选择后传递文档规定的 `analytics_storage`、`ad_storage`、`ad_user_data` 和 `ad_personalization` 状态。插件只负责初始化带同意状态的 Google tag，不会凭空创建转化事件或 label。[Cloudflare Web Analytics](https://developers.cloudflare.com/web-analytics/get-started/) 提供 beacon `token`，[百度统计](https://tongji.baidu.com/web/help/article?id=219) 提供 `hm.js?` 后的 `siteSignature`。如果 Cloudflare proxy 或 Pages 自动注入 Web Analytics，请关闭那条独立注入路径，否则它会绕过此选择器。`category` 是站点隐私政策分类，不是 provider ID。
+这些字段跟随 provider 实际的网页接入约定：[Google Analytics measurement ID](https://support.google.com/analytics/answer/12270356) 使用 `G-...`；Google Ads 的 `tagId` 使用 Ads 显示的 Google tag 标识，例如 `AW-...` 或 `GT-...`，不是自造的 `conversionId`。插件使用 Google 的 basic consent mode：选择前阻止 tag，选择后传递文档规定的 `analytics_storage`、`ad_storage`、`ad_user_data` 和 `ad_personalization` 状态。插件只负责初始化带同意状态的 Google tag，不会凭空创建转化事件或 label。[Cloudflare Web Analytics](https://developers.cloudflare.com/web-analytics/get-started/) 提供 beacon `token`，[百度统计](https://tongji.baidu.com/web/help/article?id=219) 提供 `hm.js?` 后的 `siteSignature`。如果 Cloudflare proxy 或 Pages 自动注入 Web Analytics，请关闭那条独立注入路径，否则它会绕过此选择器。`purpose` 不是账户 ID 或 Cookie 名称，而是代码登记的处理用途，分别对应真实的访问量测量、广告、人机验证/反滥用或社交嵌入行为。
+
+内置用途登记保持小而有依据：`measurement` 对应 GA4 的 `analytics_storage`、Cloudflare Web Analytics 和百度统计；`advertising` 对应 Google Ads 的存储和广告信号；`fraud-prevention` 对应 reCAPTCHA、hCaptcha、Turnstile 的挑战；`social-embedding` 对应 X for Websites widget；`essential` 只保存 Pageskill 的选择记录。只有代码已登记适配器、存在 provider 的真实公开值、用途与可选项匹配，并且访客明确同意时，provider 才会运行。
 
 只有在审核 provider 条款、隐私说明、保存期限和 CSP 后，才把 `enabled` 改为 `true`。验证码适配器使用 [reCAPTCHA](https://developers.google.com/recaptcha/docs/display)、[hCaptcha](https://docs.hcaptcha.com/) 和 [Turnstile](https://developers.cloudflare.com/turnstile/get-started/) 的官方脚本与标记。它们的 `siteKey` 可以公开；secret key 和服务端 token 校验必须留在 `backend/handler.ts` 或其他私有服务中。X 适配器没有账户 ID：只有页面存在 X 标记并且访客同意后，才按 [X for Websites](https://help.x.com/en/using-x/embed-x-feed) 的方式加载官方 widget 资源。
 
-并非每个集成都是字面意义上的 Cookie。Cloudflare Web Analytics 主要使用 beacon token，Turnstile 执行挑战，X widget 运行时可能接收请求或 Cookie 信息。应依据 provider 当前说明填写类别和保存期限，不要宣称所有可选 provider 都会写入同一种 Cookie。
+并非每个集成都是字面意义上的 Cookie。Cloudflare Web Analytics 主要使用 beacon token，Turnstile 执行挑战，X widget 运行时可能接收请求或 Cookie 信息。应依据 provider 当前说明填写用途和保存期限，不要宣称所有可选 provider 都会写入同一种 Cookie。浏览器同意状态只把这些用途键作为稳定存储键，不会把它们伪装成 provider 标识。
 
 X 集成按需加载：同意后，只有页面存在 X/Twitter 嵌入标记时才加载 `platform.x.com/widgets.js`。选择前不会加载社交嵌入。其他 provider 专属字段可以保留在主题配置中供未来代码使用，但不会仅因写入配置就发起网络请求。
 

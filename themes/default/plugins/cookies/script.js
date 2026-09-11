@@ -1,4 +1,4 @@
-// Optional provider resources are created only after an affirmative category choice.
+// Optional provider resources are created only after an affirmative purpose choice.
 const root = document.querySelector('[data-cookie-consent]');
 
 if (root) {
@@ -7,6 +7,20 @@ if (root) {
   const preferenceKey = 'pagekiln-consent';
   const storageMode = root.dataset.cookieStorage || 'cookie';
   const retentionDays = Math.max(0, Number(root.dataset.cookieRetentionDays || 365));
+  // Keep the storage key stable while migrating old category names to the
+  // purpose vocabulary emitted by the current renderer.
+  const PURPOSE_ALIASES = {
+    analytics: 'measurement',
+    security: 'fraud-prevention',
+    social: 'social-embedding'
+  };
+  const normalizePurpose = value => PURPOSE_ALIASES[value] || value;
+  const integrationPurpose = item => normalizePurpose(item?.purpose || item?.category || '');
+  const normalizeConsent = value => {
+    if (!value || typeof value !== 'object') return null;
+    const categories = Object.fromEntries(Object.entries(value.categories || {}).map(([purpose, granted]) => [normalizePurpose(purpose), Boolean(granted)]));
+    return { ...value, categories };
+  };
   const parse = value => {
     try {
       return value ? JSON.parse(value) : null;
@@ -24,7 +38,7 @@ if (root) {
   const readCookie = () => {
     try {
       const cookie = document.cookie.split('; ').find(entry => entry.startsWith(`${preferenceKey}=`));
-      return cookie ? parse(decodeURIComponent(cookie.slice(preferenceKey.length + 1))) : null;
+      return normalizeConsent(cookie ? parse(decodeURIComponent(cookie.slice(preferenceKey.length + 1))) : null);
     } catch {
       return null;
     }
@@ -38,7 +52,7 @@ if (root) {
         localStorage.removeItem(preferenceKey);
         return null;
       }
-      return value;
+      return normalizeConsent(value);
     } catch {
       return null;
     }
@@ -86,9 +100,9 @@ if (root) {
   };
 
   const loadAllowedScripts = categories => root.querySelectorAll('[data-cookie-script]').forEach(template => {
-    const category = template.dataset.cookieCategory;
+    const purpose = normalizePurpose(template.dataset.cookiePurpose || template.dataset.cookieCategory);
     const source = template.dataset.cookieSrc;
-    if (!category || !source || !categories?.[category] || template.dataset.loaded === 'true') return;
+    if (!purpose || !source || !categories?.[purpose] || template.dataset.loaded === 'true') return;
     let scriptUrl;
     try {
       scriptUrl = new URL(source, window.location.href);
@@ -99,15 +113,18 @@ if (root) {
     const script = document.createElement('script');
     script.type = 'module';
     script.src = scriptUrl.href;
-    script.dataset.cookieCategory = category;
+    script.dataset.cookiePurpose = purpose;
+    // Keep the old data attribute on dynamically inserted scripts for themes
+    // that still inspect it, while all new markup uses data-cookie-purpose.
+    script.dataset.cookieCategory = purpose;
     script.dataset.pagekilnConsent = 'true';
     document.head.append(script);
     template.dataset.loaded = 'true';
   });
 
   const googleConsent = categories => {
-    const analyticsGranted = googleIntegrations.some(item => item.provider === 'google-analytics' && categories?.[item.category]);
-    const advertisingGranted = googleIntegrations.some(item => item.provider === 'google-ads' && categories?.[item.category]);
+    const analyticsGranted = googleIntegrations.some(item => item.provider === 'google-analytics' && categories?.[integrationPurpose(item)]);
+    const advertisingGranted = googleIntegrations.some(item => item.provider === 'google-ads' && categories?.[integrationPurpose(item)]);
     return {
       analytics_storage: analyticsGranted ? 'granted' : 'denied',
       ad_storage: advertisingGranted ? 'granted' : 'denied',
@@ -121,7 +138,7 @@ if (root) {
   };
 
   const loadGoogle = async categories => {
-    const allowed = googleIntegrations.filter(item => categories?.[item.category]);
+    const allowed = googleIntegrations.filter(item => categories?.[integrationPurpose(item)]);
     // GA4 uses a G- measurement ID; Google Ads uses the Google tag ID shown
     // by Ads (normally AW- or GT-). Neither value is a Pageskill-generated ID.
     const ids = [...new Set(allowed.map(item => item.measurementId || item.tagId).filter(Boolean))];
@@ -147,7 +164,7 @@ if (root) {
   };
 
   const loadCloudflare = categories => integrations
-    .filter(item => item.provider === 'cloudflare-web-analytics' && categories?.[item.category])
+    .filter(item => item.provider === 'cloudflare-web-analytics' && categories?.[integrationPurpose(item)])
     .forEach(item => {
       if (item.token) void loadScript(`cloudflare:${item.token}`, 'https://static.cloudflareinsights.com/beacon.min.js', {
         type: 'module',
@@ -158,7 +175,7 @@ if (root) {
     });
 
   const loadBaidu = categories => integrations
-    .filter(item => item.provider === 'baidu-tongji' && categories?.[item.category])
+    .filter(item => item.provider === 'baidu-tongji' && categories?.[integrationPurpose(item)])
     .forEach(item => {
       if (!item.siteSignature) return;
       window._hmt = window._hmt || [];
@@ -186,7 +203,7 @@ if (root) {
   };
 
   const loadCaptcha = categories => captchaIntegrations
-    .filter(item => item.provider && item.siteKey && categories?.[item.category])
+    .filter(item => item.provider && item.siteKey && categories?.[integrationPurpose(item)])
     .forEach(item => {
       prepareCaptcha(item);
       const source = captchaSources[item.provider];
@@ -205,7 +222,7 @@ if (root) {
 
   const xSelector = 'blockquote.twitter-tweet,blockquote[data-x-embed],[data-x-embed],.twitter-timeline,.twitter-share-button,.twitter-follow-button';
   const loadX = categories => {
-    if (!xIntegrations.some(item => categories?.[item.category]) || !document.querySelector(xSelector)) return;
+    if (!xIntegrations.some(item => categories?.[integrationPurpose(item)]) || !document.querySelector(xSelector)) return;
     void loadScript('x-widgets', 'https://platform.x.com/widgets.js', {
       async: true,
       defer: true,
@@ -224,19 +241,19 @@ if (root) {
     });
 
   const clearProviderStorage = (before, after) => {
-    const analyticsBefore = googleIntegrations.some(item => item.provider === 'google-analytics' && before?.[item.category]);
-    const analyticsAfter = googleIntegrations.some(item => item.provider === 'google-analytics' && after?.[item.category]);
+    const analyticsBefore = googleIntegrations.some(item => item.provider === 'google-analytics' && before?.[integrationPurpose(item)]);
+    const analyticsAfter = googleIntegrations.some(item => item.provider === 'google-analytics' && after?.[integrationPurpose(item)]);
     if (analyticsBefore && !analyticsAfter) clearCookies(['_ga', '_gid', '_gat']);
-    const advertisingBefore = googleIntegrations.some(item => item.provider === 'google-ads' && before?.[item.category]);
-    const advertisingAfter = googleIntegrations.some(item => item.provider === 'google-ads' && after?.[item.category]);
+    const advertisingBefore = googleIntegrations.some(item => item.provider === 'google-ads' && before?.[integrationPurpose(item)]);
+    const advertisingAfter = googleIntegrations.some(item => item.provider === 'google-ads' && after?.[integrationPurpose(item)]);
     if (advertisingBefore && !advertisingAfter) {
       clearCookies(['_gcl_']);
       try {
         localStorage.removeItem('_gcl_ls');
       } catch {}
     }
-    const baiduBefore = integrations.some(item => item.provider === 'baidu-tongji' && before?.[item.category]);
-    const baiduAfter = integrations.some(item => item.provider === 'baidu-tongji' && after?.[item.category]);
+    const baiduBefore = integrations.some(item => item.provider === 'baidu-tongji' && before?.[integrationPurpose(item)]);
+    const baiduAfter = integrations.some(item => item.provider === 'baidu-tongji' && after?.[integrationPurpose(item)]);
     if (baiduBefore && !baiduAfter) clearCookies(['Hm_', '_hmt']);
   };
 
@@ -269,24 +286,25 @@ if (root) {
       }
     }
     const existing = read();
-    dialog.querySelectorAll('input[data-cookie-category]').forEach(input => {
-      if (!input.disabled) input.checked = Boolean(existing?.categories?.[input.dataset.cookieCategory]);
+    dialog.querySelectorAll('input[data-cookie-purpose],input[data-cookie-category]').forEach(input => {
+      const purpose = normalizePurpose(input.dataset.cookiePurpose || input.dataset.cookieCategory);
+      if (!input.disabled) input.checked = Boolean(existing?.categories?.[purpose]);
     });
     dialog.querySelector('button, input')?.focus();
   };
 
   const readCategories = forceOptional => {
     const categories = {};
-    root.querySelectorAll('input[data-cookie-category]').forEach(input => {
-      const id = input.dataset.cookieCategory;
-      if (id) categories[id] = input.disabled ? true : forceOptional ?? Boolean(input.checked);
+    root.querySelectorAll('input[data-cookie-purpose],input[data-cookie-category]').forEach(input => {
+      const purpose = normalizePurpose(input.dataset.cookiePurpose || input.dataset.cookieCategory);
+      if (purpose) categories[purpose] = input.disabled ? true : forceOptional ?? Boolean(input.checked);
     });
     return categories;
   };
 
   const save = forceOptional => {
     const previous = read();
-    const value = { version: 1, essential: true, categories: readCategories(forceOptional), updatedAt: new Date().toISOString() };
+    const value = { version: 2, essential: true, categories: readCategories(forceOptional), updatedAt: new Date().toISOString() };
     write(value);
     setState('saved');
     if (banner) banner.hidden = true;

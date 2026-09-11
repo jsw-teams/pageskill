@@ -24,8 +24,8 @@ Pageskill 3.0.2 把教學和版本歷史放在同一個 post 集合中，再用 
 
 ## 安全與本地化特性
 
-- 主題介面文案會從配置的回退語言合併缺少的鍵和帶 ID 的類別項目。缺少整篇語言文件時，可以在請求語言的路由提供回退文章；但 `hreflang` 只列出實際存在的翻譯。
-- Cookie 選擇器逐類別顯示提供者和保存期限。可選類別預設關閉，受信任腳本必須在明確同意後載入，選擇器不會取代經過審核的隱私政策頁面。並非每個 provider 都會建立 Cookie；政策應按 provider 文件說明實際的 token、挑戰、請求或儲存行為。
+- 主題介面文案會從配置的回退語言合併缺少的鍵和帶用途鍵的項目。缺少整篇語言文件時，可以在請求語言的路由提供回退文章；但 `hreflang` 只列出實際存在的翻譯。
+- Cookie 選擇器逐用途顯示 provider 和保存期限。可選用途預設關閉，受信任腳本必須在明確同意後載入，選擇器不會取代經過審核的隱私政策頁面。並非每個 provider 都會建立 Cookie；政策應按 provider 文件說明實際的 token、挑戰、請求或儲存行為。
 - `config.yml` 繼續只保存網站政策／控制者資料：不會進入 `dist/public`，生成的 backend 也沒有寫入它的路由。provider secret 和驗證碼 token 驗證繼續放在伺服器端。
 - 驗證元資料、MCP 卡片、WebMCP 登記和 DNS-AID 都是條件能力，不是預設開啟的輸出。只有真實的受保護服務、瀏覽器工具模組或外部發佈的 DNS/DNSSEC 記錄存在時才啟用；靜態渲染器不會偽造 endpoint，也不會發佈 DNS。
 
@@ -39,7 +39,7 @@ Pageskill 3.0.2 把教學和版本歷史放在同一個 post 集合中，再用 
 4. 後續新增語言時，先把語言加入網站啟用語言列表，再按完成進度補 UI 和文章檔案。主題 UI 缺少的鍵從回退語言取得，整篇缺少的文章使用內容回退；已存在但只翻譯一部分的 Markdown 會按原文提供，Pageskill 不會靜默機器翻譯。
 5. 如果舊主題檔案仍有獨立的 `plugins.language.enabled` 開關，請刪除這個重複開關；語言選擇功能仍然存在，並繼續按照網站的啟用語言和回退行為工作。
 6. 教學明確增加 `category: tutorial`；不寫 `category` 的新 post 預設是 `uncategorized`（未分類）。既有主導覽保持相容，需要額外殼層連結時使用主題的結構化 `plugins.chrome` 插入點。
-7. 在 `themes/<name>/theme.yml` 以 Cookie 教學中的 canonical 陣列設定 provider 實例，保留可選類別預設關閉，並使用對應類別映射。遷移期間編譯器會把舊物件形 provider key 的 `conversionId` 映射為 Google Ads `tagId`、把 `siteId` 映射為百度 `siteSignature`；新檔案應使用 provider 自己的真實欄位。擴充 provider schema 欄位可以保留，但 provider 只有在程式碼登記模組且取得同意後才會執行。
+7. 在 `themes/<name>/theme.yml` 以 Cookie 教學中的 canonical 陣列設定 provider 實例，保留可選用途預設關閉，並使用程式碼登記的 `purpose` 映射。內建用途是 `measurement`、`advertising`、`fraud-prevention` 和 `social-embedding`，分別由真實 provider 行為支援；遷移期間編譯器會把舊 `id`/`category` 映射為用途鍵，也會把舊物件形 provider key 的 `conversionId` 映射為 Google Ads `tagId`、把 `siteId` 映射為百度 `siteSignature`；新檔案應使用 provider 自己的真實欄位。擴充 provider schema 欄位可以保留，但 provider 只有在程式碼登記模組且取得同意後才會執行。
 8. 執行 `npm run g -- --profile`，檢查一般 post/更新彙整和兩個 Feed，再在正式發佈前執行 `npm run d -- --dry-run`。
 9. 不要複製或手工修改產生的探索檔案。需要 API 項目、可選 ARD 查詢或條件驗證/MCP 中繼資料時，在 `config.yml` 設定後重新產生，讓渲染器和執行時回應標頭保持一致。
 10. 新語言只完成部分翻譯時，只把已完成的外掛文案放在 `theme.yml` 的 `copy.<locale>`；缺少的介面 key 會回退，已存在的 Markdown 文件按原文顯示，整篇缺少時才使用內容回退。
