@@ -42,6 +42,7 @@ Read these short articles in order:
 - [Add a table of contents to long posts](content/posts/toc/en.md)
 - [Develop a reusable plugin](content/posts/plugins/en.md)
 - [Put the site online](content/posts/deploy/en.md)
+- [Configure conditional Agent capabilities](content/posts/agent-discovery/en.md)
 - [About Pageskill](content/pages/about/en.md)
 - [Privacy policy](content/pages/privacy/en.md)
 - [3.0.2 update: clearer archives and responsive reading](content/posts/3.0.2/en.md)
@@ -62,7 +63,9 @@ The Simplified Chinese and Traditional Chinese versions sit beside each English 
 
 ## Agent discovery
 
-The renderer generates Agent files from configuration and actual outputs; never hand-edit generated `dist/` content. Public outputs include `/.well-known/agent.json`, `/.well-known/ai-catalog.json`, conditional `/.well-known/api-catalog`, `/.well-known/agent-skills/index.json`, `robots.txt`, and `llms.txt`. When Markdown mirrors are enabled, pages negotiate `Accept: text/markdown`, and the shared Fetch Router adds the RFC 8288 `Link` and `Vary: Accept` headers. The generated Skill walks the code-registered capability fields and configured sections instead of keeping a second field map. `robots.contentSignals` produces `Content-Signal`. OAuth/OIDC, MCP, WebMCP, and DNS-AID are conditional and should be configured only when the real service or external DNS/DNSSEC records are ready; the renderer does not invent endpoints or publish DNS records.
+The renderer generates Agent files from configuration and actual outputs; never hand-edit generated `dist/` content. Public outputs include `/.well-known/agent.json`, `/.well-known/ai-catalog.json`, conditional `/.well-known/api-catalog`, `/.well-known/agent-skills/index.json`, `robots.txt`, and `llms.txt`. When Markdown mirrors are enabled, pages negotiate `Accept: text/markdown`, and the shared Fetch Router adds the RFC 8288 `Link` and `Vary: Accept` headers. The generated Skill walks the code-registered capability fields and configured sections instead of keeping a second field map. `robots.contentSignals` produces `Content-Signal`.
+
+The implementation steps for authentication metadata, an MCP card, WebMCP, and DNS-AID are in [Configure conditional Agent capabilities](content/posts/agent-discovery/en.md): implement the real capability in the backend, theme browser module, or external DNS first, then declare it in `config.yml`. `agentDiscovery.auth` requires a real resource and issuer; `agentDiscovery.mcp` must match a live MCP endpoint and tool schemas; WebMCP requires a theme script that registers `document.modelContext` tools; DNS-AID requires published authoritative records and verified DNSSEC. The example keeps all four switches off. The renderer does not invent endpoints or publish DNS records.
 
 Advanced authors can read `dist/.pagekiln/catalog.json` or `dist/.well-known/agent.json` after generation to discover reusable capabilities; internal integrations can use the exported `getCatalog` and `inspect`. Beginners can start with tutorials, content, and settings.
 

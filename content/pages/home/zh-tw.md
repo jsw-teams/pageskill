@@ -34,6 +34,8 @@ Pageskill 把 Markdown post、網站設定和樣式組合成一個網站。你�
 先重用主題已有能力；需要新結構時實作一次，讓之後的頁面繼續使用。
 :::
 
+需要接入真實的驗證、MCP、WebMCP 或 DNS-AID 時，閱讀[設定條件式 Agent 能力](/zh-tw/posts/agent-discovery/)，依照 backend、主題外掛和外部 DNS 的實際邊界逐項實作。
+
 ## 只要記住三個指令
 
 | 指令 | 用途 |

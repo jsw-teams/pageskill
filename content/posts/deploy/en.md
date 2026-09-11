@@ -45,7 +45,9 @@ npm run g
 
 Inspect `dist/public` and check that the home page, articles, assets, and sitemap are present. A site with APIs also needs its server runtime alongside the same service.
 
-The renderer also creates Agent discovery from `config.yml` and the outputs it actually wrote: `/.well-known/agent.json`, `/.well-known/ai-catalog.json`, the conditional API catalog, the Agent Skills index, `robots.txt`, and `llms.txt`. Do not add these files by hand. Pages with Markdown mirrors negotiate `Accept: text/markdown`; OAuth/OIDC, MCP, WebMCP, and DNS-AID remain disabled until the real service or external DNS/DNSSEC setup exists.
+The renderer also creates Agent discovery from `config.yml` and the outputs it actually wrote: `/.well-known/agent.json`, `/.well-known/ai-catalog.json`, the conditional API catalog, the Agent Skills index, `robots.txt`, and `llms.txt`. Do not add these files by hand. Pages with Markdown mirrors negotiate `Accept: text/markdown`.
+
+If you need authentication metadata, an MCP card, WebMCP, or DNS-AID, first read [Configure conditional Agent capabilities](/en/posts/agent-discovery/): keep protected routes and the issuer in the backend or an external service, make the MCP card endpoint and tools match a real transport, register WebMCP tools from a theme browser module with `document.modelContext.registerTool()`, and publish and verify DNS-AID through the authoritative DNS provider with DNSSEC. Enable the matching `config.yml` switch only after those implementations and live checks pass; the static renderer publishes declarations, not endpoints or DNS records.
 
 ## 4. Preview the publishing plan
 

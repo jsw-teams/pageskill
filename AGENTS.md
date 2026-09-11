@@ -26,7 +26,16 @@ Do not teach or reintroduce retired command entry points. The beginner path shou
 
 The source of truth is `config.yml`, `content/`, and `themes/`. After generation, advanced authors and Agent integrations may read `dist/.pagekiln/catalog.json`, `dist/.well-known/agent.json`, or the other renderer-produced discovery resources. Internal integrations may call `getCatalog` and `inspect` to query source-backed capabilities. Keep that discovery layer out of the beginner steps unless it directly solves an author’s request.
 
-Discovery is renderer-owned. Do not hand-edit `.well-known/agent.json`, `.well-known/ai-catalog.json`, `.well-known/api-catalog`, the Agent Skills files, `robots.txt`, or Markdown mirrors. The compiler derives these files and the shared Fetch Router derives the RFC 8288 `Link` header from the configured public outputs. When `outputs.markdownMirrors` is enabled, `Accept: text/markdown` negotiates a generated `.md` mirror and adds `Vary: Accept`; machine-readable endpoints keep their own media types. `robots.contentSignals` is the source for the generated `Content-Signal` directive. API, OAuth/OIDC, MCP, WebMCP, and DNS-AID metadata are conditional: enable them only when the corresponding service or external DNS records really exist. The renderer cannot publish DNS or invent an authentication/MCP endpoint.
+Discovery is renderer-owned. Do not hand-edit `.well-known/agent.json`, `.well-known/ai-catalog.json`, `.well-known/api-catalog`, the Agent Skills files, `robots.txt`, or Markdown mirrors. The compiler derives these files and the shared Fetch Router derives the RFC 8288 `Link` header from the configured public outputs. When `outputs.markdownMirrors` is enabled, `Accept: text/markdown` negotiates a generated `.md` mirror and adds `Vary: Accept`; machine-readable endpoints keep their own media types. `robots.contentSignals` is the source for the generated `Content-Signal` directive.
+
+Conditional Agent capabilities have an implementation workflow; they are not switches that create services. Follow [Configure conditional Agent capabilities](content/posts/agent-discovery/en.md) when one is needed:
+
+- Authentication metadata: implement and protect the resource in `backend/handler.ts` or deploy an external resource server, verify issuer/audience/expiry/scopes, then configure real `resource` and `authorizationServer` values under `config.yml:agentDiscovery.auth`.
+- MCP: deploy a real MCP transport under `backend/` or at an external HTTPS endpoint, make its tool list match the configured `agentDiscovery.mcp.tools`, then generate the server card.
+- WebMCP: register a real browser module under `themes/<name>/plugins/<id>/`, load it through the theme plugin registry, and call `document.modelContext.registerTool()` with explicit schemas before setting `agentDiscovery.webmcp.enabled`.
+- DNS-AID: deploy the advertised agent, publish the actual DNS-AID records through the authoritative DNS provider, verify DNSSEC, and only then set `agentDiscovery.dnsAid.enabled`.
+
+These outputs remain opt-in. The renderer validates and publishes the metadata it can generate, but it cannot verify or create an external service, browser capability, DNS record, or DNSSEC signature.
 
 Reuse existing Patterns, Blocks, schemas, plugins, and resources before adding code. A person can reuse the theme directly without an Agent. When a capability is missing, implement one theme extension with a clear schema and resource declaration so later articles can reuse it; do not hand-write per-article HTML.
 

@@ -29,7 +29,7 @@ Pageskill 3.0.2 把版本历史和教程内容分开，并收紧响应式阅读�
 - 新增语言可以在尚未完成翻译前启用。随着翻译进度补上界面和内容文件；缺失的界面键使用回退语言，缺失整篇文档使用回退内容，已经部分翻译的 Markdown 则保持原样，不会静默机器翻译。
 - 如果旧主题有语言启用/禁用开关，请删除这个重复设置；访客语言选择仍来自有效语言列表，并保留回退行为。
 - 发布前运行 `npm run g -- --profile`，检查文章和更新归档/Feed，再运行 `npm run d -- --dry-run`。
-- 不要把生成的发现文件复制回源码。需要 API 条目、可选 ARD 查询或条件 OAuth/MCP 元数据时，在 `config.yml` 配置后重新生成，让文件、媒体类型和响应头保持一致。
+- 不要把生成的发现文件复制回源码。需要 API 条目、可选 ARD 查询或条件 Agent 能力时，先按[配置条件 Agent 能力](content/posts/agent-discovery/zh-sg.md)实现真实服务、主题浏览器模块或外部 DNS，再在 `config.yml` 配置后重新生成，让文件、媒体类型和响应头保持一致。
 - 把旧的对象形 `privacyConsent.integrations` 迁移为 Cookie 教程中的数组。迁移期间编译器会接受旧 provider key，并把 `conversionId` 映射到 Google Ads 的 `tagId`、把 `siteId` 映射到百度的 `siteSignature`；新配置应使用 canonical provider 名称和 provider 自己提供的真实值。Google Ads 转化事件仍需单独审核并实现事件逻辑，同意适配器只初始化 Google tag。
 - Cookie 的新配置使用 `purpose`：`measurement` 对应访问量测量，`advertising` 对应广告信号，`fraud-prevention` 对应验证码/反滥用，`social-embedding` 对应 X widget；这些键是同意状态的稳定用途键，不是账户 ID、Cookie 名称或 provider 自造标识。
 
@@ -38,7 +38,7 @@ Pageskill 3.0.2 把版本历史和教程内容分开，并收紧响应式阅读�
 - 不再使用独立的 `content/updates` 源 collection。原因是版本文章和普通文章需要共用一套按日期排序的来源，避免重复内容机制；替代用法是 `content/posts` 加 `category: update`。公开更新索引、路由、Feed、搜索结果和语言链接没有被删除。
 - 没有移除 Cookie 同意或语言选择功能。提供者/保存期限是说明性元数据，经过审核的本地化隐私页面仍然是法律政策来源。canonical integration 结构替换了含义不清的 provider 对象键；旧结构在迁移期间仍可读取，并提供了明确替代用法。
 - 现有 Cookie 存储键和 `gatedScripts` 行为保持兼容。把 provider 实例移到 `themes/<name>/theme.yml`；secret 和验证码校验继续放在服务端。provider 字段不完整或尚未支持时会被忽略，默认不会启用任何 provider。
-- 没有移除发现 endpoint；手工维护的快照改由渲染器生成。OAuth/OIDC、MCP、WebMCP 和 DNS-AID 仍然是可选能力，在真实服务或外部 DNS/DNSSEC 契约完成前不会生效。
+- 没有移除发现 endpoint；手工维护的快照改由渲染器生成。需要 OAuth/OIDC、MCP、WebMCP 或 DNS-AID 时，按[配置条件 Agent 能力](content/posts/agent-discovery/zh-sg.md)先完成真实服务、主题模块或外部 DNS/DNSSEC 契约，再开启对应配置。
 
 ### 验证
 

@@ -45,7 +45,9 @@ npm run g
 
 查看 `dist/public`，確認首頁、文章、資源和網站地圖都在裡面。需要 API 的網站還要準備同一個服務的後端執行時。
 
-渲染器還會根據 `config.yml` 和實際寫出的輸出產生 Agent 探索資訊：`/.well-known/agent.json`、`/.well-known/ai-catalog.json`、條件產生的 API catalog、Agent Skills 索引、`robots.txt` 和 `llms.txt`。不要手工新增這些檔案。啟用 Markdown mirror 時，頁面會協商 `Accept: text/markdown`；OAuth/OIDC、MCP、WebMCP 和 DNS-AID 要等真實服務或外部 DNS/DNSSEC 設定準備好後再啟用。
+渲染器還會根據 `config.yml` 和實際寫出的輸出產生 Agent 探索資訊：`/.well-known/agent.json`、`/.well-known/ai-catalog.json`、條件產生的 API catalog、Agent Skills 索引、`robots.txt` 和 `llms.txt`。不要手工新增這些檔案。啟用 Markdown mirror 時，頁面會協商 `Accept: text/markdown`。
+
+如果需要驗證中繼資料、MCP card、WebMCP 或 DNS-AID，先閱讀[設定條件式 Agent 能力](/zh-tw/posts/agent-discovery/)：受保護路由和 issuer 放在 backend／外部服務，MCP card 的 endpoint 和工具必須對應真實 transport，WebMCP 必須由主題瀏覽器模組呼叫 `document.modelContext.registerTool()`，DNS-AID 必須由權威 DNS 發佈並驗證 DNSSEC。完成這些實作和線上檢查後，才在 `config.yml` 開啟對應開關；靜態產生器只產生宣告，不會建立 endpoint 或發佈 DNS。
 
 ## 4. 先查看發佈計畫
 

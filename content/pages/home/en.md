@@ -34,6 +34,8 @@ Use the Cookie selector as a reference for module resources, safe rendering, par
 Reuse the theme capabilities you have; when a new structure is needed, implement it once for later pages.
 :::
 
+When you need real authentication, MCP, WebMCP, or DNS-AID, read [Configure conditional Agent capabilities](/en/posts/agent-discovery/) and implement each piece in its backend, theme plugin, or external DNS boundary.
+
 ## Remember three commands
 
 | Command | Does |

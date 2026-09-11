@@ -128,6 +128,8 @@ npm run s
 
 导航和页脚链接属于 shell，因此应通过 `themes/default/theme.yml` 的 `plugins.chrome` 配置。不要让插件脚本向 `.site-header` 或 `.site-footer` 任意追加链接。chrome 插件只接受结构化标签和安全 URL；像本例这样的页面级行为仍可挂载到 `main` 内。
 
+如果插件要向浏览器 Agent 暴露 WebMCP 工具，先按[配置条件 Agent 能力](/zh-sg/posts/agent-discovery/)在插件脚本中登记真实的 `document.modelContext` 工具，再单独打开 `config.yml` 的发现声明；这个开关不会替插件加载脚本。
+
 ## 7. 干净地移除插件
 
 能力不再需要时，删除主题组装入口中的 import、插件定义和资源登记、`theme.yml` 实例，以及 Markdown directive 或 shell 引用。重新生成并检查 catalog；不要只删生成的资源，也不要为旧消费者保留第二套实现。

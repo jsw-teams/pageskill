@@ -27,7 +27,7 @@ Pageskill 3.0.2 keeps tutorials and version history in one post collection while
 - Theme UI messages merge missing keys and keyed purpose entries from the configured fallback locale. If an entire locale document is missing, the fallback document can be rendered at the requested route; `hreflang` still lists only translations that actually exist.
 - The Cookie chooser shows each purpose's provider and retention explicitly. Optional purposes remain off by default, gated scripts require affirmative consent, and the chooser does not replace the reviewed legal policy page. Not every provider creates a cookie: the policy should describe the actual token, challenge, request, or storage behavior documented by the provider.
 - `config.yml` remains site policy/controller data: it is not emitted to `dist/public`, and the generated backend has no route that writes it. Provider secrets and CAPTCHA token verification remain server-side.
-- Authentication metadata, MCP cards, WebMCP registration, and DNS-AID are conditional disclosures rather than defaults. They stay disabled until a protected service, browser tool module, or externally published DNS/DNSSEC record is real; the static renderer does not fabricate endpoints or publish DNS.
+- The concrete implementation steps for authentication metadata, MCP cards, WebMCP registration, and DNS-AID are in [Configure conditional Agent capabilities](/en/posts/agent-discovery/). Implement the protected resource and issuer in the backend or an external service, align the MCP transport with its card tools, register `document.modelContext` tools in a theme plugin, or publish and verify DNSSEC records through the authoritative provider before enabling the matching `config.yml` switch. The static renderer publishes declarations; it does not fabricate endpoints or publish DNS.
 
 ## Compatibility and migration
 
@@ -41,14 +41,14 @@ Existing 3.0 sites can migrate the source layout without changing public update 
 6. For a tutorial, add `category: tutorial`; leave `category` out for the default `uncategorized` post. Existing primary navigation remains compatible, while optional shell links can be added through the theme's structured `plugins.chrome` slots.
 7. Configure provider instances as the canonical array in `themes/<name>/theme.yml`, keep optional purposes disabled by default, and use the code-registered `purpose` mapping documented in the Cookie tutorial. The built-in purposes are `measurement`, `advertising`, `fraud-prevention`, and `social-embedding`, each backed by real provider behavior. During migration the compiler maps old `id`/`category` inputs to purpose keys, as well as mapping `conversionId` to Google Ads `tagId` and `siteId` to Baidu `siteSignature`; new files should use the real provider fields. Extra schema fields are accepted for extension, but a provider only runs after its code module is registered and consent is granted.
 8. Run `npm run g -- --profile`, inspect both archives and feeds, then use `npm run d -- --dry-run` before a real publish.
-9. Do not copy or hand-edit generated discovery files. Configure API entries, optional ARD queries, or conditional authentication/MCP metadata in `config.yml`; regenerate so the renderer and runtime headers stay in sync.
+9. Do not copy or hand-edit generated discovery files. For API entries, optional ARD queries, or conditional Agent capabilities, follow [Configure conditional Agent capabilities](/en/posts/agent-discovery/) to implement the real service, theme browser module, or external DNS first; then configure `config.yml` and regenerate so the renderer and runtime headers stay in sync.
 10. For a partially translated locale, put only completed plugin labels under `theme.yml` `copy.<locale>`. Missing UI keys inherit the fallback; an existing Markdown document stays as authored, while a missing document may use content fallback.
 
 ## Removed and replacements
 
 - The separate `content/updates` source collection was removed; the compatible replacement is `content/posts` plus `category: update`. The public updates routes and the visitor-facing update feature were not removed.
 - No Cookie consent feature was removed. The policy-generator-inspired provider and retention details are display metadata; legal text still belongs to the reviewed privacy page. The canonical array replaces ambiguous object keys, with a compatibility normalizer for existing themes.
-- Manual discovery snapshots are not an authoring surface. The replacement is the renderer-generated metadata and runtime header path; this avoids a second list that could drift from the actual routes. Conditional OAuth, MCP, WebMCP, and DNS-AID capabilities remain available when their real service contracts are implemented.
+- Manual discovery snapshots are not an authoring surface. Follow [Configure conditional Agent capabilities](/en/posts/agent-discovery/) to implement the real service or external records, then use renderer-generated metadata and runtime headers so a second list cannot drift from the actual routes.
 
 ## Verify before publishing
 

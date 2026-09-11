@@ -128,6 +128,8 @@ The [Cookie selector tutorial](/en/posts/cookies/) is the concrete reference imp
 
 Nav and footer links are a shell concern, so configure them through `plugins.chrome` in `themes/default/theme.yml`. Do not append arbitrary links to `.site-header` or `.site-footer` from a plugin script. The chrome plugin accepts only structured labels and safe URLs; page-level behavior such as this reading tip can still mount inside `main`.
 
+If a plugin exposes WebMCP tools to a browser Agent, first follow [Configure conditional Agent capabilities](/en/posts/agent-discovery/) to register real `document.modelContext` tools in the plugin script, then enable the discovery declaration in `config.yml` separately; that switch does not load the script for you.
+
 ## 7. Remove a plugin cleanly
 
 When a capability is no longer needed, remove its import from the theme assembly, its definition and resource references, its `theme.yml` instance, and any Markdown directives or shell references. Generate again and inspect the catalog; do not delete only the generated asset or leave a second implementation for old consumers.

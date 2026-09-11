@@ -27,7 +27,7 @@ Pageskill 3.0.2 把教程和版本历史放在同一个 post 集合中，再用 
 - 主题界面文案会从配置的回退语言合并缺失键和带用途键的项目。缺少整篇语言文档时，可以在请求语言的路由提供回退文章；但 `hreflang` 只列出实际存在的翻译。
 - Cookie 选择器逐用途显示 provider 和保存期限。可选用途默认关闭，受信脚本必须在明确同意后加载，选择器不会替代经过审核的隐私政策页面。并非每个 provider 都会创建 Cookie；政策应按 provider 文档说明实际的 token、挑战、请求或存储行为。
 - `config.yml` 继续只保存站点政策/控制者资料：不会进入 `dist/public`，生成的 backend 也没有写入它的路由。provider secret 和验证码 token 校验继续放在服务端。
-- 鉴权元数据、MCP 卡片、WebMCP 登记和 DNS-AID 都是条件能力，不是默认开启的输出。只有真实的受保护服务、浏览器工具模块或外部发布的 DNS/DNSSEC 记录存在时才启用；静态渲染器不会伪造 endpoint，也不会发布 DNS。
+- 鉴权元数据、MCP 卡片、WebMCP 登记和 DNS-AID 的具体实现步骤见[配置条件 Agent 能力](/zh-sg/posts/agent-discovery/)。先在 backend/外部服务实现受保护资源和 issuer、让 MCP transport 与 card 工具一致、在主题插件中调用 `document.modelContext.registerTool()`，或由权威 DNS 发布并验证 DNSSEC；完成真实检查后才在 `config.yml` 打开对应开关。静态渲染器只生成声明，不会伪造 endpoint，也不会发布 DNS。
 
 ## 兼容用法与迁移
 
@@ -41,14 +41,14 @@ Pageskill 3.0.2 把教程和版本历史放在同一个 post 集合中，再用 
 6. 教程明确增加 `category: tutorial`；不写 `category` 的新 post 默认是 `uncategorized`（未分类）。已有主导航保持兼容，需要额外壳层链接时使用主题的结构化 `plugins.chrome` 插入点。
 7. 在 `themes/<name>/theme.yml` 以 Cookie 教程中的 canonical 数组配置 provider 实例，保留可选用途默认关闭，并使用代码登记的 `purpose` 映射。内置用途是 `measurement`、`advertising`、`fraud-prevention` 和 `social-embedding`，分别由真实 provider 行为支撑；迁移期间编译器会把旧 `id`/`category` 映射为用途键，也会把旧对象形 provider key 的 `conversionId` 映射为 Google Ads `tagId`、把 `siteId` 映射为百度 `siteSignature`；新文件应使用 provider 自己的真实字段。扩展 provider schema 字段可以保留，但 provider 只有在代码登记模块且取得同意后才会运行。
 8. 运行 `npm run g -- --profile`，检查普通 post/更新归档和两个 Feed，再在正式发布前运行 `npm run d -- --dry-run`。
-9. 不要复制或手工修改生成的发现文件。需要 API 条目、可选 ARD 查询或条件鉴权/MCP 元数据时，在 `config.yml` 配置后重新生成，让渲染器和运行时响应头保持一致。
+9. 不要复制或手工修改生成的发现文件。需要 API 条目、可选 ARD 查询或条件 Agent 能力时，先按[条件 Agent 能力教程](/zh-sg/posts/agent-discovery/)实现真实服务、主题浏览器模块或外部 DNS，再在 `config.yml` 配置后重新生成，让渲染器和运行时响应头保持一致。
 10. 新语言只完成部分翻译时，只把已经完成的插件文案放在 `theme.yml` 的 `copy.<locale>`；缺少的界面 key 会回退，已有 Markdown 文档按原文显示，整篇缺失时才使用内容回退。
 
 ## 已移除项与替代方案
 
 - 已移除独立的 `content/updates` 源 collection；兼容替代方式是 `content/posts` 加 `category: update`。公开更新路由和访客看到的更新功能没有移除。
 - 没有移除 Cookie 同意功能；借鉴政策生成器的提供者和保存期限只是展示元数据，法律文本仍维护在经过审核的隐私页面。canonical 数组替换含义不清的对象键，同时为已有主题保留兼容规范化。
-- 手工维护的发现快照不是作者入口。兼容替代是由渲染器生成发现文件和运行时响应头，避免第二套清单与实际路由漂移。OAuth、MCP、WebMCP 和 DNS-AID 仍可在真实服务契约完成后按条件启用。
+- 手工维护的发现快照不是作者入口。兼容替代是按[条件 Agent 能力教程](/zh-sg/posts/agent-discovery/)实现真实服务或外部记录，再由渲染器生成发现文件和运行时响应头，避免第二套清单与实际路由漂移。
 
 ## 发布前验证
 

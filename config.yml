@@ -89,8 +89,9 @@ robots:
     ai-input: "yes"
 
 # Public agent metadata is generated from these switches and the outputs that
-# the renderer actually produced. Authentication, MCP, and DNS records remain
-# opt-in because this site does not provide those services by default.
+# the renderer actually produced. See content/posts/agent-discovery/ for the
+# implementation steps. These four capabilities remain disabled until their
+# real service, browser module, or external DNS records are deployed.
 agentDiscovery:
   # The renderer creates Markdown mirrors and the runtime negotiates them.
   markdown:
@@ -112,12 +113,20 @@ agentDiscovery:
     title: Pageskill authoring
     # Skill description and sections are derived from the registered capability map.
   auth:
+    # Set true only after a protected resource and OAuth/OIDC issuer are live.
+    # resource, authorizationServer, and optional endpoint URLs must be real.
     enabled: false
   mcp:
+    # Set true only after endpoint answers the MCP protocol and tools are live.
+    # endpoint and tools are public metadata; execution stays in the service.
     enabled: false
   webmcp:
+    # Set true only after a theme browser module registers document.modelContext
+    # tools. This flag does not load a script or create a browser tool.
     enabled: false
   dnsAid:
+    # Set true only after the authoritative DNS provider publishes the records
+    # and DNSSEC verification succeeds. Pageskill never writes DNS records.
     enabled: false
 
 llms:

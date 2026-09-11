@@ -34,6 +34,8 @@ Pageskill 把 Markdown post、站点设置和样式组装成一个网站。你�
 先复用主题已有能力；需要新结构时实现一次，让之后的页面继续使用。
 :::
 
+需要接入真实的鉴权、MCP、WebMCP 或 DNS-AID 时，阅读[配置条件 Agent 能力](/zh-sg/posts/agent-discovery/)，按 backend、主题插件和外部 DNS 的实际边界逐项实现。
+
 ## 只记住三个命令
 
 | 命令 | 作用 |

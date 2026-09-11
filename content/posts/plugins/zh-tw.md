@@ -128,6 +128,8 @@ npm run s
 
 導覽和頁尾連結屬於 shell，因此應透過 `themes/default/theme.yml` 的 `plugins.chrome` 設定。不要讓外掛腳本向 `.site-header` 或 `.site-footer` 任意追加連結。chrome 外掛只接受結構化標籤和安全 URL；像本例這樣的頁面級行為仍可掛載到 `main` 內。
 
+如果外掛要向瀏覽器 Agent 暴露 WebMCP 工具，先按[設定條件式 Agent 能力](/zh-tw/posts/agent-discovery/)在外掛腳本中登記真實的 `document.modelContext` 工具，再另外開啟 `config.yml` 的探索宣告；這個開關不會替外掛載入腳本。
+
 ## 7. 乾淨地移除外掛
 
 能力不再需要時，刪除主題組裝入口中的 import、外掛定義和資源登記、`theme.yml` 實例，以及 Markdown directive 或 shell 參照。重新產生並檢查 catalog；不要只刪產生的資源，也不要為舊消費者保留第二套實作。

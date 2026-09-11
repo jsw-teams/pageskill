@@ -42,6 +42,7 @@ npm run d -- --dry-run
 - [给长内容加目录](content/posts/toc/zh-sg.md)
 - [开发一个可复用插件](content/posts/plugins/zh-sg.md)
 - [把网站放到网上](content/posts/deploy/zh-sg.md)
+- [配置条件 Agent 能力](content/posts/agent-discovery/zh-sg.md)
 - [关于 Pageskill](content/pages/about/zh-sg.md)
 - [隐私说明](content/pages/privacy/zh-sg.md)
 - [3.0.2 更新：更清楚的归档与响应式阅读](content/posts/3.0.2/zh-sg.md)
@@ -62,7 +63,9 @@ npm run d -- --dry-run
 
 ## 给 Agent 的发现信息
 
-Agent 相关文件由渲染器从配置和真实输出自动生成，不要手写 `dist/` 里的内容。公开输出包括 `/.well-known/agent.json`、`/.well-known/ai-catalog.json`、条件生成的 `/.well-known/api-catalog`、`/.well-known/agent-skills/index.json`、`robots.txt` 和 `llms.txt`；页面在启用 Markdown mirror 时响应 `Accept: text/markdown`，共享 Fetch Router 同时添加 RFC 8288 `Link` 和 `Vary: Accept`。生成的 Skill 会遍历代码登记的能力字段和配置段落，不再维护第二份字段映射。`robots.contentSignals` 生成 `Content-Signal`。OAuth/OIDC、MCP、WebMCP 和 DNS-AID 只有真实服务或外部 DNS/DNSSEC 已准备好时才配置，当前示例默认关闭；渲染器不会伪造 endpoint，也不能代替 DNS 服务商发布记录。
+Agent 相关文件由渲染器从配置和真实输出自动生成，不要手写 `dist/` 里的内容。公开输出包括 `/.well-known/agent.json`、`/.well-known/ai-catalog.json`、条件生成的 `/.well-known/api-catalog`、`/.well-known/agent-skills/index.json`、`robots.txt` 和 `llms.txt`；页面在启用 Markdown mirror 时响应 `Accept: text/markdown`，共享 Fetch Router 同时添加 RFC 8288 `Link` 和 `Vary: Accept`。生成的 Skill 会遍历代码登记的能力字段和配置段落，不再维护第二份字段映射。`robots.contentSignals` 生成 `Content-Signal`。
+
+鉴权元数据、MCP card、WebMCP 和 DNS-AID 的实现步骤见[配置条件 Agent 能力](content/posts/agent-discovery/zh-sg.md)：先在 backend、主题浏览器模块或外部 DNS 中实现真实能力，再在 `config.yml` 声明。`agentDiscovery.auth` 必须有真实资源和 issuer，`agentDiscovery.mcp` 的 endpoint/tool schema 必须对应实际 MCP 服务，WebMCP 需要主题脚本登记 `document.modelContext` 工具，DNS-AID 需要权威 DNS 已发布并验证 DNSSEC。默认示例保持关闭；渲染器不会伪造 endpoint，也不会发布 DNS。
 
 高级作者在生成后可以阅读 `dist/.pagekiln/catalog.json` 或 `dist/.well-known/agent.json` 来发现可复用能力；内部集成可使用已导出的 `getCatalog` 和 `inspect`。新手先从教程、内容和设置开始即可。
 
