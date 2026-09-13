@@ -1,0 +1,51 @@
+# The root config stays small. Split optional site policy into files under
+# config/ and list them in order; later layers replace arrays and scalars.
+extends:
+  - ./config/content.yml
+  - ./config/discovery.yml
+
+siteUrl: https://example.com
+defaultLocale: en
+activeLocales:
+  - en
+siteName: Example
+description: A site built with Pageskill.
+
+theme:
+  name: default
+  config: ./site/theme.yml
+
+navigation:
+  links:
+    - key: home
+      href: /:locale/
+    - key: about
+      href: /:locale/about/
+    - label: GitHub
+      href: https://github.com/example/example
+      target: _blank
+
+footer:
+  links:
+    - key: privacy
+      href: /:locale/privacy/
+    - label: GitHub
+      href: https://github.com/example/example
+      target: _blank
+
+# Add only services this site actually uses. The active theme's trusted
+# adapter registry supplies each provider's purpose, consent, and loader.
+# integrations:
+#   google-analytics:
+#     measurementId: G-XXXXXXXXXX
+#   turnstile:
+#     siteKey: 0x4AAAA...
+
+# Optional consent policy override. The default is automatic: no consent UI
+# appears until a configured adapter requires it.
+# privacy:
+#   consent:
+#     decisionRetentionDays: 180
+
+# Deployment targets are intentionally omitted. Add provider settings and
+# environment-variable names in a private deployment layer when publishing.

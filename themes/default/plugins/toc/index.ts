@@ -42,7 +42,7 @@ export const plugin: ThemePluginDefinition = {
   i18n: 'plugins/toc/messages.yml',
   // The switch and localized labels are instance data; the renderer remains
   // responsible for the accessible markup and heading filtering.
-  defaults: { enabled: true, maxDepth: 3, copy: {} },
+  defaults: { enabled: true, maxDepth: 3 },
   schema: {
     enabled: { type: 'boolean' },
     maxDepth: { type: 'number', min: 2, max: 6 },

@@ -19,11 +19,11 @@ themes/default/plugins/reading-tip/
   messages.yml
 ```
 
-The directory owns its resources. `themes/default/index.ts` is the assembly entry, and `theme.yml` holds this theme's plugin instance options.
+The directory owns its resources. `themes/default/index.ts` is the assembly entry, and the file selected by `theme.config`, normally `site/theme.yml`, holds this site's plugin instance overrides.
 
 ## 2. Configure a declared plugin first
 
-Before changing code, inspect the plugin's schema and use its safe options in `theme.yml`. Foundation plugins expose their switch, limits, consent metadata, shell slots, and localized copy as instance data:
+Before changing code, inspect the plugin's schema and use its safe presentation options in `site/theme.yml`. Foundation plugins expose their switch, limits, shell slots, and optional localized copy as instance data. Third-party integrations are different: configure only real provider identifiers under root `integrations`; the adapter owns purpose and consent metadata:
 
 ```yaml
 plugins:
@@ -39,7 +39,7 @@ plugins:
     maxDepth: 4
 ```
 
-Language activation is not a plugin option; keep `activeLocales` and `i18n.fallbackLocale` in `config.yml`. A new locale can be 50% translated: missing UI keys use the fallback, while an existing Markdown file remains exactly as authored.
+Language activation is not a plugin option; keep `activeLocales` and `i18n.fallbackLocale` in `config.yml` or its extends files. A new locale can be 50% translated: missing UI keys use the fallback, while an existing Markdown file remains exactly as authored.
 
 ## 3. Export the plugin definition
 
@@ -66,7 +66,7 @@ Register it once in `themes/default/plugins/index.ts`:
 ```ts
 import { plugin as readingTip } from './reading-tip/index.ts';
 
-export const plugins = { search, toc, privacyConsent: cookies, language, readingTip };
+export const plugins = { chrome, search, toc, postMeta, privacyConsent: cookies, language, readingTip };
 ```
 
 ## 4. Add the smallest working resources
@@ -98,10 +98,10 @@ messages:
       label: Reading tip
 ```
 
-## 5. Keep the instance switch in theme.yml
+## 5. Keep the instance switch in site/theme.yml
 
 ```yaml
-# themes/default/theme.yml
+# site/theme.yml
 plugins:
   readingTip:
     # Turn the registered capability on or off without editing its renderer.
@@ -118,7 +118,7 @@ npm run s
 
 ## Expected result
 
-The generated pages load the plugin's script and style, and the main content shows the marker. Set `plugins.readingTip.enabled` to `false` in `theme.yml` and generate again to remove it; new articles need no extra HTML.
+The generated pages load the plugin's script and style, and the main content shows the marker. Set `plugins.readingTip.enabled` to `false` in `site/theme.yml` and generate again to remove it; new articles need no extra HTML.
 
 Generation collects the module's resources and messages into the public theme assets. Server-side nested ESM stays inside the build/runtime boundary, and unchanged public assets keep their content-hash URL and cache identity.
 
@@ -126,13 +126,13 @@ Generation collects the module's resources and messages into the public theme as
 
 The [Cookie selector tutorial](/en/posts/cookies/) is the concrete reference implementation in this theme. It adds a schema, localized messages, consent-aware browser behavior, and safe rendering to the same module shape. Use its structure when a plugin needs more than one resource.
 
-Nav and footer links are a shell concern, so configure them through `plugins.chrome` in `themes/default/theme.yml`. Do not append arbitrary links to `.site-header` or `.site-footer` from a plugin script. The chrome plugin accepts only structured labels and safe URLs; page-level behavior such as this reading tip can still mount inside `main`.
+Ordinary navigation and footer links are site data in `config.yml` or its extends files; configure theme-owned insertion slots through `plugins.chrome` in `site/theme.yml`. Do not append arbitrary links to `.site-header` or `.site-footer` from a plugin script. The chrome plugin accepts only structured labels and safe URLs; page-level behavior such as this reading tip can still mount inside `main`.
 
 If a plugin exposes WebMCP tools to a browser Agent, first follow [Configure conditional Agent capabilities](/en/posts/agent-discovery/) to register real `document.modelContext` tools in the plugin script, then enable the discovery declaration in `config.yml` separately; that switch does not load the script for you.
 
 ## 7. Remove a plugin cleanly
 
-When a capability is no longer needed, remove its import from the theme assembly, its definition and resource references, its `theme.yml` instance, and any Markdown directives or shell references. Generate again and inspect the catalog; do not delete only the generated asset or leave a second implementation for old consumers.
+When a capability is no longer needed, remove its import from the theme assembly, its definition and resource references, its `site/theme.yml` override, and any Markdown directives or shell references. Generate again and inspect the catalog; do not delete only the generated asset or leave a second implementation for old consumers.
 
 ## Common trap
 

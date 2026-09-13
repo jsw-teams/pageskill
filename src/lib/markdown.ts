@@ -35,7 +35,7 @@ function sanitizeUrl(value: string): string {
   const input = String(value || '').trim();
   if (!input) return '#';
   try {
-    const url = new URL(input, 'https://pagekiln.invalid');
+    const url = new URL(input, 'https://pageskill.invalid');
     return ['http:', 'https:', 'mailto:', 'tel:'].includes(url.protocol) ? input : '#';
   } catch {
     return '#';

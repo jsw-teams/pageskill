@@ -1,18 +1,36 @@
 ---
-title: 改成你的名稱和導覽
-description: 在 config.yml 設定網站名稱、語言和導覽，讓首頁連到你的文章。
+title: 設定結構：網站設定只有一個清楚來源
+description: 理解 config.yml、可選設定分層、site/theme.yml、content，以及網站資料和主題程式碼的邊界。
 date: 2026-09-07
 category: tutorial
 ---
 
-# 改成你的名稱和導覽
+# 設定結構：網站設定只有一個清楚來源
 
-`config.yml` 是設定檔：它保存網站資料和開關，不執行程式碼。先修改名稱和導覽，其他設定之後再加入。
-post 沒有在 Frontmatter 寫作者時，會使用對應語言的 `author`。目前網站使用 `toewpq`；套用範例時請換成真實的網站作者。
+Pageskill 把網站作者會修改的檔案，與主題實作程式碼分開。可以這樣理解：
 
-## 1. 開啟設定檔
+```text
+config.yml
+├─ 網站身份、語言、導覽、頁尾
+├─ 內容 collection 和 view
+├─ integrations、隱私政策、發現、部署
+└─ 可選 extends：./config/*.yml
 
-在新網站根目錄編輯 `config.yml`，保留下面這組最小設定：
+site/theme.yml
+└─ 少量、經過 schema 驗證的主題/外掛外觀覆寫
+
+content/
+└─ Markdown 頁面、文章、資源和 Frontmatter
+
+themes/default/
+└─ 可重用實作、資源、外掛和參考範例
+```
+
+普通網站工作只需要前三層。`themes/default/` 不是另一套網站設定目錄。
+
+## 1. 保持根設定可讀
+
+先寫網站身份和主題實例：
 
 ```yaml
 siteUrl: https://example.com
@@ -26,64 +44,103 @@ siteName:
   zh-tw: 我的文章站
   en: My article site
 description:
-  zh-sg: 寫下我的文章。
-  zh-tw: 寫下我的文章。
+  zh-sg: 用 Markdown 寫下我的文章。
+  zh-tw: 用 Markdown 寫下我的文章。
   en: Notes from my work.
-author:
-  zh-sg: toewpq
-  zh-tw: toewpq
-  en: toewpq
-```
 
-## 2. 修改導覽
-
-在同一個檔案的 `navigation.links` 下放置公開入口：
-
-```yaml
 theme:
   name: default
+  config: ./site/theme.yml
+```
+
+Navigation 和 Footer 也放在這個根設定或相關的設定分層中：
+
+```yaml
 navigation:
   links:
     - key: home
       href: /:locale/
     - key: posts
       href: /:locale/posts/
+    - label: GitHub
+      href: https://github.com/example/example
+      target: _blank
+
+footer:
+  links:
+    - key: privacy
+      href: /:locale/privacy/
+    - label: 專案原始碼
+      href: https://github.com/example/example
+      target: _blank
 ```
 
-`:locale` 會在產生時換成 `zh-sg`、`zh-tw` 或 `en`。不要把訪客輸入拼進設定檔。
+內部連結可以使用 `:locale`，外部連結只允許 HTTP(S)。新視窗連結會自動帶 `rel="noopener noreferrer"`。標籤可以用 `labels.<locale>`，並按目前語言、設定的 fallback、English、翻譯鍵、最後是 link key 依次回退。
 
-主導覽是網站資料，因此放在這裡。主題需要在標準導覽或頁尾工具前後增加插入連結時，應在 `themes/default/theme.yml` 的 `plugins.chrome` 下設定：
+## 2. 只拆分真正相關的設定
+
+設定變大時，再從根檔案引用專案內 YAML：
+
+```yaml
+extends:
+  - ./config/content.yml
+  - ./config/discovery.yml
+  - ./config/deployment.yml
+```
+
+載入順序是：Pageskill 內建預設值、按順序讀取的這些檔案、最後的 `config.yml`。物件遞迴合併，陣列整體替換，純量（包括顯式 `null`）覆蓋前值。YAML 不會執行程式碼、隨意 include 路徑或自動追加陣列。每個檔案都必須留在專案根內，循環或缺失檔案會顯示來源路徑並失敗。
+
+不要為了證明 `extends` 而製造很多小檔案。Demo 把 content policy 和 discovery policy 分開，是因為它們是有意義的分組；小站完全可以只使用一個 `config.yml`。
+
+## 3. 在 `config.yml` 表達 Provider 意圖
+
+第三方服務屬於網站能力，不是主題外觀。只設定本站實際使用的服務：
+
+```yaml
+integrations:
+  google-analytics:
+    measurementId: G-XXXXXXXXXX
+```
+
+受信任的 adapter registry 會提供 Provider schema、隱私用途、同意要求和安全資源載入器。Provider 節點預設啟用，也可以寫 `enabled: false` 暫停。不要再新增 `purpose`、腳本 URL、inline code、分類列表或一堆 false Provider。公開識別會被驗證；secret 應放在部署環境和 backend 中。
+
+如果設定的 adapter 需要同意，Consent UI 只會生成它實際使用的 purpose；沒有這樣的 adapter 就沒有橫幅。只有確有需要時，才設定瀏覽器選擇策略：
+
+```yaml
+privacy:
+  consent:
+    decisionRetentionDays: 180
+```
+
+它表示瀏覽器保存選擇的時間，不是 Provider 服務端的資料保留期限。完整說明請看[設定 Integration 與隱私同意](/zh-tw/posts/cookies/)。
+
+## 4. `site/theme.yml` 只放外觀覆寫
+
+網站實例檔案可以是空的：
+
+```yaml
+# site/theme.yml
+plugins: {}
+```
+
+省略 `theme.config` 也會得到同樣的空覆寫物件。外掛預設值和 schema 在程式碼中維護，因此不要把每個 `enabled: true` 都複製進來。只有網站與主題預設值不同才寫，例如：
 
 ```yaml
 plugins:
-  chrome:
-    navigation:
-      after:
-        - label: Plugin tutorial
-          href: /:locale/posts/cookies/
-    footer:
-      after: []
+  search:
+    maxResults: 12
 ```
 
-chrome 選項只接受結構化標籤和安全連結，不接受 HTML、腳本、CSS、選擇器或任意屬性。
+進階主題仍可以使用 `plugins.chrome.navigation.before/after` 和 `plugins.chrome.footer.before/after` 插槽插入可重用連結；它們共用同一套安全連結模型，但普通 Navigation 和 Footer link 屬於網站級設定。
 
-## 3. 產生並預覽
+## 5. 用 Markdown 管理內容
 
-```powershell
-npm run g
-npm run s
-```
+穩定頁面位於 `content/pages/<id>/<locale>.md`。教學、部落格、產品記錄和版本說明位於 `content/posts/<id>/<locale>.md`。每篇 post 都需要 `date`；可選的 `update` 記錄後續修改，不改變發佈日期。`category: update` 表示版本說明 view，與 `update` 時間戳不是同一概念。[文章中繼資料範例](/zh-tw/posts/post-meta-demo/)同時展示了兩條路徑。
 
-開啟三個語言的首頁和文章入口，確認名稱、語言連結和導覽都正確。
+## 預期結果
 
-## 成功結果
-
-每個啟用的語言都有自己的首頁，頁首顯示新的網站名稱，導覽可以進入該語言的文章列表。
-
-## 常見問題
-
-YAML 縮排必須使用空格；`siteName` 和 `description` 的每個啟用語言都應有值。寫成標籤或混用 Tab 時，產生會在設定附近提示錯誤。
+網站作者第一次打開設定檔，就能看懂身份、語言、連結、內容模型和部署，不會先面對一整面主題預設值。主題程式碼保持可重用，產生檔案只作為輸出檢查，而不是作者編輯入口。
 
 ## 下一步
 
-接著閱讀 [Markdown：像寫筆記一樣寫文章](/zh-tw/posts/markdown/)，先做一篇最小文章。
+繼續閱讀 [Markdown：像寫筆記一樣寫文章](/zh-tw/posts/markdown/)，建立第一個頁面或文章。

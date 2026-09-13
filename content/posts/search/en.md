@@ -11,7 +11,7 @@ Pageskill search is generated from your pages and dated posts. The browser reads
 
 ## 1. Turn on the search settings
 
-Set the plugin options in `themes/default/theme.yml`:
+Set the plugin options in the `theme.config`-selected instance file, normally `site/theme.yml`:
 
 ```yaml
 plugins:
@@ -46,7 +46,7 @@ The search field returns matching titles, headings, summaries, and body text. A 
 
 ## Common trap
 
-Changing a Markdown file does not change an already generated preview until you run `npm run g` or let the local preview rebuild it. Do not edit a generated search JSON file under `dist/`; change the source content or the search options in `themes/default/theme.yml` instead.
+Changing a Markdown file does not change an already generated preview until you run `npm run g` or let the local preview rebuild it. Do not edit a generated search JSON file under `dist/`; change the source content or the search options in `site/theme.yml` instead.
 
 ## Next step
 

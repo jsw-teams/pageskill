@@ -1,0 +1,54 @@
+# Content collections, views, archive, and feed policy for the demo site.
+# The `updates` view is a release-note view of posts with category: update;
+# it is separate from the post frontmatter `update` modified-date field.
+archive:
+  collections:
+    - posts
+    - updates
+
+feed:
+  collections:
+    - posts
+    - updates
+
+content:
+  collections:
+    pages:
+      contentType: page
+      pattern: document
+      route: /:locale/:id/
+      schema:
+        title:
+          type: string
+          required: true
+        description: string
+        pattern: string
+    posts:
+      contentType: post
+      pattern: blog
+      route: /:locale/posts/:id/
+      feed: true
+      archive: true
+      archiveRoute: /:locale/posts/
+      orderBy: date:desc
+      schema:
+        title:
+          type: string
+          required: true
+        description: string
+        date:
+          type: string
+          required: true
+        update: string
+        category: string
+        author: string
+        cover: string
+        ogImage: string
+        pattern: string
+  views:
+    updates:
+      collection: posts
+      category: update
+      route: /:locale/updates/:id/
+      archiveRoute: /:locale/updates/
+      feedRoute: /:locale/updates/feed.xml

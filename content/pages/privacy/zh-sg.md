@@ -1,24 +1,26 @@
 ---
 title: 隐私说明
-description: 说明 Pageskill 网站处理哪些数据、为什么处理以及如何联系站点负责人。
+description: 说明本站如何处理数据，以及已配置的 Integration 如何参与同意流程。
 ---
 
 # 隐私说明
 
-这是一份固定的隐私政策页面。它说明本站如何处理运行页面所需的信息，以及访客如何管理可选 Cookie。
+这是一份固定的隐私政策页面，说明本站如何处理运行页面所需的信息，以及访客如何管理可选 Integration。
 
-## 我们处理什么
+## 本 Demo 当前状态
 
-本站只处理提供页面、保存 Cookie 选择和运行已获同意服务所需的信息。可选分析、广告、人机验证或社交嵌入服务没有访客同意不会运行。provider 实例在主题中使用 provider 自己提供的公开 measurement ID、token 或 site key 配置；启用某项后，站点负责人必须在此处补充实际服务和真实数据流向。
+Pageskill Demo 没有配置第三方 Integration，因此不会显示同意横幅，也不会加载分析、广告、验证码或社交嵌入服务。
 
-## Cookie 选择
+站点负责人在 `config.yml` 的 `integrations` 下加入服务后，活动主题的受信任 Provider Adapter 会提供公开字段、处理用途、同意要求和加载策略。站点 YAML 不能提供脚本 URL，也不能自行选择 purpose。
 
-必要 Cookie 保存你的选择；`measurement`（访问量测量）、`advertising`（广告）、`fraud-prevention`（人机验证/反滥用）和 `social-embedding`（社交嵌入）用途默认关闭。你可以从页脚打开 Cookie 设置、保存新选择或撤回可选用途。撤回会阻止后续加载，但不能撤销脚本已经完成的动作。
+## 同意选择
 
-## 保存多久
+同意用途由已启用的 Adapter 自动推导。对话框只显示本站实际配置的 Integration 所对应的用途；Pageskill 自身的必要运行能力由系统处理，不作为站点级分类。需要同意的 Provider 在访客允许对应用途前不会加载。撤回同意会阻止之后的加载，但不能撤销 Provider 已经完成的工作。
 
-必要选择最多保存 365 天。可选用途没有同意不会启用；实际第三方服务（例如访问量测量、广告、验证码或 X 嵌入）的保存和请求规则以其说明为准。选择器里的用途与显示保存期限不代表每个 provider 都会创建 Cookie，也不代表所有 provider 都保存相同时间。
+## 选择保存
+
+运行时会把同意选择保存为小型浏览器偏好，内容只有 schema 版本、当前用途选择和更新时间。`privacy.consent.decisionRetentionDays` 只控制浏览器记住选择多久，不代表 Provider 服务端的数据保存期限或隐私政策。
 
 ## 联系我们
 
-隐私问题请通过 [Pageskill GitHub](https://github.com/jsw-teams/pageskill) 联系 toewpq。若页面配置了其他服务，站点负责人应在此处补充真实的联系人和处理说明。
+隐私问题请通过 [Pageskill GitHub](https://github.com/jsw-teams/pageskill) 联系 toewpq。启用 Integration 的站点必须在这份经过审核的政策中补充真实的数据处理和联系人信息。

@@ -39,7 +39,7 @@ npm run s
 :::
 ```
 
-默认 `toc` 插件在 `themes/default/plugins/toc/`；Block、样式和 messages 是一个可复用模块。在 `themes/default/theme.yml` 的 `plugins.toc` 下设置开关和目录深度。
+默认 `toc` 插件在 `themes/default/plugins/toc/`；Block、样式和 messages 是一个可复用模块。在 `theme.config` 指向的站点实例文件（通常是 `site/theme.yml`）的 `plugins.toc` 下设置开关和目录深度。
 
 ```yaml
 plugins:

@@ -1,69 +1,28 @@
 ---
-title: 3.0.2 更新：更清楚的归档与响应式阅读
-description: 分开版本更新和教程，修正封面比例，并让语言选择页和文章页面更容易浏览。
+title: '3.0.2：更清晰的归档与响应式阅读'
+description: '关于 3.0 版本线中过滤更新、文章布局和响应式主题细节的历史版本说明。'
 date: 2026-09-10
 category: update
-author: toewpq
-cover: assets/og-default-product.webp
 ---
 
-# 3.0.2 更新：更清楚的归档与响应式阅读
+# 3.0.2：更清晰的归档与响应式阅读
 
-Pageskill 3.0.2 把教程和版本历史放在同一个 post 集合中，再用 Frontmatter 分类和筛选视图区分它们；同时收紧文章页头，为封面提供可预测的响应式容器，并让语言选择页在出现推荐标签时仍然整齐。
+这是一篇 3.0 版本线的历史更新说明。当前站点写法请以[3.1.0](/zh-sg/updates/3.1.0/)和[配置结构](/zh-sg/posts/site-settings/)为准；新站不应从旧版本文章复制配置。
 
-## 功能特性
+## 3.0.2 发布了什么
 
-- 版本说明使用普通 posts 流程并增加 `category: update`。更新视图会把它们排除在普通 post 列表之外，同时保留 `/:locale/updates/<version>/` 公开路由、Feed、搜索结果、语言链接、导航入口和首页栏目。
-- post 分类现在来自 Markdown Frontmatter：`category: tutorial` 表示教程，`category: update` 表示版本说明，省略分类时会渲染并索引为 `uncategorized`（未分类），不会再从 pages collection 猜测。
-- 文章标题、说明、发布日期和作者组成紧凑页头；封面和正文阅读栏使用稳定的 1200:630 比例，归档缩略图使用独立的 16:9 容器，不再继承原图的像素高度。
-- 文章导航标签单独占行，不会再被误认为链接标题的一部分。语言卡片预留推荐标签行，小屏幕文章目录默认折叠。
-- 主题可以通过结构化的 `plugins.chrome` 选项，在标准导航和页脚工具前后增加链接。编译器会解析语言路由、限制链接数量和长度、拒绝不安全或目录穿越 URL，壳层会转义标签；不支持原始 HTML、脚本、CSS 或任意属性。
-- Cookie 插件现在由代码登记 provider 能力，并由 `themes/default/theme.yml` 负责 provider 实例。内置同意控制使用 canonical provider 数组和真实网页字段：GA4 的 `measurementId`（`G-...`）、Google Ads 的 `tagId`（`AW-...`/`GT-...`）、Cloudflare Web Analytics 的 `token`、百度统计的 `siteSignature`、验证码的 `siteKey`，以及不需要账户 ID 的 X for Websites widget。额外 provider 字段可以留给未来模块，但不会自行执行。
-- Agent 发现信息现在由渲染器根据活动配置和实际写出的输出生成。公开集合可以包含 `/.well-known/agent.json`、`/.well-known/ai-catalog.json`、配置的 RFC 9727 API catalog、Agent Skills 索引、`robots.txt` 和 `llms.txt`；共享 Fetch Router 会添加 RFC 8288 `Link`，用 `Vary: Accept` 协商 `Accept: text/markdown` 镜像，并传递配置的 `Content-Signal`。发布的 Skill 会遍历代码登记的能力表和配置的段落，新增登记字段时不需要再维护第二份输出字段清单。
-- 基础插件的文案和选项属于实例数据：`search`、`toc`、`privacyConsent` 和 `chrome` 可以在 `theme.yml` 里按代码拥有的 schema 调整。样式现在有明确的新增、修改、删除流程，通过所属模块的资源登记完成，不需要修改生成 CSS 或为了日常调整去改 renderer。
+- 版本说明通过 post pipeline 和 `category: update` 生成。筛选后的 updates view 把版本说明与普通 post 分开，同时保留多语言归档、详情、Feed、搜索和语言链接。
+- Post 分类来自 Markdown Frontmatter：`tutorial`、`update`，或省略后使用 `uncategorized`。
+- 文章标题、简介、发布日期、作者和封面整理成紧凑的响应式布局。归档图片使用有边界的容器，手机目录默认折叠。
+- 主题增加了位于标准 Navigation 和 Footer 前后的结构化 Chrome 插槽。这些插槽只接受安全的结构化链接，不接受 HTML 或脚本。
+- Discovery 文件、API 元数据、Markdown 协商、Content-Signal 和条件 Agent 声明都从当前源码生成，不再作为手工维护的快照。
 
-## 安全与本地化特性
+## 当前说明
 
-- 主题界面文案会从配置的回退语言合并缺失键和带用途键的项目。缺少整篇语言文档时，可以在请求语言的路由提供回退文章；但 `hreflang` 只列出实际存在的翻译。
-- Cookie 选择器逐用途显示 provider 和保存期限。可选用途默认关闭，受信脚本必须在明确同意后加载，选择器不会替代经过审核的隐私政策页面。并非每个 provider 都会创建 Cookie；政策应按 provider 文档说明实际的 token、挑战、请求或存储行为。
-- `config.yml` 继续只保存站点政策/控制者资料：不会进入 `dist/public`，生成的 backend 也没有写入它的路由。provider secret 和验证码 token 校验继续放在服务端。
-- 鉴权元数据、MCP 卡片、WebMCP 登记和 DNS-AID 的具体实现步骤见[配置条件 Agent 能力](/zh-sg/posts/agent-discovery/)。先在 backend/外部服务实现受保护资源和 issuer、让 MCP transport 与 card 工具一致、在主题插件中调用 `document.modelContext.registerTool()`，或由权威 DNS 发布并验证 DNSSEC；完成真实检查后才在 `config.yml` 打开对应开关。静态渲染器只生成声明，不会伪造 endpoint，也不会发布 DNS。
+3.1.0 保留了有价值的内容和渲染能力，但删除了历史配置别名。站点实例覆盖项现在只放在 `theme.config` 指向的文件中，普通 Integration 放在根级 `integrations`，Navigation/Footer link 使用同一套站点级 schema。复制旧 checkout 的配置前，请先阅读[3.1.0 更新说明](/zh-sg/updates/3.1.0/)。
 
-## 兼容用法与迁移
+`updates` view 是 post 的版本说明视图，不等于 post Frontmatter 中可选的 `update` 字段；后者表示某一篇文章最后一次被修改的时间。
 
-现有 3.0 站点可以迁移源码目录，同时保持更新文章的公开 URL：
+## 下一步
 
-1. 把 `content/updates/<version>/<locale>.md` 移到 `content/posts/<version>/<locale>.md`。
-2. 保留原来的 ID、语言文件、`date`、`author` 和 `cover`；每个版本说明的 Frontmatter 增加 `category: update`。
-3. 继续使用 `/zh-sg/updates/<version>/`、`/zh-tw/updates/<version>/` 或 `/en/updates/<version>/` 链接。更新视图会提供这些路由，不需要建立 redirect 影子或复制文章；普通文章仍使用 `/:locale/posts/<id>/`。
-4. 后续新增语言时，先把语言加入站点启用语言列表，再按完成进度补 UI 和文章文件。主题 UI 缺失键从回退语言取得，整篇缺失的文章使用内容回退；已经存在但只翻译一部分的 Markdown 会按原文提供，Pageskill 不会静默机器翻译。
-5. 如果旧主题文件仍有独立的 `plugins.language.enabled` 开关，请删除这个重复开关；语言选择功能仍然存在，并继续按照站点的启用语言和回退行为工作。
-6. 教程明确增加 `category: tutorial`；不写 `category` 的新 post 默认是 `uncategorized`（未分类）。已有主导航保持兼容，需要额外壳层链接时使用主题的结构化 `plugins.chrome` 插入点。
-7. 在 `themes/<name>/theme.yml` 以 Cookie 教程中的 canonical 数组配置 provider 实例，保留可选用途默认关闭，并使用代码登记的 `purpose` 映射。内置用途是 `measurement`、`advertising`、`fraud-prevention` 和 `social-embedding`，分别由真实 provider 行为支撑；迁移期间编译器会把旧 `id`/`category` 映射为用途键，也会把旧对象形 provider key 的 `conversionId` 映射为 Google Ads `tagId`、把 `siteId` 映射为百度 `siteSignature`；新文件应使用 provider 自己的真实字段。扩展 provider schema 字段可以保留，但 provider 只有在代码登记模块且取得同意后才会运行。
-8. 运行 `npm run g -- --profile`，检查普通 post/更新归档和两个 Feed，再在正式发布前运行 `npm run d -- --dry-run`。
-9. 不要复制或手工修改生成的发现文件。需要 API 条目、可选 ARD 查询或条件 Agent 能力时，先按[条件 Agent 能力教程](/zh-sg/posts/agent-discovery/)实现真实服务、主题浏览器模块或外部 DNS，再在 `config.yml` 配置后重新生成，让渲染器和运行时响应头保持一致。
-10. 新语言只完成部分翻译时，只把已经完成的插件文案放在 `theme.yml` 的 `copy.<locale>`；缺少的界面 key 会回退，已有 Markdown 文档按原文显示，整篇缺失时才使用内容回退。
-
-## 已移除项与替代方案
-
-- 已移除独立的 `content/updates` 源 collection；兼容替代方式是 `content/posts` 加 `category: update`。公开更新路由和访客看到的更新功能没有移除。
-- 没有移除 Cookie 同意功能；借鉴政策生成器的提供者和保存期限只是展示元数据，法律文本仍维护在经过审核的隐私页面。canonical 数组替换含义不清的对象键，同时为已有主题保留兼容规范化。
-- 手工维护的发现快照不是作者入口。兼容替代是按[条件 Agent 能力教程](/zh-sg/posts/agent-discovery/)实现真实服务或外部记录，再由渲染器生成发现文件和运行时响应头，避免第二套清单与实际路由漂移。
-
-## 发布前验证
-
-先运行项目的常规检查，再查看两种响应式视图：
-
-```powershell
-npm run compile-runtime
-npm run compile-theme
-npm run compile-backend
-npm run g
-npm run g -- --profile
-npm run s
-npm run d -- --dry-run
-```
-
-3.0.2 检查已经完成：`npm run g -- --profile` 通过 runtime、theme、backend 编译并报告 48 篇源文档；临时使用 provider 真实字段形状的数组配置和测试值，在选择器与机器可读隐私元数据中生成了八个内置 provider 记录，随后恢复活动主题为全部关闭。生成的浏览器脚本包含官方 provider endpoint，且不再包含旧对象键。56 个 HTML 内部 `href`/`src` 检查没有缺失引用；生成的脚本通过 `node --check`；`/config.yml` 及其 public/static 别名会被判定为私有，公开快照没有配置文件。posts 和 updates Feed 分别有 10 条和 3 条且相互隔离，旧 posts 路由已经删除。1280px 桌面和 390px 手机检查确认语言卡片均为 136px、归档封面为 144x81、文章元数据对齐，手机目录默认折叠且可点击展开，页面没有横向溢出；根语言页匹配繁体中文浏览器偏好，品牌和隐私链接指向 `zh-tw`。`git diff --check` 通过。`npm run d -- --dry-run` 因未配置 `deployment.targets` 以退出码 1 结束，因此不声称已经部署或发布 npm。
-
-教程路径请继续阅读[十分钟开始你的站点](/zh-sg/posts/start/)，版本历史请打开[更新日志归档](/zh-sg/updates/)。
+当前流程请从[配置结构](/zh-sg/posts/site-settings/)和[配置 Integration 与隐私同意](/zh-sg/posts/cookies/)开始。

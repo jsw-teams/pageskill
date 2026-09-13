@@ -7,36 +7,25 @@ import { escapeHtml, safeUrl, html, unsafeHtml } from './lib/safe-html.ts';
 import { flattenDirectives, MarkdownError, parseMarkdown, renderInline } from './lib/markdown.ts';
 import { planThemeStyles } from './lib/theme-styles.ts';
 import { isPublicPath } from './lib/static-security.ts';
+import { calculateContentMetrics } from './lib/content-metrics.ts';
+import { parseIsoTimestamp } from './lib/content-dates.ts';
+import { resolveSiteLinks, renderSiteLink } from './lib/site-links.ts';
+import { loadConfig, loadThemeConfig } from './config/load.ts';
+import { isRecord, mergeConfig } from './config/merge.ts';
+import { configuredThemeName } from './config/validate.ts';
+import { resolveDeploymentConfig } from './config/deployment.ts';
+import { integrationAdapters, resolveConfiguredIntegrations, validateConfiguredIntegrations, type ConfiguredIntegration } from './config/integrations.ts';
+import { containedPath, normalizePath, pathIsWithin, safeRelativePath } from './config/paths.ts';
+import { renderPrivacyConsent } from './lib/privacy-consent.ts';
+import { contentMetricsOptions, defaultPattern, documentIdentity, documentSchemaDiagnostics, loadDocument } from './compiler/documents.ts';
+import { blogRelationsFor, contentViewSettings, documentKey, documentOutputs, documentViewCollection, documentsForCollection, postCategory, rebuildDocumentIndexes, routeFor, sourceDocuments, translationKey, viewForDocument } from './compiler/routes.ts';
 import type { MarkdownNode, SourcePosition, DirectiveNode } from './lib/markdown.ts';
 import type { PageskillTheme, ThemeBlockDefinition, ThemeChromeConfig, ThemeChromeLink, ThemeI18nSource, ThemeOptionSchema, ThemePluginDefinition, ThemeRenderContext, ThemeResources, ThemeShellContext } from './theme-api.ts';
-
-export type Locale = string;
-export type Document = {
-  id: string; collection: string; locale: Locale; source: string; title: string; description: string;
-  pattern: string; date?: string; author?: string; cover?: string; data: Record<string, any>; markdown: string; excerpt: string; nodes: MarkdownNode[];
-  directives: DirectiveNode[]; hash: string; bodyLine: number; stat: { mtimeMs: number; size: number };
-  dependencyKeys: string[]; blockNames: string[];
-};
-export type BuildContext = {
-  root: string; out: string; config: Record<string, any>; theme: Record<string, any>; themeConfig: Record<string, any>; themeI18n: Record<string, any>; themeDefinition: PageskillTheme; docs: Document[];
-  byKey: Map<string, Document>; routes: Map<string, Document>; cache: CacheManifest; profile: BuildProfile;
-  outputs: Set<string>; diagnostics: string[]; configHash: string; themeHash: string;
-  imageCache: Record<string, CachedImage>; collectionIndex: Map<string, Document[]>;
-  translationIndex: Map<string, Document[]>; documentPositions: Map<string, number>; tagIndex: Map<string, Document[]>;
-  assetHash: string; backendHash: string; outputHashes: Record<string, string>;
-  contentRoots: Record<string, number>;
-  stagedOutput?: { final: string; temporary: string };
-  markdownCache: Map<string, MarkdownNode[]>;
-  sourceParseCache: Map<string, { data: Record<string, any>; body: string; excerpt: string; bodyLine: number }>;
-  themeStyleSources: Map<string, string>; themeAssetHashes: Record<string, string>;
-};
-type CachedDocument = { hash: string; outputs: string[]; dependencies?: string[]; blocks?: string[]; mtimeMs: number; size: number; collection: string; id: string; locale: string; title: string; description: string; pattern: string; date?: string; author?: string; cover?: string; data: Record<string, any>; markdown: string; excerpt?: string; bodyLine: number };
-type CachedImage = { hash: string; output: string };
-type CacheManifest = { version: 2; rendererVersion?: string; configHash?: string; themeHash?: string; assetHash?: string; backendHash?: string; contentRoots?: Record<string, number>; routeCount?: number; documents: Record<string, CachedDocument>; images?: Record<string, CachedImage>; outputs: string[]; outputHashes?: Record<string, string> };
-export type BuildProfile = { discover: number; load: number; validate: number; parse: number; route: number; render: number; assets: number; write: number; total: number; documents: number; changedOutputs: number; imagesProcessed: number; imageCacheHits: number };
+import type { BuildContext, BuildProfile, CacheManifest, CachedDocument, CachedImage, Document, Locale } from './compiler/types.ts';
+export type { BuildContext, BuildProfile, CachedDocument, CachedImage, Document, Locale } from './compiler/types.ts';
 // Increment this whenever compiler output semantics change so an existing
 // incremental cache cannot preserve a discovery file rendered by old code.
-const RENDERER_VERSION = '2.4.30';
+const RENDERER_VERSION = '3.1.0';
 const MAX_MARKDOWN_CACHE = 32;
 const MAX_SOURCE_PARSE_CACHE = 64;
 const LOAD_CONCURRENCY = 32;
@@ -48,48 +37,7 @@ export { unsafeHtml, escapeHtml, safeUrl, parseYaml, parseMarkdown, renderInline
 function duration(start: number) { return Math.round((performance.now() - start) * 100) / 100; }
 function sha(value: string | Uint8Array) { return crypto.createHash('sha256').update(value).digest('hex'); }
 function shortHash(value: string | Uint8Array) { return sha(value).slice(0, 20); }
-function normalizePath(value: string) { return value.replaceAll('\\', '/'); }
 
-type RelativePathOptions = { allowEmpty?: boolean; rejectDoubleDot?: boolean };
-
-/**
- * Validate an untrusted path before normalising it.  Build outputs and theme
- * resources are addressed with POSIX separators in manifests, but a Windows
- * backslash must be treated as a separator while validating too.
- */
-function safeRelativePath(value: unknown, label: string, options: RelativePathOptions = {}): string {
-  if (typeof value !== 'string') throw new Error(`${label} must be a relative path`);
-  const raw = value;
-  if (!raw) {
-    if (options.allowEmpty) return '';
-    throw new Error(`${label} must be a non-empty relative path`);
-  }
-  if (/[\u0000-\u001f\u007f-\u009f]/.test(raw)) throw new Error(`${label} contains control characters`);
-  const normalized = normalizePath(raw);
-  if (normalized.startsWith('/') || /^[A-Za-z]:/.test(normalized)) throw new Error(`${label} must be a relative path`);
-  if (options.rejectDoubleDot && raw.includes('..')) throw new Error(`${label} must not contain ".."`);
-  if (normalized.split('/').some(part => part === '..')) throw new Error(`${label} must not escape its root`);
-  // A colon in an output component can address an NTFS alternate data stream.
-  if (normalized.split('/').some(part => part.includes(':'))) throw new Error(`${label} contains an unsafe path component`);
-  // Windows trims these characters from names, so accepting them would make
-  // the manifest key and the actual file differ.
-  if (normalized.split('/').some(part => part !== '.' && /[. ]$/.test(part))) throw new Error(`${label} contains an unsafe path component`);
-  const canonical = normalized.split('/').filter(part => part && part !== '.').join('/');
-  if (!canonical && !options.allowEmpty) throw new Error(`${label} must be a non-empty relative path`);
-  return canonical;
-}
-
-function pathIsWithin(root: string, target: string): boolean {
-  const relative = path.relative(path.resolve(root), path.resolve(target));
-  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
-}
-
-function containedPath(root: string, value: unknown, label: string): string {
-  const relative = safeRelativePath(value, label);
-  const target = path.resolve(root, relative);
-  if (!pathIsWithin(root, target) || target === path.resolve(root)) throw new Error(`${label} escapes its root`);
-  return target;
-}
 
 function outputTarget(ctx: BuildContext, relative: unknown): { normalized: string; target: string } {
   const raw = typeof relative === 'string' ? relative : String(relative ?? '');
@@ -97,74 +45,8 @@ function outputTarget(ctx: BuildContext, relative: unknown): { normalized: strin
   return { normalized: normalizePath(path.relative(path.resolve(ctx.out), target)), target };
 }
 
-const LOCALE_TAG = /^[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*$/;
-
-function validLocaleTag(value: unknown): value is string {
-  return typeof value === 'string' && LOCALE_TAG.test(value);
-}
-
-function configuredThemeName(config: Record<string, any>): string {
-  const value = config.theme?.name;
-  if (value === undefined || value === null || value === '') return 'default';
-  if (typeof value !== 'string' || !value || value === '.' || value === '..' || /[\\/\u0000-\u001f\u007f-\u009f:]/.test(value) || /[. ]$/.test(value)) {
-    throw new Error('config.yml: theme.name must name one safe theme directory');
-  }
-  return value;
-}
-
 function configuredNavigation(config: Record<string, any>): Record<string, any> {
-  if (isRecord(config.navigation)) return config.navigation;
-  return isRecord(config.theme?.nav) ? config.theme.nav : {};
-}
-
-function configuredStaticDirectory(config: Record<string, any>): string {
-  const deployment = config.deployment && typeof config.deployment === 'object' && !Array.isArray(config.deployment) ? config.deployment : {};
-  const sites = deployment.openaiSites && typeof deployment.openaiSites === 'object' && !Array.isArray(deployment.openaiSites) ? deployment.openaiSites : {};
-  // `deployment.staticDirectory` is the mixed deployment setting. Keep the
-  // OpenAI Sites value as a compatibility fallback for existing projects.
-  const value = Object.prototype.hasOwnProperty.call(deployment, 'staticDirectory')
-    ? deployment.staticDirectory
-    : sites.staticDirectory;
-  if (value === undefined || value === null || value === '') return '';
-  const label = Object.prototype.hasOwnProperty.call(deployment, 'staticDirectory')
-    ? 'config.yml: deployment.staticDirectory'
-    : 'config.yml: deployment.openaiSites.staticDirectory';
-  const normalized = safeRelativePath(value, label, { rejectDoubleDot: true });
-  if (!normalized) throw new Error(`${label} must be a non-empty relative path`);
-  return normalized;
-}
-
-function hasOpenAiSitesDeployment(config: Record<string, any>): boolean {
-  const deployment = config.deployment && typeof config.deployment === 'object' && !Array.isArray(config.deployment) ? config.deployment : {};
-  return Boolean(deployment.openaiSites && typeof deployment.openaiSites === 'object' && !Array.isArray(deployment.openaiSites));
-}
-
-function configuredPublicDirectory(config: Record<string, any>): string {
-  if (config.deployment?.enabled === false) return '';
-  const configured = configuredStaticDirectory(config);
-  // A deployment must never expose the private build root as its public asset
-  // directory. The old OpenAI Sites `dist` setting needs migration.
-  if (configured.toLocaleLowerCase() === 'dist') {
-    throw new Error('config.yml: deployment.staticDirectory cannot use the private dist bundle root; choose "public" or another public subdirectory');
-  }
-  const directory = configured || 'public';
-  const first = directory.split('/')[0].toLocaleLowerCase();
-  if (new Set(['server', '_pagekiln', '.pagekiln', 'assets']).has(first)) {
-    throw new Error(`config.yml: deployment.staticDirectory cannot use reserved public directory "${directory}"`);
-  }
-  return directory;
-}
-
-function legacyDynamicRoutes(config: Record<string, any>): string[] {
-  const raw = config.deployment?.dynamicRoutes;
-  const values = Array.isArray(raw) ? raw : raw === undefined || raw === null ? [] : [raw];
-  const routes: string[] = [];
-  for (const value of values) {
-    const route = String(value || '').trim();
-    if (!route || !route.startsWith('/') || /[\u0000-\u001f\u007f-\u009f]/.test(route)) continue;
-    if (!routes.includes(route)) routes.push(route);
-  }
-  return routes;
+  return isRecord(config.navigation) ? config.navigation : {};
 }
 
 function versionedThemeAsset(relative: string, fingerprint: string) {
@@ -200,7 +82,13 @@ function nestedValue(value: unknown, key: string): unknown {
 }
 
 function localeCandidates(locale: string, fallbackLocale: string): string[] {
-  const values = [locale, locale.replaceAll('_', '-').split('-')[0], fallbackLocale, fallbackLocale.replaceAll('_', '-').split('-')[0]];
+  const values = [
+    locale,
+    locale.replaceAll('_', '-').split('-')[0],
+    fallbackLocale,
+    fallbackLocale.replaceAll('_', '-').split('-')[0],
+    'en'
+  ];
   return [...new Set(values.filter(Boolean))];
 }
 
@@ -245,8 +133,12 @@ function themeText(ctx: BuildContext, locale: string, key: string, fallback: str
   return value === undefined || value === null || value === '' || typeof value === 'object' ? fallback : String(value);
 }
 
+function interpolateMessage(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{([A-Za-z0-9_.-]+)\}/g, (_match, key: string) => values[key] === undefined ? '' : String(values[key]));
+}
+
 /**
- * Read a locale-keyed copy override from a plugin instance in theme.yml.
+ * Read a locale-keyed copy override from a plugin instance file.
  * Fallback values are merged first, so a new locale can override only the
  * labels it has translated while the remaining labels stay usable.
  */
@@ -266,61 +158,33 @@ function themePluginText(ctx: BuildContext, pluginName: string, locale: string, 
   return value === undefined || value === null || value === '' || typeof value === 'object' ? undefined : String(value);
 }
 
-const DEFAULT_LANGUAGE_NAMES: Record<string, string> = {
-  'zh-sg': '简体中文',
-  'zh-tw': '繁體中文',
-  'zh-cn': '简体中文',
-  'zh-hans': '简体中文',
-  'zh-hant': '繁體中文',
-  en: 'English'
-};
-
-function languageDisplayName(ctx: BuildContext, _locale: string, candidate: string): string {
+function languageDisplayName(ctx: BuildContext, locale: string, candidate: string): string {
   const localeData = ctx.themeI18n?.locales && typeof ctx.themeI18n.locales === 'object' ? ctx.themeI18n.locales[candidate] : undefined;
   const ownLabel = localeData && typeof localeData === 'object' ? (localeData.label || localeData.name) : localeData;
-  const normalized = candidate.toLowerCase().replaceAll('_', '-');
-  return ownLabel ? String(ownLabel) : DEFAULT_LANGUAGE_NAMES[candidate] || DEFAULT_LANGUAGE_NAMES[normalized] || candidate;
+  const translated = themeText(ctx, locale, `languageNames.${candidate}`, '');
+  return translated || (ownLabel ? String(ownLabel) : candidate);
 }
 
-function collectionKey(collection: string, locale: string) { return `${collection}:${locale}`; }
-function translationKey(collection: string, id: string) { return `${collection}:${id}`; }
-function documentKey(doc: Pick<Document, 'collection' | 'id' | 'locale'>) { return `${doc.collection}:${doc.id}:${doc.locale}`; }
-
-function formatDate(value: string | undefined, locale: string): string {
+function formatDate(value: string | undefined, locale: string, dateLocale = locale): string {
   if (!value) return '';
-  const date = new Date(value);
+  const raw = value.trim();
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+  const date = new Date(raw);
   if (Number.isNaN(date.valueOf())) return escapeHtml(value);
-  try { return escapeHtml(new Intl.DateTimeFormat(locale, { dateStyle: 'long' }).format(date)); }
+  try {
+    const options: Intl.DateTimeFormatOptions = dateOnly ? { dateStyle: 'long', timeZone: 'UTC' } : { dateStyle: 'long' };
+    return escapeHtml(new Intl.DateTimeFormat(dateLocale, options).format(date));
+  }
   catch { return escapeHtml(date.toISOString().slice(0, 10)); }
 }
 
-/**
- * Return a timestamp only for an ISO-shaped, calendar-valid publication date.
- * A bad date must never sort ahead of a real article or silently become a
- * different day through JavaScript's date normalisation.
- */
-function publicationTimestamp(value: unknown): number | undefined {
-  const raw = typeof value === 'string' ? value.trim() : '';
-  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/.exec(raw);
-  if (!match) return undefined;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const calendar = new Date(Date.UTC(year, month - 1, day));
-  if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day) return undefined;
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.valueOf()) ? undefined : parsed.valueOf();
+function dateLocaleFor(ctx: BuildContext, locale: string): string {
+  const value = ctx.themeI18n.locales?.[locale]?.dateLocale;
+  return typeof value === 'string' && value ? value : locale;
 }
 
-/** Sort valid publications newest-first and make same-day order deterministic. */
-function comparePublicationOrder(left: Pick<Document, 'id' | 'date'>, right: Pick<Document, 'id' | 'date'>): number {
-  const leftTime = publicationTimestamp(left.date);
-  const rightTime = publicationTimestamp(right.date);
-  if (leftTime === undefined && rightTime !== undefined) return 1;
-  if (leftTime !== undefined && rightTime === undefined) return -1;
-  if (leftTime !== undefined && rightTime !== undefined && leftTime !== rightTime) return rightTime - leftTime;
-  return left.id.localeCompare(right.id);
-}
+/** Sort and validate publication/modification timestamps consistently. */
+const publicationTimestamp = parseIsoTimestamp;
 
 /**
  * Resolve a cover or social image to a safe public URL. Bare asset paths are
@@ -384,218 +248,23 @@ function normalizeThemeResources(value: unknown): ThemeResources {
   };
 }
 
-function legacyThemeResources(theme: Record<string, any>): ThemeResources {
-  const styles = Array.isArray(theme.styles) ? theme.styles : theme.style ? [theme.style] : [];
-  return { styles: themeResourceList(styles), scripts: themeResourceList(theme.scripts) };
-}
-
-function isRecord(value: unknown): value is Record<string, any> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
-
-function normalizeThemePlugin(value: unknown, legacy: unknown): ThemePluginDefinition & Record<string, any> {
+function normalizeThemePlugin(value: unknown): ThemePluginDefinition & Record<string, any> {
   const source = isRecord(value) ? value : {};
-  const old = isRecord(legacy) ? legacy : {};
-  const sourceResources = source.resources === undefined ? undefined : normalizeThemeResources(source.resources);
-  const legacyResources = old.resources === undefined ? undefined : normalizeThemeResources(old.resources);
-  const resources = sourceResources || {
-    styles: legacyResources?.styles || [],
-    scripts: legacyResources?.scripts || (old.script ? themeResourceList([old.script]) : [])
-  };
-  const defaults = {
-    ...(isRecord(old.defaults) ? old.defaults : {}),
-    ...(isRecord(source.defaults) ? source.defaults : {})
-  };
-  const legacyDefinition = {
-    ...(typeof old.implementation === 'string' ? { implementation: old.implementation } : {}),
-    ...(old.resources !== undefined ? { resources: legacyResources } : {}),
-    ...(old.i18n !== undefined ? { i18n: old.i18n } : {}),
-    ...(old.schema !== undefined ? { schema: old.schema } : {}),
-    ...(old.enabled !== undefined ? { enabled: old.enabled } : {}),
-    ...(Object.keys(defaults).length ? { defaults } : {})
-  };
   return {
-    ...legacyDefinition,
     ...source,
-    resources,
-    ...(Object.keys(defaults).length ? { defaults } : {})
+    ...(source.resources !== undefined ? { resources: normalizeThemeResources(source.resources) } : {})
   };
 }
 
-function normalizeThemeDefinition(value: PageskillTheme, legacy: Record<string, any>): PageskillTheme {
-  const legacyResources = legacyThemeResources(legacy);
-  const moduleResources = value.resources === undefined ? undefined : normalizeThemeResources(value.resources);
-  const resources = moduleResources || legacyResources;
-  const legacyPlugins = isRecord(legacy.plugins) ? legacy.plugins : {};
+function normalizeThemeDefinition(value: PageskillTheme): PageskillTheme {
+  const resources = value.resources === undefined ? undefined : normalizeThemeResources(value.resources);
   const modulePlugins = isRecord(value.plugins) ? value.plugins : {};
-  const plugins = Object.fromEntries([...new Set([...Object.keys(legacyPlugins), ...Object.keys(modulePlugins)])]
-    .map(name => [name, normalizeThemePlugin(modulePlugins[name], legacyPlugins[name])]));
-  const i18n = value.i18n !== undefined ? value.i18n : legacy.i18n;
+  const plugins = Object.fromEntries(Object.keys(modulePlugins).map(name => [name, normalizeThemePlugin(modulePlugins[name])]));
   return {
     ...value,
-    name: value.name || legacy.name,
-    resources,
-    plugins,
-    ...(i18n !== undefined ? { i18n } : {}),
-    ...(value.defaults ? { defaults: value.defaults } : {})
+    ...(resources ? { resources } : {}),
+    plugins
   };
-}
-
-function legacyThemePluginSettings(config: Record<string, any>, name: string): Record<string, any> {
-  if (name === 'language') return {};
-  const values: Record<string, any> = {};
-  const legacyPlugins = isRecord(config.plugins) ? config.plugins : {};
-  if (isRecord(legacyPlugins[name])) {
-    const legacySettings = { ...legacyPlugins[name] };
-    // Provider instances and trusted script sources belong to theme.yml. Keep
-    // the old config path readable for non-executable legacy options, but do
-    // not let site config smuggle integration code into the privacy plugin.
-    if (name === 'privacyConsent') {
-      delete legacySettings.integrations;
-      delete legacySettings.gatedScripts;
-    }
-    Object.assign(values, legacySettings);
-  }
-  if (name === 'search' && isRecord(config.search)) Object.assign(values, config.search);
-  if (name === 'privacyConsent' && isRecord(config.privacy?.cookieConsent)) {
-    const { policyRoute: _policyRoute, agentRoute: _agentRoute, integrations: _integrations, gatedScripts: _gatedScripts, ...settings } = config.privacy.cookieConsent;
-    Object.assign(values, settings);
-  }
-  return values;
-}
-
-// These aliases only migrate the pre-3.0.2 object-shaped setting. New theme
-// files use the provider names and identifiers from each provider's own web
-// integration contract, so an account-specific value is never confused with
-// a Pageskill-generated ID.
-const PRIVACY_PROVIDER_ALIASES: Record<string, string> = {
-  googleAnalytics: 'google-analytics',
-  'google-analytics': 'google-analytics',
-  googleAds: 'google-ads',
-  'google-ads': 'google-ads',
-  cloudflareWebAnalytics: 'cloudflare-web-analytics',
-  'cloudflare-web-analytics': 'cloudflare-web-analytics',
-  baiduTongji: 'baidu-tongji',
-  'baidu-tongji': 'baidu-tongji',
-  x: 'x-for-websites',
-  'x-for-websites': 'x-for-websites',
-  recaptcha: 'recaptcha',
-  hcaptcha: 'hcaptcha',
-  turnstile: 'turnstile'
-};
-
-// Consent purposes describe the real reason a provider can make a request.
-// They are code-owned vocabulary, not account IDs invented in theme.yml.
-const PRIVACY_PURPOSE_ALIASES: Record<string, string> = {
-  essential: 'essential',
-  measurement: 'measurement',
-  analytics: 'measurement',
-  advertising: 'advertising',
-  security: 'fraud-prevention',
-  'fraud-prevention': 'fraud-prevention',
-  'fraud_prevention': 'fraud-prevention',
-  social: 'social-embedding',
-  'social-embedding': 'social-embedding',
-  'social_embed': 'social-embedding'
-};
-
-function canonicalPrivacyPurpose(value: unknown): string {
-  const source = String(value || '').trim().toLowerCase();
-  if (!source) return '';
-  const alias = PRIVACY_PURPOSE_ALIASES[source];
-  if (alias) return alias;
-  // Custom purposes are allowed for third-party modules, but only a matching
-  // category and a registered provider can make one active.
-  return source.replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
-}
-
-// Each built-in adapter maps to a documented web-service purpose.  A theme
-// may choose a more specific registered purpose, but it cannot make an
-// unregistered provider execute merely by adding an arbitrary field.
-const PRIVACY_PROVIDER_DEFINITIONS: Record<string, { field?: string; defaultPurpose: string }> = {
-  'google-analytics': { field: 'measurementId', defaultPurpose: 'measurement' },
-  'google-ads': { field: 'tagId', defaultPurpose: 'advertising' },
-  'cloudflare-web-analytics': { field: 'token', defaultPurpose: 'measurement' },
-  'baidu-tongji': { field: 'siteSignature', defaultPurpose: 'measurement' },
-  recaptcha: { field: 'siteKey', defaultPurpose: 'fraud-prevention' },
-  hcaptcha: { field: 'siteKey', defaultPurpose: 'fraud-prevention' },
-  turnstile: { field: 'siteKey', defaultPurpose: 'fraud-prevention' },
-  'x-for-websites': { defaultPurpose: 'social-embedding' }
-};
-
-function canonicalPrivacyProvider(value: unknown): string {
-  const source = String(value || '').trim();
-  if (!source) return '';
-  const alias = PRIVACY_PROVIDER_ALIASES[source] || PRIVACY_PROVIDER_ALIASES[source.toLowerCase()];
-  if (alias) return alias;
-  // Unknown providers remain inert data until a theme module registers them.
-  return source.toLowerCase().replace(/[^a-z0-9.-]+/g, '-').replace(/^-|-$/g, '');
-}
-
-function normalizePrivacyIntegrations(value: unknown): Array<Record<string, any>> {
-  const normalize = (raw: unknown, fallbackProvider = ''): Record<string, any> | null => {
-    if (!isRecord(raw)) return null;
-    const candidate = raw.provider === 'captcha' ? raw.platform : raw.provider || raw.platform || fallbackProvider;
-    const provider = canonicalPrivacyProvider(candidate);
-    if (!provider) return null;
-    const normalized: Record<string, any> = { ...raw, provider };
-    const purpose = canonicalPrivacyPurpose(raw.purpose ?? raw.category);
-    if (purpose) normalized.purpose = purpose;
-    delete normalized.category;
-    // Preserve the old object-shaped configuration during migration while
-    // translating names that had been too generic for the real web contract.
-    if (provider === 'google-ads') {
-      if (normalized.tagId === undefined && normalized.conversionId !== undefined) normalized.tagId = normalized.conversionId;
-      delete normalized.conversionId;
-    }
-    if (provider === 'baidu-tongji') {
-      if (normalized.siteSignature === undefined && normalized.siteId !== undefined) normalized.siteSignature = normalized.siteId;
-      delete normalized.siteId;
-    }
-    if (provider === 'recaptcha' || provider === 'hcaptcha' || provider === 'turnstile') delete normalized.platform;
-    return normalized;
-  };
-  if (Array.isArray(value)) return value.map(entry => normalize(entry)).filter(Boolean) as Array<Record<string, any>>;
-  if (!isRecord(value)) return [];
-  const entries: Array<Record<string, any>> = [];
-  for (const [legacyProvider, raw] of Object.entries(value)) {
-    if (legacyProvider === 'captcha' && Array.isArray(raw)) {
-      raw.forEach(entry => {
-        const normalized = normalize(entry, isRecord(entry) ? entry.platform : '');
-        if (normalized) entries.push(normalized);
-      });
-      continue;
-    }
-    const normalized = normalize(raw, legacyProvider);
-    if (normalized) entries.push(normalized);
-  }
-  return entries;
-}
-
-function normalizePrivacyPluginSettings(settings: Record<string, any>): Record<string, any> {
-  const normalized: Record<string, any> = { ...settings };
-  if (settings.categories !== undefined && Array.isArray(settings.categories)) {
-    normalized.categories = settings.categories.map((raw: unknown) => {
-      if (!isRecord(raw)) return raw;
-      const purpose = canonicalPrivacyPurpose(raw.purpose ?? raw.id);
-      const category = { ...raw };
-      if (purpose) category.purpose = purpose;
-      delete category.id;
-      return category;
-    });
-  }
-  if (settings.gatedScripts !== undefined && Array.isArray(settings.gatedScripts)) {
-    normalized.gatedScripts = settings.gatedScripts.map((raw: unknown) => {
-      if (!isRecord(raw)) return raw;
-      const purpose = canonicalPrivacyPurpose(raw.purpose ?? raw.category);
-      const script = { ...raw };
-      if (purpose) script.purpose = purpose;
-      delete script.category;
-      return script;
-    });
-  }
-  if (settings.integrations !== undefined) normalized.integrations = normalizePrivacyIntegrations(settings.integrations);
-  return normalized;
 }
 
 function themeOptionValueMatches(value: unknown, type: ThemeOptionSchema['type']): boolean {
@@ -613,6 +282,12 @@ function validateThemeOption(value: unknown, schema: ThemeOptionSchema, label: s
   if (schema.type === 'number') {
     if (schema.min !== undefined && (value as number) < schema.min) throw new Error(`${label} must be at least ${schema.min}`);
     if (schema.max !== undefined && (value as number) > schema.max) throw new Error(`${label} must be at most ${schema.max}`);
+  }
+  if (schema.type === 'string' && schema.pattern) {
+    let pattern: RegExp;
+    try { pattern = new RegExp(schema.pattern); }
+    catch { throw new Error(`${label} has an invalid validation pattern`); }
+    if (!pattern.test(value as string)) throw new Error(`${label} has an invalid format`);
   }
   if (schema.type === 'array' && schema.items) {
     (value as unknown[]).forEach((entry, index) => validateThemeOption(entry, schema.items!, `${label}[${index}]`));
@@ -642,25 +317,26 @@ function validateThemePluginSettings(settings: Record<string, any>, schema: Reco
   }
 }
 
-function normalizeThemeConfig(config: Record<string, any>, theme: Record<string, any>, definition: PageskillTheme, themeName: string): Record<string, any> {
+function normalizeThemeConfig(theme: Record<string, any>, definition: PageskillTheme, sourceLabel = 'theme.config'): Record<string, any> {
+  for (const key of Object.keys(theme)) if (key !== 'plugins') {
+    throw new Error(`${sourceLabel}: ${key} is not supported as a theme instance section; use plugin options under plugins`);
+  }
   const configuredPlugins = theme.plugins === undefined ? {} : theme.plugins;
-  if (!isRecord(configuredPlugins)) throw new Error(`themes/${themeName}/theme.yml: plugins must be a mapping`);
+  if (!isRecord(configuredPlugins)) throw new Error(`${sourceLabel}: plugins must be a mapping`);
   const definitions = definition.plugins || {};
   for (const name of Object.keys(configuredPlugins)) {
     if (name === 'language') continue;
-    if (!definitions[name]) throw new Error(`themes/${themeName}/theme.yml: plugins.${name} is not declared by the theme entry`);
-    if (!isRecord(configuredPlugins[name])) throw new Error(`themes/${themeName}/theme.yml: plugins.${name} must be a mapping`);
+    if (!definitions[name]) throw new Error(`${sourceLabel}: plugins.${name} is not declared by the theme entry`);
+    if (!isRecord(configuredPlugins[name])) throw new Error(`${sourceLabel}: plugins.${name} must be a mapping`);
   }
   const plugins: Record<string, any> = {};
   for (const [name, plugin] of Object.entries(definitions)) {
     const schema = plugin.schema || {};
     const defaults = isRecord(plugin.defaults) ? cloneThemeValue(plugin.defaults) : {};
-    const legacy = legacyThemePluginSettings(config, name);
     const configured = name === 'language' ? {} : isRecord(configuredPlugins[name]) ? configuredPlugins[name] : {};
-    const mergedSettings = { ...defaults, ...legacy, ...configured };
-    const settings = name === 'privacyConsent' ? normalizePrivacyPluginSettings(mergedSettings) : mergedSettings;
-    validateThemePluginSettings(settings, schema, `themes/${themeName}/theme.yml: plugins.${name}`);
-    plugins[name] = settings;
+    const mergedSettings = mergeConfig(defaults, configured);
+    validateThemePluginSettings(mergedSettings, schema, `${sourceLabel}: plugins.${name}`);
+    plugins[name] = mergedSettings;
   }
   return { plugins };
 }
@@ -741,16 +417,7 @@ function validateThemeResources(themeRoot: string, definition: PageskillTheme): 
     for (const pathValue of [...(resources?.styles || []), ...(resources?.scripts || [])]) validateThemeResourcePath(themeRoot, pathValue, label);
   };
   checkResources(definition.resources, 'theme resource path');
-  for (const [name, plugin] of Object.entries(definition.plugins || {})) {
-    checkResources(plugin.resources, `theme plugin ${name} resource path`);
-    const gatedScripts = plugin.defaults?.gatedScripts;
-    if (Array.isArray(gatedScripts)) for (const entry of gatedScripts) {
-      const source = typeof entry === 'string' ? entry : entry?.src || entry?.source;
-      if (typeof source === 'string' && !source.startsWith('/') && !/^https?:\/\//i.test(source)) {
-        validateThemeResourcePath(themeRoot, source, `theme plugin ${name} gated script path`);
-      }
-    }
-  }
+  for (const [name, plugin] of Object.entries(definition.plugins || {})) checkResources(plugin.resources, `theme plugin ${name} resource path`);
   for (const pattern of Object.values(definition.patterns)) checkResources(pattern.resources, `Pattern ${pattern.name} resource path`);
   for (const block of Object.values(definition.blocks)) checkResources(block.resources, `Block ${block.name} resource path`);
   for (const { owner, source } of themeI18nSources(definition)) {
@@ -760,10 +427,8 @@ function validateThemeResources(themeRoot: string, definition: PageskillTheme): 
 }
 
 /**
- * Resource access stays behind the normalized theme definition.  The YAML
- * shape is still accepted by normalizeThemeDefinition for existing sites, but
- * the renderer and asset copier no longer need to know about its parallel
- * style/script/pattern maps.
+ * Resource access stays behind the normalized, code-owned theme definition;
+ * the renderer and asset copier do not maintain a second package registry.
  */
 function themeResources(ctx: BuildContext): ThemeResources {
   return ctx.themeDefinition.resources || {};
@@ -822,26 +487,6 @@ function emptyChromeSlot(): ThemeChromeConfig['navigation'] {
   return { enabled: false, before: [], after: [] };
 }
 
-function chromeLabel(item: Record<string, any>, locale: string): string {
-  const labels = isRecord(item.labels) ? item.labels : {};
-  const candidates = [...new Set([locale, locale.replace('_', '-'), locale.split(/[-_]/)[0], 'en'])];
-  for (const candidate of candidates) {
-    if (typeof labels[candidate] === 'string' && labels[candidate].trim()) return labels[candidate].trim().slice(0, MAX_CHROME_LABEL_LENGTH);
-  }
-  return typeof item.label === 'string' ? item.label.trim().slice(0, MAX_CHROME_LABEL_LENGTH) : '';
-}
-
-function chromeHref(ctx: BuildContext, value: unknown, locale: string): string {
-  if (typeof value !== 'string') return '';
-  const raw = value.trim();
-  if (!raw || raw.length > MAX_CHROME_HREF_LENGTH || raw.startsWith('//') || raw.includes('\\') || /[\u0000-\u001f\u007f-\u009f]/.test(raw)) return '';
-  let decoded = raw;
-  try { decoded = decodeURIComponent(raw); } catch { return ''; }
-  if (decoded.includes('\\') || decoded.split('/').some(part => part === '..') || /[\u0000-\u001f\u007f-\u009f]/.test(decoded)) return '';
-  const href = raw.replaceAll(':locale', locale);
-  return safeUrl(href) === '#' ? '' : href;
-}
-
 function configuredChromeSlot(ctx: BuildContext, doc: Document, currentRoute: string, regionName: 'navigation' | 'footer'): ThemeChromeConfig['navigation'] {
   const settings = themePluginSettings(ctx, 'chrome');
   const region = isRecord(settings[regionName]) ? settings[regionName] : {};
@@ -851,11 +496,18 @@ function configuredChromeSlot(ctx: BuildContext, doc: Document, currentRoute: st
     const values = Array.isArray(region[slot]) ? region[slot] : [];
     return values.slice(0, MAX_CHROME_LINKS).map((item: unknown) => {
       if (!isRecord(item)) return null;
-      const label = chromeLabel(item, doc.locale);
-      const href = chromeHref(ctx, item.href, doc.locale);
-      if (!label || !href) return null;
-      return { label, href, current: href === currentRoute };
-    }).filter(Boolean) as ThemeChromeLink[];
+      try {
+        return resolveSiteLinks([item], {
+          locale: doc.locale,
+          fallbackLocale: fallbackLocaleFor(ctx),
+          currentPath: currentRoute,
+          namespace: regionName,
+          translate: (key, fallback) => themeText(ctx, doc.locale, key, fallback)
+        })[0] || null;
+      } catch {
+        return null;
+      }
+    }).filter(Boolean).map(link => ({ ...link, label: link!.label.slice(0, MAX_CHROME_LABEL_LENGTH), href: link!.href.slice(0, MAX_CHROME_HREF_LENGTH) })) as ThemeChromeLink[];
   };
   return { enabled: true, before: links('before'), after: links('after') };
 }
@@ -866,16 +518,6 @@ function configuredChrome(ctx: BuildContext, doc: Document, currentRoute: string
     navigation: configuredChromeSlot(ctx, doc, currentRoute, 'navigation'),
     footer: configuredChromeSlot(ctx, doc, currentRoute, 'footer')
   };
-}
-
-function gatedScriptResourcePaths(ctx: BuildContext): string[] {
-  const settings = cookieConsentSettings(ctx);
-  if (!Array.isArray(settings.gatedScripts)) return [];
-  return [...new Set(settings.gatedScripts.map((entry: any) => {
-    const source = typeof entry === 'string' ? entry : entry?.src || entry?.source;
-    if (typeof source !== 'string' || !source || source.startsWith('/') || /^https?:\/\//i.test(source)) return '';
-    return safeRelativePath(source, 'trusted gated script path');
-  }).filter(Boolean))];
 }
 
 function moduleGenerationSpecifier(specifier: string, generation: string): string {
@@ -902,13 +544,13 @@ function rewriteThemeModuleImports(source: string, sourceFile: string, sourceRoo
 }
 
 async function importThemeModule(candidate: string, root: string, themeRoot: string, themeName: string, generation: string): Promise<any> {
-  const runtimeRoot = path.join(root, '.pagekiln', 'theme-runtime');
+  const runtimeRoot = path.join(root, '.pageskill', 'theme-runtime');
   const runtimeThemeRoot = path.join(runtimeRoot, 'themes', themeName);
   // Preserve the compiled runtime tree inside the generation directory. This
   // matters for imports from themes/* into src/*: keeping only the theme
   // subtree would leave those nested ESM dependencies in the old cache root.
   const sourceRoot = pathIsWithin(runtimeThemeRoot, candidate) ? runtimeRoot : themeRoot;
-  const generationRoot = path.join(root, '.pagekiln', 'theme-generations', `${themeName}-${generation}`);
+  const generationRoot = path.join(root, '.pageskill', 'theme-generations', `${themeName}-${generation}`);
   const relativeCandidate = path.relative(sourceRoot, candidate);
   if (!relativeCandidate || relativeCandidate.startsWith('..') || path.isAbsolute(relativeCandidate)) {
     throw new Error(`theme module ${normalizePath(path.relative(root, candidate))} is outside its module root`);
@@ -932,24 +574,20 @@ async function importThemeModule(candidate: string, root: string, themeRoot: str
   return import(`${pathToFileURL(cachedCandidate).href}?pageskill=${generation}`);
 }
 
-async function loadThemeDefinition(root: string, themeName: string, theme: Record<string, any>, fingerprint: string, generation: string): Promise<PageskillTheme> {
+async function loadThemeDefinition(root: string, themeName: string, generation: string): Promise<PageskillTheme> {
   const themeRoot = containedPath(path.join(root, 'themes'), themeName, 'theme directory');
-  const configuredEntry = safeRelativePath(theme.module || theme.entry || 'index.ts', 'theme module path');
+  const configuredEntry = 'index.ts';
   const compiledEntries = [
     configuredEntry.endsWith('.ts') ? configuredEntry.replace(/\.ts$/, '.js') : '',
     configuredEntry.endsWith('.ts') ? configuredEntry.replace(/\.ts$/, '.mjs') : ''
   ].filter(Boolean);
   const sourceCandidates = [
     containedPath(themeRoot, configuredEntry, 'theme module path'),
-    ...compiledEntries.map(entry => containedPath(themeRoot, entry, 'compiled theme module path')),
-    // Compatibility for pre-entry themes. New themes have only index.ts.
-    ...(configuredEntry === 'index.ts' ? [containedPath(themeRoot, 'theme.ts', 'legacy theme module path')] : []),
-    containedPath(themeRoot, 'theme.js', 'theme module path'),
-    containedPath(themeRoot, 'theme.mjs', 'theme module path')
+    ...compiledEntries.map(entry => containedPath(themeRoot, entry, 'compiled theme module path'))
   ];
   const runtimeCandidates = sourceCandidates
     .filter(file => file.endsWith('.ts'))
-    .map(file => path.join(root, '.pagekiln', 'theme-runtime', path.relative(root, file).replace(/\.ts$/, '.js')));
+    .map(file => path.join(root, '.pageskill', 'theme-runtime', path.relative(root, file).replace(/\.ts$/, '.js')));
   const candidates = [...runtimeCandidates, ...sourceCandidates];
   for (const candidate of candidates) {
     try {
@@ -957,7 +595,7 @@ async function loadThemeDefinition(root: string, themeName: string, theme: Recor
       const module = await importThemeModule(candidate, root, themeRoot, themeName, generation);
       const definition = module.default || module.theme;
       if (definition?.patterns && definition?.blocks) {
-        const normalized = normalizeThemeDefinition(definition as PageskillTheme, theme);
+        const normalized = normalizeThemeDefinition(definition as PageskillTheme);
         validateThemeResources(themeRoot, normalized);
         return normalized;
       }
@@ -970,82 +608,6 @@ async function loadThemeDefinition(root: string, themeName: string, theme: Recor
     }
   }
   throw new Error(`theme "${themeName}" has no module; add themes/${themeName}/index.ts exporting defineTheme(...)`);
-}
-
-function splitMoreMarker(body: string): { markdown: string; excerpt: string } {
-  const marker = /(?:^|\n)\s*(?:<more>|<!--\s*more\s*-->)\s*(?=\n|$)/i;
-  const match = marker.exec(body.replaceAll('\r', ''));
-  if (!match || match.index < 0) return { markdown: body, excerpt: body.trim() };
-  const before = body.slice(0, match.index + (match[0].startsWith('\n') ? 1 : 0));
-  return { markdown: body.replace(match[0], '\n'), excerpt: before.trim() };
-}
-
-function assertConfigSurface(config: Record<string, any>) {
-  if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('config.yml must contain a mapping');
-  const forbidden = new Set(['css', 'style', 'styles', 'script', 'scripts', 'gatedscripts', 'html', 'rawhtml', 'unsafehtml']);
-  const visit = (value: unknown, trail: string): void => {
-    if (!value || typeof value !== 'object') return;
-    if (Array.isArray(value)) { value.forEach((entry, index) => visit(entry, trail + '[' + index + ']')); return; }
-    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-      if (forbidden.has(key.toLocaleLowerCase())) throw new Error('config.yml:1:1: "' + trail + '.' + key + '" is not a site/plugin setting; declare visual resources and trusted renderers in themes/<name>/index.ts');
-      visit(child, trail + '.' + key);
-    }
-  };
-  visit(config, 'config');
-
-  const defaultLocale = config.defaultLocale ?? 'en';
-  if (!validLocaleTag(defaultLocale)) throw new Error('config.yml: defaultLocale must be a valid locale tag');
-  const activeLocales = config.activeLocales === undefined ? [defaultLocale] : config.activeLocales;
-  if (!Array.isArray(activeLocales) || activeLocales.some(locale => !validLocaleTag(locale))) {
-    throw new Error('config.yml: activeLocales must contain valid locale tags');
-  }
-  configuredThemeName(config);
-  configuredStaticDirectory(config);
-  configuredPublicDirectory(config);
-}
-
-function parseFrontmatter(source: string, file: string) {
-  const lines = source.replaceAll('\r', '').split('\n');
-  if (lines[0] !== '---') {
-    const split = splitMoreMarker(source);
-    return { data: {}, body: split.markdown, excerpt: split.excerpt, bodyLine: 1 };
-  }
-  let closing = -1;
-  for (let index = 1; index < lines.length; index += 1) if (lines[index] === '---' || lines[index] === '...') { closing = index; break; }
-  if (closing < 0) throw new MarkdownError('unclosed YAML frontmatter; add a closing --- line', { file, line: 1, column: 1 });
-  try {
-    const split = splitMoreMarker(lines.slice(closing + 1).join('\n'));
-    return { data: parseYaml(lines.slice(1, closing).join('\n')), body: split.markdown, excerpt: split.excerpt, bodyLine: closing + 2 };
-  } catch (error) {
-    if (error instanceof YamlError) throw new MarkdownError(`invalid YAML frontmatter: ${error.message}`, { file, line: error.line + 1, column: error.column });
-    throw error;
-  }
-}
-
-function documentIdentity(root: string, file: string) {
-  const content = path.join(root, 'content');
-  const relative = normalizePath(path.relative(content, file));
-  const parts = relative.split('/');
-  const collection = parts.shift() || 'pages';
-  const filename = parts.pop() || '';
-  const extension = path.extname(filename);
-  const stem = filename.slice(0, -extension.length);
-  const localeMatch = stem.match(/^(?:index\.)?([A-Za-z]{2,}(?:-[A-Za-z0-9]+)?)$/);
-  const locale = localeMatch?.[1] || 'en';
-  const idParts = [...parts];
-  if (!localeMatch) idParts.push(stem);
-  let id = idParts.join('/') || 'home';
-  if (id === 'index') id = 'home';
-  return { collection, id, locale };
-}
-
-function defaultPattern(config: Record<string, any>, collection: string, id = '', patterns?: Record<string, any>): string {
-  const settings = config.content?.collections?.[collection];
-  const configured = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings.pattern : undefined;
-  if (collection === 'pages' && id === 'home' && patterns?.landing) return 'landing';
-  if (configured) return String(configured);
-  if (collection === 'posts' || settings?.contentType === 'post') return 'blog';
-  return 'document';
 }
 
 function cloneMarkdownNodes(nodes: MarkdownNode[], file: string): MarkdownNode[] {
@@ -1067,66 +629,6 @@ function parseDocumentNodes(ctx: BuildContext, doc: Document) {
   doc.directives = flattenDirectives(doc.nodes);
 }
 
-async function loadDocument(root: string, file: string, config: Record<string, any>, sourceCache?: Map<string, { data: Record<string, any>; body: string; excerpt: string; bodyLine: number }>, patterns?: Record<string, any>): Promise<Document> {
-  const [source, stat] = await Promise.all([fs.readFile(file, 'utf8'), fs.stat(file)]);
-  const identity = documentIdentity(root, file);
-  const hash = shortHash(source);
-  let frontmatter = sourceCache?.get(hash);
-  if (!frontmatter) {
-    frontmatter = parseFrontmatter(source, file);
-    if (sourceCache) {
-      if (sourceCache.size >= MAX_SOURCE_PARSE_CACHE) sourceCache.delete(sourceCache.keys().next().value as string);
-      sourceCache.set(hash, frontmatter as { data: Record<string, any>; body: string; excerpt: string; bodyLine: number });
-    }
-  }
-  const data = frontmatter.data as Record<string, any>;
-  return {
-    ...identity,
-    source: file,
-    title: String(data.title || identity.id),
-    description: String(data.description || ''),
-    pattern: String(data.pattern || defaultPattern(config, identity.collection, identity.id, patterns)),
-    date: data.date ? String(data.date) : undefined,
-    author: data.author ? String(data.author) : localizedValue(config.author, identity.locale, 'Site Owner'),
-    cover: data.cover ? String(data.cover) : undefined,
-    data,
-    markdown: frontmatter.body,
-    excerpt: frontmatter.excerpt,
-    bodyLine: frontmatter.bodyLine,
-    nodes: [],
-    directives: [],
-    dependencyKeys: [],
-    blockNames: [],
-    hash,
-    stat: { mtimeMs: stat.mtimeMs, size: stat.size }
-  };
-}
-
-function schemaType(value: unknown): string {
-  if (Array.isArray(value)) return 'array';
-  if (value === null) return 'null';
-  return typeof value;
-}
-
-function validateDocumentSchema(ctx: BuildContext, doc: Document) {
-  const schema = ctx.config.content?.collections?.[doc.collection]?.schema;
-  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return;
-  for (const [key, rawRule] of Object.entries(schema as Record<string, any>)) {
-    const rule = typeof rawRule === 'string' ? { type: rawRule, required: false } : rawRule || {};
-    const value = doc.data[key];
-    if (rule.required && (value === undefined || value === null || value === '')) {
-      ctx.diagnostics.push(`${doc.source}:1:1: frontmatter field "${key}" is required by collection "${doc.collection}"`);
-      continue;
-    }
-    if (value !== undefined && rule.type && schemaType(value) !== rule.type) {
-      ctx.diagnostics.push(`${doc.source}:1:1: frontmatter field "${key}" must be ${rule.type}; received ${schemaType(value)}`);
-    }
-  }
-  if (isPostCollection(ctx, doc.collection) && doc.data.date !== undefined && publicationTimestamp(doc.data.date) === undefined) {
-    ctx.diagnostics.push(`${doc.source}:1:1: frontmatter field "date" must be a valid ISO publication date (YYYY-MM-DD)`);
-  }
-}
-
 function dependenciesFor(ctx: BuildContext, doc: Document): string[] {
   const dependencies = new Set<string>([`translation:${doc.collection}:${doc.id}`]);
   const context = themeContextFor(ctx, doc);
@@ -1137,112 +639,7 @@ function dependenciesFor(ctx: BuildContext, doc: Document): string[] {
   return [...dependencies].sort();
 }
 
-function rebuildDocumentIndexes(ctx: BuildContext) {
-  ctx.collectionIndex.clear();
-  ctx.translationIndex.clear();
-  ctx.documentPositions.clear();
-  ctx.tagIndex.clear();
-  for (const doc of ctx.routes.values()) {
-    if (doc.source.startsWith('fallback:')) continue;
-    const key = translationKey(doc.collection, doc.id);
-    const translations = ctx.translationIndex.get(key) || [];
-    if (!translations.some(candidate => candidate.locale === doc.locale)) translations.push(doc);
-    ctx.translationIndex.set(key, translations);
-  }
-  for (const translations of ctx.translationIndex.values()) translations.sort((left, right) => left.locale.localeCompare(right.locale));
-  for (const doc of ctx.docs) {
-    const key = collectionKey(doc.collection, doc.locale);
-    ctx.collectionIndex.set(key, [...(ctx.collectionIndex.get(key) || []), doc]);
-    for (const tag of Array.isArray(doc.data.tags) ? doc.data.tags.map(String) : []) {
-      const tagKey = `${doc.collection}:${doc.locale}:${tag}`;
-      ctx.tagIndex.set(tagKey, [...(ctx.tagIndex.get(tagKey) || []), doc]);
-    }
-  }
-  for (const documents of ctx.collectionIndex.values()) {
-    documents.sort(comparePublicationOrder);
-    documents.forEach((doc, index) => ctx.documentPositions.set(documentKey(doc), index));
-  }
-}
-
-function documentOutputs(ctx: BuildContext, doc: Document): string[] {
-  const base = `${routeFor(ctx, doc).replace(/^\//, '')}index.html`;
-  return ctx.config.outputs?.markdownMirrors === true ? [base, `${routeFor(ctx, doc).replace(/^\//, '').replace(/\/$/, '')}.md`] : [base];
-}
-
 function slug(value: string) { return value.toLocaleLowerCase().normalize('NFKC').replace(/[^\p{Letter}\p{Number}\s-]/gu, '').trim().replace(/[\s_-]+/g, '-'); }
-const DEFAULT_POST_CATEGORY = 'uncategorized';
-function postCategory(doc: Pick<Document, 'collection' | 'data'>): string {
-  if (doc.collection !== 'posts') return '';
-  const value = doc.data?.category ?? doc.data?.type ?? '';
-  return String(value).trim().toLocaleLowerCase() || DEFAULT_POST_CATEGORY;
-}
-
-function contentViewSettings(ctx: BuildContext, name: string): Record<string, any> {
-  const value = ctx.config.content?.views?.[name];
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function viewForDocument(ctx: BuildContext, doc: Pick<Document, 'collection' | 'data'>): { name: string; settings: Record<string, any> } | undefined {
-  const views = ctx.config.content?.views;
-  if (!views || typeof views !== 'object' || Array.isArray(views)) return undefined;
-  for (const [name, raw] of Object.entries(views)) {
-    const settings = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, any> : {};
-    if (String(settings.collection || name) !== doc.collection) continue;
-    if (settings.category !== undefined && postCategory(doc) !== String(settings.category).trim().toLocaleLowerCase()) continue;
-    return { name, settings };
-  }
-  return undefined;
-}
-
-function documentViewCollection(ctx: BuildContext, doc: Pick<Document, 'collection' | 'data'>): string {
-  return viewForDocument(ctx, doc)?.name || doc.collection;
-}
-
-function sourceDocuments(ctx: BuildContext): Document[] {
-  return ctx.routes.size ? [...ctx.routes.values()] : ctx.docs;
-}
-
-function documentsForCollection(ctx: BuildContext, collection: string, locale: string): Document[] {
-  const viewSettings = contentViewSettings(ctx, collection);
-  const sourceCollection = String(viewSettings.collection || collection);
-  const viewCategory = viewSettings.category === undefined ? undefined : String(viewSettings.category).trim().toLocaleLowerCase();
-  const documents = sourceDocuments(ctx).filter(doc => {
-    if (doc.locale !== locale || doc.collection !== sourceCollection) return false;
-    if (viewCategory !== undefined) return postCategory(doc) === viewCategory;
-    if (collection === sourceCollection && sourceCollection === 'posts') return !viewForDocument(ctx, doc);
-    return true;
-  });
-  return documents.sort(comparePublicationOrder);
-}
-
-function routeFor(ctx: BuildContext, doc: Document): string {
-  if (doc.data?.route) return String(doc.data.route).replace(':locale', doc.locale).replace(/\/+/g, '/').replace(/([^:])\/\//g, '$1/');
-  const view = viewForDocument(ctx, doc);
-  const routeConfig = view?.settings.route || ctx.config.content?.collections?.[doc.collection]?.route || '/:locale/:id/';
-  return String(routeConfig).replace(':locale', doc.locale).replace(':id', doc.id === 'home' ? '' : doc.id).replace(/\/+/g, '/').replace(/([^:])\/\//g, '$1/');
-}
-
-function blogRelationsFor(ctx: BuildContext, doc: Document): string {
-  const posts = documentsForCollection(ctx, documentViewCollection(ctx, doc), doc.locale);
-  const index = posts.findIndex(candidate => candidate.id === doc.id && candidate.locale === doc.locale);
-  const newer = index > 0 ? posts[index - 1] : undefined;
-  const older = index >= 0 && index + 1 < posts.length ? posts[index + 1] : undefined;
-  const tags = Array.isArray(doc.data.tags) ? doc.data.tags.map(String) : [];
-  const related: Document[] = [];
-  const candidates = tags.length
-    ? tags.flatMap(tag => (ctx.tagIndex.get(`${doc.collection}:${doc.locale}:${tag}`) || []).filter(candidate => documentViewCollection(ctx, candidate) === documentViewCollection(ctx, doc)))
-    : [posts[index - 1], posts[index + 1], posts[0], posts[1], posts[2], posts[3]];
-  for (const candidate of candidates) if (candidate && candidate.id !== doc.id && !related.some(entry => entry.id === candidate.id)) {
-    related.push(candidate);
-    if (related.length === 3) break;
-  }
-  const relationLink = (label: string, candidate: Document | undefined) => candidate ? `<a class="post-pagination-link" href="${safeUrl(routeFor(ctx, candidate))}" aria-label="${escapeHtml(`${label}: ${candidate.title}`)}"><span class="post-pagination-label">${escapeHtml(label)}</span><strong>${escapeHtml(candidate.title)}</strong></a>` : '';
-  const previousLabel = themeText(ctx, doc.locale, 'previous', 'Previous post');
-  const nextLabel = themeText(ctx, doc.locale, 'next', 'Next post');
-  const relatedLabel = themeText(ctx, doc.locale, 'related', 'Related');
-  return `<footer class="post-relations"><nav class="post-pagination">${relationLink(previousLabel, newer)}${relationLink(nextLabel, older)}</nav>${related.length ? `<section class="related-posts"><h2>${escapeHtml(relatedLabel)}</h2><ul>${related.map(candidate => `<li><a href="${safeUrl(routeFor(ctx, candidate))}">${escapeHtml(candidate.title)}</a></li>`).join('')}</ul></section>` : ''}</footer>`;
-}
-
 function themeContextFor(ctx: BuildContext, doc: Document): ThemeRenderContext {
   let context!: ThemeRenderContext;
   context = {
@@ -1262,8 +659,8 @@ function themeContextFor(ctx: BuildContext, doc: Document): ThemeRenderContext {
     collection: (name, locale = doc.locale) => documentsForCollection(ctx, name, locale),
     translations: (collection, id) => ctx.translationIndex.get(translationKey(collection, id)) || [],
     position: candidate => ctx.documentPositions.get(documentKey(candidate as Document)) ?? -1,
-    formatDate: value => formatDate(value, doc.locale),
-    blogRelations: () => blogRelationsFor(ctx, doc)
+    formatDate: value => formatDate(value, doc.locale, dateLocaleFor(ctx, doc.locale)),
+    blogRelations: () => blogRelationsFor(ctx, doc, (locale, key, fallback) => themeText(ctx, locale, key, fallback))
   };
   return context;
 }
@@ -1281,11 +678,7 @@ function validateThemeAttrs(node: DirectiveNode, definition: ThemeBlockDefinitio
 }
 
 function renderChromeLinks(context: ThemeShellContext, links: ThemeChromeLink[], className: string): string {
-  return links.map(link => {
-    const href = context.safeUrl(link.href);
-    if (href === '#') return '';
-    return `<a class="${className}" href="${href}"${link.current ? ' aria-current="page"' : ''}>${context.escapeHtml(link.label)}</a>`;
-  }).join('');
+  return links.map(link => renderSiteLink(link, className, context.escapeHtml)).join('');
 }
 
 function fallbackShell(context: ThemeShellContext): string {
@@ -1299,35 +692,17 @@ function fallbackShell(context: ThemeShellContext): string {
   const navLinks = `${renderChromeLinks(context, chrome.navigation.before, 'primary-nav-link')}${context.navigationLinks}${renderChromeLinks(context, chrome.navigation.after, 'primary-nav-link')}`;
   const primaryNav = navLinks ? `<nav class="primary-nav" aria-label="${context.escapeHtml(context.navigationLabel)}">${navLinks}</nav>` : '';
   const headerActions = `${context.searchMarkup}${primaryNav}`;
-  const siteMapLabel = context.doc.locale.startsWith('zh-tw') ? '網站地圖' : context.doc.locale.startsWith('zh') ? '站点地图' : 'Site map';
-  const privacyPolicy = context.privacy.enabled ? `<a class="footer-tool-link" href="${context.safeUrl(context.privacy.policyHref)}">${context.escapeHtml(context.privacy.policyLabel)}</a>` : '';
-  const footerTools = `<nav class="footer-tools" aria-label="${context.escapeHtml(siteMapLabel)}">${renderChromeLinks(context, chrome.footer.before, 'footer-tool-link')}<a class="footer-tool-link" href="/sitemap.xml">${context.escapeHtml(siteMapLabel)}</a>${privacyPolicy}${context.privacyTriggerMarkup || ''}${renderChromeLinks(context, chrome.footer.after, 'footer-tool-link')}</nav>`;
-  return `<!doctype html><html lang="${context.escapeHtml(context.doc.locale)}"><head>${context.head}</head><body class="${context.bodyClass}" data-pattern="${context.escapeHtml(context.doc.pattern)}">${context.privacyMarkup}<a class="skip" href="#main">${context.escapeHtml(context.skipLabel)}</a><header class="site-header"><div class="header-inner"><a class="brand" href="${context.homeHref}"><img class="brand-mark" src="${context.brandIcon}" alt="" width="32" height="32"><span class="brand-copy"><strong>${context.escapeHtml(context.siteName)}</strong><small>${context.escapeHtml(context.headerNote)}</small></span></a>${headerActions ? `<div class="header-actions">${headerActions}</div>` : ''}</div></header><main id="main" class="${context.mainClass}">${pageHeader}${context.content}</main><footer class="site-footer"><div class="footer-grid">${footerTools}</div>${context.showAttribution ? `<div class="footer-bottom"><span class="footer-credit">${context.attribution}</span></div>` : ''}</footer></body></html>`;
+  const siteMapLabel = context.translate('siteMap', 'Site map');
+  const privacyPolicy = context.privacy.enabled ? `<a class="footer-tool-link" data-privacy-policy href="${context.safeUrl(context.privacy.policyHref)}">${context.escapeHtml(context.privacy.policyLabel)}</a>` : '';
+  const footerTools = `<nav class="footer-tools" aria-label="${context.escapeHtml(siteMapLabel)}">${renderChromeLinks(context, chrome.footer.before, 'footer-tool-link')}${context.footerLinks}<a class="footer-tool-link" href="/sitemap.xml" data-site-map>${context.escapeHtml(siteMapLabel)}</a>${privacyPolicy}${context.privacyTriggerMarkup || ''}${renderChromeLinks(context, chrome.footer.after, 'footer-tool-link')}</nav>`;
+  return `<!doctype html><html lang="${context.escapeHtml(context.htmlLang || context.doc.locale)}"><head>${context.head}</head><body class="${context.bodyClass}" data-pattern="${context.escapeHtml(context.doc.pattern)}">${context.privacyMarkup}<a class="skip" href="#main">${context.escapeHtml(context.skipLabel)}</a><header class="site-header"><div class="header-inner"><a class="brand" href="${context.homeHref}"><img class="brand-mark" src="${context.brandIcon}" alt="" width="32" height="32"><span class="brand-copy"><strong>${context.escapeHtml(context.siteName)}</strong><small>${context.escapeHtml(context.headerNote)}</small></span></a>${headerActions ? `<div class="header-actions">${headerActions}</div>` : ''}</div></header><main id="main" class="${context.mainClass}">${pageHeader}${context.content}</main><footer class="site-footer"><div class="footer-grid">${footerTools}</div></footer></body></html>`;
 }
-
-const DEFAULT_COOKIE_CATEGORIES = [
-  {
-    purpose: 'essential', required: true, defaultValue: true, provider: 'Pageskill', retentionDays: 365
-  },
-  {
-    purpose: 'measurement', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
-  },
-  {
-    purpose: 'advertising', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
-  },
-  {
-    purpose: 'fraud-prevention', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
-  },
-  {
-    purpose: 'social-embedding', required: false, defaultValue: false, provider: 'Not configured', retentionDays: 0
-  }
-];
 
 function pluginEnabled(ctx: BuildContext, name: string): boolean {
   const themePlugin = themePluginFor(ctx, name);
   const settings = themePluginSettings(ctx, name);
-  // Theme code declares the capability and its schema; theme.yml owns the
-  // instance switch and all user-provided options.
+  // Theme code declares the capability and its schema; the theme instance file
+  // owns the instance switch and all user-provided options.
   return Boolean(themePlugin) && settings.enabled !== false;
 }
 
@@ -1335,176 +710,138 @@ function themePluginFor(ctx: BuildContext, name: string): (ThemePluginDefinition
   return themePlugin(ctx, name);
 }
 
-function cookieConsentSettings(ctx: BuildContext): Record<string, any> {
-  const themeSettings = themePluginSettings(ctx, 'privacyConsent');
-  const siteSettings = ctx.config?.privacy?.cookieConsent;
-  const merged = {
-    ...themeSettings,
-    ...(siteSettings && typeof siteSettings === 'object' ? {
-      policyRoute: siteSettings.policyRoute,
-      agentRoute: siteSettings.agentRoute
-    } : {})
-  };
-  return merged;
+function numericPluginSetting(ctx: BuildContext, pluginName: string, key: string, fallback: number): number {
+  const configured = Number(themePluginSettings(ctx, pluginName)[key]);
+  if (Number.isFinite(configured)) return configured;
+  const defaultValue = Number(themePluginFor(ctx, pluginName)?.defaults?.[key]);
+  return Number.isFinite(defaultValue) ? defaultValue : fallback;
 }
 
-function cookieCategories(settings: Record<string, any>, locale: string, localizedCategories: any[] = [], configuredCopy: Record<string, any> = {}) {
-  const source = Array.isArray(settings.categories) && settings.categories.length ? settings.categories : DEFAULT_COOKIE_CATEGORIES;
-  const localizedByPurpose = new Map(localizedCategories.map(category => [canonicalPrivacyPurpose(category?.purpose ?? category?.id), category]));
-  const configuredByPurpose = new Map((Array.isArray(configuredCopy.categories) ? configuredCopy.categories : []).map(category => [canonicalPrivacyPurpose(category?.purpose ?? category?.id), category]));
-  const seen = new Set<string>();
-  return source.map((raw: any) => {
-    const purpose = canonicalPrivacyPurpose(raw?.purpose ?? raw?.id) || 'custom';
-    if (seen.has(purpose)) return null;
-    seen.add(purpose);
-    const localized = localizedByPurpose.get(purpose) || {};
-    const configured = configuredByPurpose.get(purpose) || {};
-    const copy = { ...localized, ...configured, ...raw };
-    const required = raw?.required === true || (purpose === 'essential' && raw?.required !== false);
-    const retentionDays = Number.isFinite(Number(raw?.retentionDays)) ? Math.max(0, Number(raw.retentionDays)) : Math.max(0, Number(settings.retentionDays || (required ? 365 : 0)));
-    return {
-      // id remains an internal compatibility key; public theme data exposes
-      // the purpose that explains why a provider may run.
-      id: purpose,
-      purpose,
-      label: localizedValue(copy.label, locale, purpose),
-      description: localizedValue(copy.description, locale, required ? 'Required for the site to work.' : 'Optional; off until you choose it.'),
-      required,
-      defaultValue: required || raw?.default === true || raw?.defaultValue === true,
-      provider: localizedValue(copy.provider, locale, required ? 'Pageskill' : 'Not configured'),
-      retentionDays
-    };
-  }).filter(Boolean);
-}
-
-const PRIVACY_INTEGRATION_LABELS: Record<string, Record<string, string>> = {
-  'google-analytics': { en: 'Google Analytics', 'zh-sg': 'Google Analytics', 'zh-tw': 'Google Analytics' },
-  'google-ads': { en: 'Google Ads', 'zh-sg': 'Google Ads', 'zh-tw': 'Google Ads' },
-  'cloudflare-web-analytics': { en: 'Cloudflare Web Analytics', 'zh-sg': 'Cloudflare Web Analytics', 'zh-tw': 'Cloudflare Web Analytics' },
-  'baidu-tongji': { en: 'Baidu Tongji', 'zh-sg': '百度统计', 'zh-tw': '百度統計' },
-  recaptcha: { en: 'reCAPTCHA', 'zh-sg': 'reCAPTCHA', 'zh-tw': 'reCAPTCHA' },
-  hcaptcha: { en: 'hCaptcha', 'zh-sg': 'hCaptcha', 'zh-tw': 'hCaptcha' },
-  turnstile: { en: 'Cloudflare Turnstile', 'zh-sg': 'Cloudflare Turnstile', 'zh-tw': 'Cloudflare Turnstile' },
-  'x-for-websites': { en: 'X for Websites', 'zh-sg': 'X for Websites', 'zh-tw': 'X for Websites' }
+const PRIVACY_PURPOSE_FALLBACKS: Record<string, { title: string; description: string }> = {
+  measurement: { title: 'Audience measurement', description: 'Configured measurement services may measure visits after an affirmative choice.' },
+  advertising: { title: 'Advertising', description: 'Configured advertising services may run after an affirmative choice.' },
+  'fraud-prevention': { title: 'Fraud prevention', description: 'Configured human-verification services may run when their adapter needs them.' },
+  'social-embedding': { title: 'Social content', description: 'Configured social embeds may load after an affirmative choice.' }
 };
 
-function privacyIntegrations(settings: Record<string, any>, categories: Array<{ purpose: string; required: boolean } | null>) {
-  const source = normalizePrivacyIntegrations(settings.integrations);
-  const optional = new Set(categories.filter(category => category && !category.required).map(category => category!.purpose));
-  const result: Array<Record<string, string>> = [];
-  const valueAllowed = (provider: string, value: string) => {
-    if (!value || value.length > 256 || /[<>"'`\\\s]/.test(value)) return false;
-    // The first two adapters use the identifier formats documented by Google;
-    // the remaining adapters receive public tokens or keys from their own UI.
-    if (provider === 'google-analytics') return /^G-[A-Z0-9_-]+$/i.test(value);
-    if (provider === 'google-ads') return /^(AW|GT)-[A-Z0-9_-]+$/i.test(value);
-    return true;
-  };
-  source.forEach((raw: any) => {
-    if (!raw || typeof raw !== 'object' || raw.enabled !== true) return;
-    const provider = canonicalPrivacyProvider(raw.provider);
-    const definition = PRIVACY_PROVIDER_DEFINITIONS[provider];
-    if (!definition) return;
-    const purpose = canonicalPrivacyPurpose(raw.purpose) || definition.defaultPurpose;
-    if (!optional.has(purpose)) return;
-    if (!definition.field) {
-      result.push({ provider, purpose });
-      return;
-    }
-    const value = String(raw[definition.field] || '').trim();
-    if (!valueAllowed(provider, value)) return;
-    result.push({ provider, purpose, [definition.field]: value });
-  });
-  return result;
+function privacyConsentSettings(ctx: BuildContext): Record<string, any> {
+  const value = ctx.config.privacy?.consent;
+  return isRecord(value) ? value : {};
 }
 
-function privacyIntegrationLabel(integration: Record<string, string>, locale: string): string {
-  const language = locale.startsWith('zh-tw') ? 'zh-tw' : locale.startsWith('zh') ? 'zh-sg' : 'en';
-  const base = PRIVACY_INTEGRATION_LABELS[integration.provider]?.[language] || PRIVACY_INTEGRATION_LABELS[integration.provider]?.en || integration.provider;
-  return base;
+function privacyPolicyRoute(ctx: BuildContext, locale: string): string {
+  const configured = ctx.config.privacy?.policyRoute;
+  const route = typeof configured === 'string' && configured.trim() ? configured.trim() : '/:locale/privacy/';
+  return route.replaceAll(':locale', locale);
 }
 
-function decorateCookieCategories(categories: any[], integrations: Array<Record<string, string>>, locale = 'en') {
-  return categories.map(category => {
-    const providers = integrations.filter(integration => integration.purpose === category.purpose).map(integration => privacyIntegrationLabel(integration, locale));
-    return providers.length ? { ...category, provider: providers.join(', ') } : category;
-  });
+function privacyAgentRoute(ctx: BuildContext): string {
+  const configured = ctx.config.privacy?.agentRoute;
+  return typeof configured === 'string' && configured.trim() ? configured.trim() : '/.well-known/agent.json';
 }
 
-function publicPrivacyIntegration(integration: Record<string, string>) {
+function configuredIntegrations(ctx: BuildContext, includeDisabled = false): ConfiguredIntegration[] {
+  const values = resolveConfiguredIntegrations(ctx.config, ctx.themeDefinition);
+  return includeDisabled ? values : values.filter(value => value.enabled);
+}
+
+function privacyConsentRequired(ctx: BuildContext): boolean {
+  return configuredIntegrations(ctx).some(integration => integration.consent !== 'none');
+}
+
+function decisionRetentionDays(ctx: BuildContext): number {
+  const value = Number(privacyConsentSettings(ctx).decisionRetentionDays ?? 365);
+  return Number.isFinite(value) ? Math.max(0, Math.min(3650, Math.floor(value))) : 365;
+}
+
+function privacyPurposeCopy(ctx: BuildContext, locale: string, purpose: string, field: 'title' | 'description'): string {
+  const fallback = PRIVACY_PURPOSE_FALLBACKS[purpose]?.[field] || (field === 'title' ? purpose : 'Optional processing declared by the provider adapter.');
+  return themeText(ctx, locale, `privacyConsent.purposes.${purpose}.${field}`, fallback);
+}
+
+function privacyIntegrationLabel(ctx: BuildContext, integration: ConfiguredIntegration, locale: string): string {
+  const key = integration.adapter.labelKey || `privacyConsent.providers.${integration.id}`;
+  return themeText(ctx, locale, key, integration.id);
+}
+
+function browserIntegration(integration: ConfiguredIntegration): Record<string, any> {
+  const fields = Object.fromEntries((integration.adapter.publicFields || []).flatMap(key => {
+    const value = integration.settings[key];
+    return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? [[key, value]] : [];
+  }));
   return {
-    provider: integration.provider,
+    id: integration.id,
+    runtime: integration.runtime,
     purpose: integration.purpose,
-    ...(integration.platform ? { platform: integration.platform } : {})
+    consent: integration.consent,
+    load: integration.load,
+    enabled: true,
+    placeholder: Boolean(integration.adapter.placeholder),
+    ...fields
   };
 }
 
-function publicPrivacyCategory(category: Record<string, any>) {
-  const { id: _internalId, ...publicCategory } = category;
-  return publicCategory;
+function publicPrivacyIntegration(integration: ConfiguredIntegration, enabled = true): Record<string, any> {
+  return {
+    id: integration.id,
+    purpose: integration.purpose,
+    consent: integration.consent,
+    load: integration.load,
+    enabled,
+    ...(integration.adapter.labelKey ? { labelKey: integration.adapter.labelKey } : {})
+  };
+}
+
+function privacyCategories(ctx: BuildContext, integrations: ConfiguredIntegration[], locale: string) {
+  const grouped = new Map<string, ConfiguredIntegration[]>();
+  for (const integration of integrations) {
+    if (integration.consent === 'none') continue;
+    grouped.set(integration.purpose, [...(grouped.get(integration.purpose) || []), integration]);
+  }
+  return [...grouped.entries()].map(([purpose, members]) => ({
+    purpose,
+    label: privacyPurposeCopy(ctx, locale, purpose, 'title'),
+    description: privacyPurposeCopy(ctx, locale, purpose, 'description'),
+    providers: members.map(member => privacyIntegrationLabel(ctx, member, locale))
+  }));
 }
 
 function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
-  const settings = cookieConsentSettings(ctx);
-  const enabled = settings.enabled === true && pluginEnabled(ctx, 'privacyConsent');
-  const copy = themeLocaleData(ctx, doc.locale).cookieConsent || {};
-  const configuredCopy = themePluginCopy(ctx, 'privacyConsent', doc.locale);
-  const text = (key: string, fallback: string) => themePluginText(ctx, 'privacyConsent', doc.locale, key) || themeText(ctx, doc.locale, `cookieConsent.${key}`, fallback);
-  const policyRoute = String(settings.policyRoute || '/:locale/privacy/').replace(':locale', doc.locale);
-  const script = String(pluginResourcePaths(ctx, ['privacyConsent', 'cookies'], 'scripts')[0] || 'scripts/cookie-consent.js').trim();
-  const scriptHref = script.startsWith('/') || /^https?:\/\//i.test(script) ? script : themeResourceHref(ctx, themeBase, script);
-  const baseCategories = cookieCategories(settings, doc.locale, Array.isArray(copy.categories) ? copy.categories : [], configuredCopy) as Array<{ id: string; purpose: string; label: string; description: string; required: boolean; defaultValue: boolean; provider: string; retentionDays: number }>;
-  const integrations = privacyIntegrations(settings, baseCategories);
-  // Remove the compiler-only compatibility id before handing data to a theme.
-  const categories = decorateCookieCategories(baseCategories, integrations, doc.locale).map(({ id: _internalId, ...category }) => category) as Array<{ purpose: string; label: string; description: string; required: boolean; defaultValue: boolean; provider: string; retentionDays: number }>;
-  const optionalCategory = categories.find(category => !category.required);
-  const retentionDays = Math.max(0, Number(settings.retentionDays || 365));
-  const gatedScripts = (Array.isArray(settings.gatedScripts) ? settings.gatedScripts : []).map((entry: any) => {
-    const source = typeof entry === 'string' ? entry : entry?.src || entry?.source;
-    const purpose = typeof entry === 'string' ? 'measurement' : canonicalPrivacyPurpose(entry?.purpose ?? entry?.category) || 'measurement';
-    if (!source || !categories.some(item => item.purpose === purpose && !item.required)) return null;
-    const href = String(source).startsWith('/') || /^https?:\/\//i.test(String(source)) ? String(source) : themeResourceHref(ctx, themeBase, String(source));
-    // Keep the runtime payload as a raw, protocol-checked URL. Renderers call
-    // safeUrl exactly once when placing it in an HTML attribute.
-    return { purpose: String(purpose), href: String(href) };
-  }).filter(Boolean) as Array<{ purpose: string; href: string }>;
+  const all = configuredIntegrations(ctx);
+  const gated = all.filter(integration => integration.consent !== 'none');
+  const settings = privacyConsentSettings(ctx);
+  const runtimeEnabled = all.length > 0;
+  const enabled = gated.length > 0 && settings.enabled !== false && pluginEnabled(ctx, 'privacyConsent');
+  const text = (key: string, fallback: string) => themeText(ctx, doc.locale, `privacyConsent.${key}`, fallback);
+  const script = String(pluginResourcePaths(ctx, ['privacyConsent', 'cookies'], 'scripts')[0] || '').trim();
+  const scriptHref = !script ? '' : script.startsWith('/') || /^https?:\/\//i.test(script) ? script : themeResourceHref(ctx, themeBase, script);
   const privacy = {
+    runtimeEnabled,
     enabled,
-    scriptSrc: safeUrl(scriptHref),
-    storage: String(settings.storage || 'cookie'),
-    retentionDays,
-    policyHref: safeUrl(policyRoute),
-    title: text('title', doc.locale.startsWith('zh-tw') ? 'Cookie 偏好設定' : doc.locale.startsWith('zh') ? 'Cookie 偏好设置' : 'Cookie preferences'),
-    description: text('description', doc.locale.startsWith('zh-tw') ? '選擇哪些可選用途可以運作；必要功能不用於廣告或追蹤。' : doc.locale.startsWith('zh') ? '选择哪些可选用途可以工作；必要功能不用于广告或追踪。' : 'Choose which optional purposes may run; essential functions are not used for advertising or tracking.'),
-    bannerLabel: text('bannerLabel', doc.locale.startsWith('zh') ? '隐私选择' : 'Privacy choices'),
-    settingsLabel: text('settingsLabel', doc.locale.startsWith('zh-tw') ? 'Cookie 設定' : doc.locale.startsWith('zh') ? 'Cookie 设置' : 'Cookie settings'),
-    acceptLabel: text('acceptLabel', doc.locale.startsWith('zh') ? '接受可选项' : 'Accept optional'),
-    rejectLabel: text('rejectLabel', doc.locale.startsWith('zh') ? '仅必要项' : 'Essential only'),
-    saveLabel: text('saveLabel', doc.locale.startsWith('zh-tw') ? '儲存選擇' : doc.locale.startsWith('zh') ? '保存选择' : 'Save choices'),
-    closeLabel: text('closeLabel', doc.locale.startsWith('zh') ? '关闭' : 'Close'),
-    essentialLabel: text('essentialLabel', doc.locale.startsWith('zh-tw') ? '必要功能' : doc.locale.startsWith('zh') ? '必要功能' : 'Essential'),
-    essentialDescription: text('essentialDescription', doc.locale.startsWith('zh-tw') ? '儲存你的選擇；不啟用追蹤。' : doc.locale.startsWith('zh') ? '保存你的选择；不启用追踪。' : 'Stores your choice; does not enable tracking.'),
-    optionalLabel: text('optionalLabel', optionalCategory?.label || (doc.locale.startsWith('zh-tw') ? '可選用途' : doc.locale.startsWith('zh') ? '可选用途' : 'Optional purposes')),
-    optionalDescription: text('optionalDescription', optionalCategory?.description || (doc.locale.startsWith('zh-tw') ? '預設關閉；只有同意後才可啟用。' : doc.locale.startsWith('zh') ? '默认关闭；只有同意后才可启用。' : 'Off by default; enabled only after consent.')),
-    policyLabel: text('policyLabel', doc.locale.startsWith('zh-tw') ? '隱私政策' : doc.locale.startsWith('zh') ? '隐私政策' : 'Privacy policy'),
-    categories,
-    integrations,
-    gatedScripts
+    scriptSrc: scriptHref ? safeUrl(scriptHref) : '',
+    decisionRetentionDays: decisionRetentionDays(ctx),
+    policyHref: safeUrl(privacyPolicyRoute(ctx, doc.locale)),
+    title: text('title', 'Privacy choices'),
+    description: text('description', 'Choose which configured optional services may run.'),
+    bannerLabel: text('bannerLabel', 'Privacy choices'),
+    settingsLabel: text('settingsLabel', 'Privacy settings'),
+    acceptLabel: text('acceptLabel', 'Accept all'),
+    rejectLabel: text('rejectLabel', 'Essential only'),
+    saveLabel: text('saveLabel', 'Save choices'),
+    closeLabel: text('closeLabel', 'Close'),
+    policyLabel: text('policyLabel', 'Privacy policy'),
+    socialPlaceholderTitle: text('socialPlaceholder.title', 'Social content is paused'),
+    socialPlaceholderDescription: text('socialPlaceholder.description', 'Allow social content to load this embed.'),
+    socialPlaceholderAllowLabel: text('socialPlaceholder.allow', 'Allow social content'),
+    categories: privacyCategories(ctx, gated, doc.locale),
+    integrations: all.map(browserIntegration)
   };
-  const escape = (value: unknown) => escapeHtml(value);
-  const retentionUnit = doc.locale.startsWith('zh') ? '天' : 'days';
-  const providerLabel = text('providerLabel', doc.locale.startsWith('zh') ? '提供者' : 'Provider');
-  const retentionLabel = text('retentionLabel', doc.locale.startsWith('zh') ? '保存期限' : 'Retention');
-  const retentionSession = text('retentionSession', doc.locale.startsWith('zh') ? '会话期间' : 'Session');
-  const categoryMarkup = privacy.categories.map(category => {
-    const retention = category.retentionDays > 0 ? `${category.retentionDays} ${retentionUnit}` : retentionSession;
-    const metadata = `<span class="cookie-option-meta">${category.provider ? `<span><span class="cookie-option-meta-label">${escape(providerLabel)}</span>${escape(category.provider)}</span>` : ''}<span><span class="cookie-option-meta-label">${escape(retentionLabel)}</span>${escape(retention)}</span></span>`;
-    return `<label class="cookie-option"><input type="checkbox" data-cookie-purpose="${escape(category.purpose)}"${category.required ? ' checked disabled' : category.defaultValue ? ' checked' : ''}><span><strong>${escape(category.label)}</strong><small>${escape(category.description)}</small>${metadata}</span></label>`;
-  }).join('');
-  const gatedScriptMarkup = gatedScripts.map(script => `<template data-cookie-script data-cookie-purpose="${escape(script.purpose)}" data-cookie-src="${safeUrl(script.href)}"></template>`).join('');
-  const privacyMarkup = enabled ? `<section class="privacy-consent" data-cookie-consent data-cookie-audience="human" data-cookie-version="2" data-cookie-storage="${escape(privacy.storage)}" data-cookie-retention-days="${privacy.retentionDays}" data-cookie-integrations="${escape(JSON.stringify(integrations))}" aria-label="${escape(privacy.bannerLabel)}"><div class="cookie-banner" data-cookie-banner hidden role="region" aria-labelledby="cookie-banner-title"><div class="cookie-banner-copy"><p id="cookie-banner-title"><strong>${escape(privacy.title)}</strong></p><p>${escape(privacy.description)}</p></div><div class="cookie-actions"><button class="button-secondary" type="button" data-cookie-action="reject-optional">${escape(privacy.rejectLabel)}</button><button class="button-primary" type="button" data-cookie-action="open" aria-controls="cookie-dialog">${escape(privacy.settingsLabel)}</button><button class="button-primary" type="button" data-cookie-action="accept-all">${escape(privacy.acceptLabel)}</button></div><p class="privacy-links"><a href="${privacy.policyHref}">${escape(privacy.policyLabel)}</a></p></div><dialog id="cookie-dialog" class="cookie-dialog" data-cookie-dialog aria-labelledby="cookie-dialog-title" aria-describedby="cookie-dialog-description"><form method="dialog" class="cookie-dialog-card"><div class="cookie-dialog-heading"><h2 id="cookie-dialog-title">${escape(privacy.title)}</h2><button class="cookie-close" type="button" data-cookie-action="close" aria-label="${escape(privacy.closeLabel)}">×</button></div><p id="cookie-dialog-description">${escape(privacy.description)}</p><fieldset><legend>${escape(privacy.bannerLabel)}</legend>${categoryMarkup}</fieldset><p class="privacy-links"><a href="${privacy.policyHref}">${escape(privacy.policyLabel)}</a></p><div class="cookie-actions"><button class="button-secondary" type="button" data-cookie-action="reject-optional">${escape(privacy.rejectLabel)}</button><button class="button-primary" type="button" data-cookie-action="save">${escape(privacy.saveLabel)}</button></div></form></dialog>${gatedScriptMarkup}<script type="module" src="${privacy.scriptSrc}"></script></section>` : '';
-  const privacyTriggerMarkup = enabled ? `<button class="privacy-trigger" type="button" data-cookie-action="open" aria-controls="cookie-dialog">${escape(privacy.settingsLabel)}</button>` : '';
-  return { privacy, privacyMarkup, privacyTriggerMarkup };
+  const rendered = renderPrivacyConsent(privacy, {
+    escapeHtml,
+    safeUrl,
+    translate: (key, fallback) => themeText(ctx, doc.locale, key, fallback)
+  });
+  return { privacy, privacyMarkup: rendered.markup, privacyTriggerMarkup: rendered.triggerMarkup };
 }
 
 function localSearchData(ctx: BuildContext, doc: Document, themeBase: string) {
@@ -1519,21 +856,21 @@ function localSearchData(ctx: BuildContext, doc: Document, themeBase: string) {
     enabled,
     indexHref: `/assets/search-index.${doc.locale}.json`,
     scriptSrc: safeUrl(scriptHref),
-    label: text('label', doc.locale.startsWith('zh') ? '站内搜索' : 'Search this site'),
-    placeholder: text('placeholder', doc.locale.startsWith('zh-tw') ? '搜尋頁面和內容' : doc.locale.startsWith('zh') ? '搜索页面和内容' : 'Search pages and posts'),
-    submitLabel: text('submitLabel', doc.locale.startsWith('zh') ? '搜索' : 'Search'),
-    noResultsLabel: text('noResultsLabel', doc.locale.startsWith('zh') ? '没有找到匹配内容。' : 'No matching content.'),
-    errorLabel: text('errorLabel', doc.locale.startsWith('zh') ? '搜索索引暂时不可用。' : 'Search is temporarily unavailable.'),
-    resultLabel: text('resultLabel', doc.locale.startsWith('zh') ? '搜索结果' : 'Search results'),
-    hitTitleLabel: text('hitTitle', doc.locale.startsWith('zh-tw') ? '標題命中' : doc.locale.startsWith('zh') ? '标题命中' : 'Title match'),
-    hitDescriptionLabel: text('hitDescription', doc.locale.startsWith('zh-tw') ? '摘要命中' : doc.locale.startsWith('zh') ? '摘要命中' : 'Summary match'),
-    hitHeadingLabel: text('hitHeading', doc.locale.startsWith('zh-tw') ? '章節命中' : doc.locale.startsWith('zh') ? '章节命中' : 'Section match'),
-    hitContentLabel: text('hitContent', doc.locale.startsWith('zh-tw') ? '正文命中' : doc.locale.startsWith('zh') ? '正文命中' : 'Content match'),
-    hitPathLabel: text('hitPath', doc.locale.startsWith('zh-tw') ? '路徑命中' : doc.locale.startsWith('zh') ? '路径命中' : 'Path match'),
-    queryHint: text('queryHint', doc.locale.startsWith('zh-tw') ? '至少輸入兩個英文字母或一個中文字詞' : doc.locale.startsWith('zh') ? '至少输入两个字母或一个中文词' : 'Enter at least two letters or a meaningful word'),
-    maxResults: Math.max(1, Math.min(50, Number(settings.maxResults || 8)))
+    label: text('label', 'Search this site'),
+    placeholder: text('placeholder', 'Search pages and posts'),
+    submitLabel: text('submitLabel', 'Search'),
+    noResultsLabel: text('noResultsLabel', 'No matching content.'),
+    errorLabel: text('errorLabel', 'Search is temporarily unavailable.'),
+    resultLabel: text('resultLabel', 'Search results'),
+    hitTitleLabel: text('hitTitle', 'Title match'),
+    hitDescriptionLabel: text('hitDescription', 'Summary match'),
+    hitHeadingLabel: text('hitHeading', 'Section match'),
+    hitContentLabel: text('hitContent', 'Content match'),
+    hitPathLabel: text('hitPath', 'Path match'),
+    queryHint: text('queryHint', 'Enter at least two letters or a meaningful word'),
+    maxResults: Math.max(1, Math.min(50, numericPluginSetting(ctx, 'search', 'maxResults', 1)))
   };
-  const inputId = `pagekiln-search-${doc.locale.replace(/[^a-z0-9]+/gi, '-')}-${shortHash(doc.id).slice(0, 6)}`;
+  const inputId = `pageskill-search-${doc.locale.replace(/[^a-z0-9]+/gi, '-')}-${shortHash(doc.id).slice(0, 6)}`;
   const searchMarkup = search.enabled ? `<form class="site-search" data-local-search data-search-index="${escapeHtml(search.indexHref)}" data-search-max-results="${search.maxResults}" data-search-no-results="${escapeHtml(search.noResultsLabel)}" data-search-error="${escapeHtml(search.errorLabel)}" data-search-query-hint="${escapeHtml(search.queryHint)}" data-search-hit-title="${escapeHtml(search.hitTitleLabel)}" data-search-hit-description="${escapeHtml(search.hitDescriptionLabel)}" data-search-hit-heading="${escapeHtml(search.hitHeadingLabel)}" data-search-hit-content="${escapeHtml(search.hitContentLabel)}" data-search-hit-path="${escapeHtml(search.hitPathLabel)}" role="search"><label class="sr-only" for="${inputId}">${escapeHtml(search.label)}</label><div class="site-search-control"><input id="${inputId}" name="q" type="search" autocomplete="off" placeholder="${escapeHtml(search.placeholder)}" data-search-input><button type="submit" aria-label="${escapeHtml(search.submitLabel)}">⌕</button></div><div class="search-results" data-search-results hidden aria-live="polite" aria-label="${escapeHtml(search.resultLabel)}"></div><script type="module" src="${search.scriptSrc}"></script></form>` : '';
   return { search, searchMarkup };
 }
@@ -1556,6 +893,7 @@ function generatedDocument(id: string, locale: string, title: string, descriptio
     excerpt: '',
     nodes: [],
     directives: [],
+    metrics: calculateContentMetrics(''),
     hash: shortHash(`${id}:${locale}:${title}:${description}:${route}`),
     bodyLine: 1,
     stat: { mtimeMs: 0, size: 0 },
@@ -1570,12 +908,13 @@ function languagePickerCopy(ctx: BuildContext, locale: string, themeBase: string
   return {
     title: themeText(ctx, locale, 'languagePicker.title', 'Choose a site language'),
     description: themeText(ctx, locale, 'languagePicker.description', 'Choose a language to open the matching site version.'),
-    recommended: themeText(ctx, locale, 'languagePicker.recommended', locale.startsWith('zh-tw') ? '建議語言' : locale.startsWith('zh') ? '建议语言' : 'Recommended'),
+    recommended: themeText(ctx, locale, 'languagePicker.recommended', 'Recommended'),
     siteName: localizedValue(ctx.config.siteName, locale, 'Pageskill'),
     siteDescription: localizedValue(ctx.config.description, locale, ''),
+    htmlLang: String(ctx.themeI18n.locales?.[locale]?.htmlLang || locale),
     headerNote: themeText(ctx, locale, 'shell.headerNote', 'Markdown-native · static-first'),
-    skipToContent: themeText(ctx, locale, 'shell.skipToContent', locale.startsWith('zh-tw') ? '跳至內容' : locale.startsWith('zh') ? '跳至内容' : 'Skip to content'),
-    siteMap: themeText(ctx, locale, 'siteMap', locale.startsWith('zh-tw') ? '網站地圖' : locale.startsWith('zh') ? '站点地图' : 'Site map'),
+    skipToContent: themeText(ctx, locale, 'shell.skipToContent', 'Skip to content'),
+    siteMap: themeText(ctx, locale, 'siteMap', 'Site map'),
     privacy: {
       title: privacy.title,
       description: privacy.description,
@@ -1586,14 +925,15 @@ function languagePickerCopy(ctx: BuildContext, locale: string, themeBase: string
       saveLabel: privacy.saveLabel,
       closeLabel: privacy.closeLabel,
       policyLabel: privacy.policyLabel,
+      socialPlaceholderTitle: privacy.socialPlaceholderTitle,
+      socialPlaceholderDescription: privacy.socialPlaceholderDescription,
+      socialPlaceholderAllowLabel: privacy.socialPlaceholderAllowLabel,
       policyHref: privacy.policyHref,
       categories: privacy.categories.map(category => ({
         purpose: category.purpose,
         label: category.label,
         description: category.description,
-        provider: category.provider,
-        required: category.required,
-        retentionDays: category.retentionDays
+        providers: category.providers
       }))
     }
   };
@@ -1607,7 +947,8 @@ function languagePickerMarkup(ctx: BuildContext, locale: string, scriptHref = ''
   const languageData = JSON.stringify({
     defaultLocale: ctx.config.defaultLocale || locale,
     locales,
-    storageKey: 'pagekiln-locale',
+    localeAliases: Object.fromEntries(locales.map((candidate: string) => [candidate, Array.isArray(ctx.themeI18n.locales?.[candidate]?.aliases) ? ctx.themeI18n.locales[candidate].aliases : [candidate]])),
+    storageKey: 'pageskill-locale',
     copy
   });
   const title = themeText(ctx, locale, 'languagePicker.title', 'Choose a site language');
@@ -1671,10 +1012,6 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const siteName = localizedValue(ctx.config.siteName, doc.locale, 'Pageskill');
   const siteDescription = localizedValue(ctx.config.description, doc.locale, 'The static-first website compiler for content that scales.');
   const icons = ctx.config.icons || {};
-  const branding = ctx.config.branding || {};
-  const showAttribution = branding.showAttribution === true;
-  const attributionText = localizedValue(branding.attribution, doc.locale, 'Pageskill by JSW Teams');
-  const attributionUrl = branding.attributionUrl ? safeUrl(branding.attributionUrl) : '#';
   const headerNote = themeText(ctx, doc.locale, 'shell.headerNote', 'Markdown-native · static-first');
   const skipLabel = themeText(ctx, doc.locale, 'shell.skipToContent', 'Skip to content');
   const languageLabel = themeText(ctx, doc.locale, 'shell.languages', 'Languages');
@@ -1685,6 +1022,8 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const showSiteChrome = !generatedPage || doc.collection === 'archive';
   const navigationConfig = configuredNavigation(ctx.config);
   const navigation = Array.isArray(navigationConfig.links) ? navigationConfig.links : [];
+  const footerConfig = isRecord(ctx.config.footer) ? ctx.config.footer : {};
+  const footer = Array.isArray(footerConfig.links) ? footerConfig.links : [];
   const currentRoute = routeFor(ctx, doc);
   const availableTranslations = ctx.translationIndex.get(translationKey(doc.collection, doc.id)) || [];
   const translatedDocuments = doc.collection === 'archive' && doc.data?.archiveCollection
@@ -1697,11 +1036,19 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   }).join('');
   const defaultTranslation = availableTranslations.find((candidate: Document) => candidate.locale === (ctx.config.defaultLocale || 'en'));
   const alternates = `${availableTranslations.map((candidate: Document) => `<link rel="alternate" hreflang="${escapeHtml(candidate.locale)}" href="${safeUrl(`${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${routeFor(ctx, candidate)}`)}">`).join('')}${defaultTranslation ? `<link rel="alternate" hreflang="x-default" href="${safeUrl(`${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${routeFor(ctx, defaultTranslation)}`)}">` : ''}`;
-  const navigationLinks = showSiteChrome ? navigation.map((item: any) => {
-    const href = String(item.href || '').replace(':locale', doc.locale);
-    const current = href === currentRoute ? ' aria-current="page"' : '';
-    return `<a href="${safeUrl(href)}"${current}>${escapeHtml(themeText(ctx, doc.locale, `navigation.${item.key}`, item.key || item.href || 'Link'))}</a>`;
-  }).join('') : '';
+  const linkOptions = (namespace: 'navigation' | 'footer') => ({
+    locale: doc.locale,
+    fallbackLocale: fallbackLocaleFor(ctx),
+    currentPath: currentRoute,
+    namespace,
+    translate: (key: string, fallback: string) => themeText(ctx, doc.locale, key, fallback)
+  });
+  const navigationLinks = showSiteChrome
+    ? resolveSiteLinks(navigation, linkOptions('navigation')).map(link => renderSiteLink(link, '', escapeHtml)).join('')
+    : '';
+  const footerLinks = showSiteChrome
+    ? resolveSiteLinks(footer, linkOptions('footer')).map(link => renderSiteLink(link, 'footer-tool-link', escapeHtml)).join('')
+    : '';
   const chrome = configuredChrome(ctx, doc, currentRoute, showSiteChrome);
   const headIconLinks = [
     icons.favicon ? `<link rel="icon" href="${safeUrl(icons.favicon)}">` : '',
@@ -1732,7 +1079,7 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   ]), 'Block stylesheet path');
   const pluginStyles = [
     ...genericPluginResourcePaths(ctx, 'styles'),
-    ...(pluginEnabled(ctx, 'privacyConsent') && cookieConsentSettings(ctx).enabled === true ? pluginResourcePaths(ctx, ['privacyConsent', 'cookies'], 'styles') : []),
+    ...(privacyConsentRequired(ctx) ? pluginResourcePaths(ctx, ['privacyConsent', 'cookies'], 'styles') : []),
     ...(pluginEnabled(ctx, 'search') ? pluginResourcePaths(ctx, ['search'], 'styles') : []),
     ...(pluginEnabled(ctx, 'toc') ? pluginResourcePaths(ctx, ['toc'], 'styles') : []),
     ...(doc.source.startsWith('generated:') ? pluginResourcePaths(ctx, ['language', 'languagePicker'], 'styles') : [])
@@ -1757,14 +1104,16 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
     ...doc.directives.flatMap(node => blockResourcePaths(ctx, node.name, 'scripts'))
   ], 'Theme script path');
   const scriptTags = browserScripts.map(script => `<script type="module" src="${safeUrl(themeResourceHref(ctx, themeBase, String(script)))}"></script>`).join('');
-  const attribution = showAttribution ? (attributionUrl === '#' ? `<span>${escapeHtml(attributionText)}</span>` : `<a href="${attributionUrl}">${escapeHtml(attributionText)}</a>`) : '';
   const socialImage = doc.data?.ogImage || doc.data?.cover || ctx.config.images?.social;
   const socialImageUrl = absoluteImageUrl(socialImage, String(ctx.config.siteUrl || '').replace(/\/$/, ''));
-  const head = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(doc.title)} · ${escapeHtml(siteName)}</title><meta name="description" content="${escapeHtml(doc.description || siteDescription)}"><meta name="theme-color" content="${escapeHtml(ctx.config.pwa?.themeColor || '#d9563b')}"><meta property="og:title" content="${escapeHtml(doc.title)}"><meta property="og:description" content="${escapeHtml(doc.description || siteDescription)}"><meta property="og:type" content="${doc.date ? 'article' : 'website'}"><meta property="og:url" content="${safeUrl(absoluteUrl)}">${socialImageUrl ? `<meta property="og:image" content="${safeUrl(socialImageUrl)}">` : ''}<link rel="canonical" href="${safeUrl(absoluteUrl)}"><link rel="sitemap" type="application/xml" href="/sitemap.xml">${headIconLinks}${alternates}${stylesheets}${scriptTags}`;
+  const publishedMeta = isPostCollection(ctx, doc.collection) && doc.date && publicationTimestamp(doc.date) !== undefined ? `<meta property="article:published_time" content="${escapeHtml(new Date(publicationTimestamp(doc.date)!).toISOString())}">` : '';
+  const modifiedMeta = isPostCollection(ctx, doc.collection) && doc.update && publicationTimestamp(doc.update) !== undefined ? `<meta property="article:modified_time" content="${escapeHtml(new Date(publicationTimestamp(doc.update)!).toISOString())}">` : '';
+  const head = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(doc.title)} · ${escapeHtml(siteName)}</title><meta name="description" content="${escapeHtml(doc.description || siteDescription)}"><meta name="theme-color" content="${escapeHtml(ctx.config.pwa?.themeColor || '#d9563b')}"><meta property="og:title" content="${escapeHtml(doc.title)}"><meta property="og:description" content="${escapeHtml(doc.description || siteDescription)}"><meta property="og:type" content="${doc.date ? 'article' : 'website'}"><meta property="og:url" content="${safeUrl(absoluteUrl)}">${publishedMeta}${modifiedMeta}${socialImageUrl ? `<meta property="og:image" content="${safeUrl(socialImageUrl)}">` : ''}<link rel="canonical" href="${safeUrl(absoluteUrl)}"><link rel="sitemap" type="application/xml" href="/sitemap.xml">${headIconLinks}${alternates}${stylesheets}${scriptTags}`;
   const headWithFeed = head.replace('<link rel="sitemap" type="application/xml" href="/sitemap.xml">', `<link rel="sitemap" type="application/xml" href="/sitemap.xml">${postsFeedLink}`);
   const privacyData = privacyShellData(ctx, doc, themeBase);
   const bodyClass = `theme-${escapeHtml(configuredThemeName(ctx.config))}`;
-  const shellContext = { ...themeContextFor(ctx, doc), content, head: headWithFeed, bodyClass, mainClass: `pattern-${escapeHtml(doc.pattern)}`, siteName, siteDescription, currentRoute, homeHref, brandIcon, navigationLinks, languageLinks, navigationLabel, languageLabel, skipLabel, headerNote, footerNote, footerKicker, attribution, showAttribution, chrome, ...searchData, searchMarkup: showSiteChrome ? searchData.searchMarkup : '', ...privacyData } as ThemeShellContext;
+  const localeInfo = isRecord(ctx.themeI18n.locales?.[doc.locale]) ? ctx.themeI18n.locales[doc.locale] : {};
+  const shellContext = { ...themeContextFor(ctx, doc), content, head: headWithFeed, bodyClass, mainClass: `pattern-${escapeHtml(doc.pattern)}`, siteName, siteDescription, currentRoute, homeHref, brandIcon, navigationLinks, footerLinks, languageLinks, htmlLang: String(localeInfo.htmlLang || doc.locale), navigationLabel, languageLabel, skipLabel, headerNote, footerNote, footerKicker, chrome, ...searchData, searchMarkup: showSiteChrome ? searchData.searchMarkup : '', ...privacyData } as ThemeShellContext;
   if (ctx.themeDefinition.shell) return ctx.themeDefinition.shell(shellContext);
   return fallbackShellWithPrivacy(shellContext);
 }
@@ -1779,33 +1128,41 @@ function contentNodes(doc: Document): MarkdownNode[] {
 function discoveryBoundaries(ctx: BuildContext) {
   const generated = publicDiscoveryResources(ctx).map(resource => resource.href);
   if (ctx.outputs.has('robots.txt') || !ctx.stagedOutput) generated.push('/robots.txt');
+  const themeInstance = ctx.themeConfigFile
+    ? normalizePath(path.relative(ctx.root, ctx.themeConfigFile))
+    : 'theme.config (not configured; plugin defaults are active)';
   return {
-    sourceOfTruth: ['config.yml', 'content/', 'themes/'],
+    sourceOfTruth: ['config.yml', 'config/*.yml', themeInstance, 'content/', 'themes/'],
     generatedDiscovery: [...new Set(generated)],
     agentInstructions: ['AGENTS.md']
   };
 }
 
 /** The code-owned registry is the only capability list consumed by Agent output. */
-function agentFunctionMap() {
+function agentFunctionMap(ctx: BuildContext) {
+  const themeInstance = ctx.themeConfigFile
+    ? normalizePath(path.relative(ctx.root, ctx.themeConfigFile))
+    : 'theme.config (not configured; plugin defaults are active)';
+  const configSources = ['config.yml', 'config/*.yml'];
   return [
     { id: 'write-page', purpose: 'Write current site content for a page, guide, reference, or directory', paths: ['content/pages/<id>/<locale>.md'], commands: ['pageskill g'] },
     { id: 'write-post', purpose: 'Record a dated post; use category: tutorial for a tutorial and omit it for uncategorized content', paths: ['content/posts/<id>/<locale>.md'], commands: ['pageskill g'] },
     { id: 'write-update', purpose: 'Record a version update as a post with category: update; the updates view keeps it separate from ordinary posts', paths: ['content/posts/<version>/<locale>.md'], frontmatter: { category: 'update', date: 'YYYY-MM-DD' }, commands: ['pageskill g'] },
+    { id: 'configure-integration', purpose: 'Enable a registered third-party integration with its adapter-owned public identifier and privacy load policy', paths: [...configSources, 'config.yml:integrations.<provider-id>'], outputs: ['generated consent purposes and provider runtime metadata'], prerequisites: ['Choose a provider from the generated catalog', 'Keep secrets in environment variables; site YAML only contains public adapter fields'], commands: ['pageskill g --profile'] },
     { id: 'change-layout', purpose: 'Add, modify, or remove an existing layout, component, pattern, or stylesheet', paths: ['themes/<name>/index.ts', 'themes/<name>/components/', 'themes/<name>/layouts/'], commands: ['pageskill g --profile'] },
-    { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, discovery policy, plugin copy/options, or deployment settings', paths: ['config.yml', 'themes/<name>/theme.yml'], commands: ['pageskill g --profile'] },
-    { id: 'configure-plugin', purpose: 'Configure a declared foundation plugin from theme.yml without editing its renderer', paths: ['themes/<name>/theme.yml', 'themes/<name>/plugins/<plugin>/index.ts'], commands: ['pageskill g --profile'] },
-    { id: 'discover-extension', purpose: 'Read active theme Patterns, Blocks, collections, plugin switches, contexts, and resource dependencies', paths: ['themes/<name>/index.ts', 'themes/<name>/theme.yml', 'config.yml'], commands: ['import { getCatalog, inspect } from "pageskill"'] },
+    { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, discovery policy, plugin copy/options, or deployment settings', paths: [...configSources, themeInstance], commands: ['pageskill g --profile'] },
+    { id: 'configure-plugin', purpose: 'Configure a declared foundation plugin from the theme instance file without editing its renderer', paths: [themeInstance, 'themes/<name>/plugins/<plugin>/index.ts'], commands: ['pageskill g --profile'] },
+    { id: 'discover-extension', purpose: 'Read active theme Patterns, Blocks, collections, plugin switches, contexts, and resource dependencies', paths: ['themes/<name>/index.ts', themeInstance, ...configSources], commands: ['import { getCatalog, inspect } from "pageskill"'] },
     { id: 'discover-site', purpose: 'Read renderer-generated agent metadata, API links, Markdown negotiation, and content signals', paths: ['dist/public/.well-known/', 'dist/public/robots.txt', 'dist/public/llms.txt'], commands: ['pageskill g'] },
     // Conditional discovery entries describe the implementation boundary as
     // data. The generated Skill and catalog expose these fields without a
     // second hand-maintained instruction list.
-    { id: 'configure-auth-discovery', purpose: 'Publish OAuth protected-resource metadata only for an implemented protected service and real authorization server', paths: ['config.yml:agentDiscovery.auth', 'backend/handler.ts or an external resource server', 'external OAuth/OIDC issuer'], prerequisites: ['Verify bearer tokens, issuer, audience, expiry, and scopes in the protected service', 'Use real resource and issuer URLs'], outputs: ['/.well-known/oauth-protected-resource', 'auth.md', 'optional /.well-known/oauth-authorization-server'], commands: ['pageskill g --profile', 'pageskill d --dry-run'] },
-    { id: 'configure-mcp-discovery', purpose: 'Publish an MCP server card whose endpoint and tool schemas match a real MCP transport', paths: ['config.yml:agentDiscovery.mcp', 'backend/handler.ts or an external MCP server'], prerequisites: ['Deploy a working MCP endpoint before enabling the card', 'Keep card tool metadata aligned with the server tools/list response'], outputs: ['/.well-known/mcp/server-card.json'], commands: ['pageskill g --profile', 'pageskill d --dry-run'] },
-    { id: 'register-webmcp-tools', purpose: 'Register browser tools from a theme plugin only when a real WebMCP module is loaded and tested', paths: ['config.yml:agentDiscovery.webmcp', 'themes/<name>/theme.yml', 'themes/<name>/plugins/<id>/'], prerequisites: ['Register tools through document.modelContext with explicit JSON schemas', 'Validate inputs and confirm consequential actions in the page'], outputs: ['/.well-known/agent.json configured state; browser tools come from the theme script'], commands: ['npm run compile-theme', 'pageskill s', 'pageskill g --profile'] },
-    { id: 'publish-dns-aid', purpose: 'Advertise DNS-AID only after an external DNS provider has published real SVCB/TXT or TLSA records with DNSSEC as required', paths: ['config.yml:agentDiscovery.dnsAid', 'external authoritative DNS zone'], prerequisites: ['Deploy the advertised agent endpoint', 'Verify the public DNS records and DNSSEC chain before enabling the flag'], outputs: ['/.well-known/agent.json configured state; DNS records are never generated here'], commands: ['Resolve-DnsName', 'pageskill g --profile', 'pageskill d --dry-run'] },
+    { id: 'configure-auth-discovery', purpose: 'Publish OAuth protected-resource metadata only for an implemented protected service and real authorization server', paths: [...configSources, 'config.yml:agentDiscovery.auth', 'backend/handler.ts or an external resource server', 'external OAuth/OIDC issuer'], prerequisites: ['Verify bearer tokens, issuer, audience, expiry, and scopes in the protected service', 'Use real resource and issuer URLs'], outputs: ['/.well-known/oauth-protected-resource', 'auth.md', 'optional /.well-known/oauth-authorization-server'], commands: ['pageskill g --profile', 'pageskill d --dry-run'] },
+    { id: 'configure-mcp-discovery', purpose: 'Publish an MCP server card whose endpoint and tool schemas match a real MCP transport', paths: [...configSources, 'config.yml:agentDiscovery.mcp', 'backend/handler.ts or an external MCP server'], prerequisites: ['Deploy a working MCP endpoint before enabling the card', 'Keep card tool metadata aligned with the server tools/list response'], outputs: ['/.well-known/mcp/server-card.json'], commands: ['pageskill g --profile', 'pageskill d --dry-run'] },
+    { id: 'register-webmcp-tools', purpose: 'Register browser tools from a theme plugin only when a real WebMCP module is loaded and tested', paths: [...configSources, 'config.yml:agentDiscovery.webmcp', themeInstance, 'themes/<name>/plugins/<id>/'], prerequisites: ['Register tools through document.modelContext with explicit JSON schemas', 'Validate inputs and confirm consequential actions in the page'], outputs: ['/.well-known/agent.json configured state; browser tools come from the theme script'], commands: ['npm run compile-theme', 'pageskill s', 'pageskill g --profile'] },
+    { id: 'publish-dns-aid', purpose: 'Advertise DNS-AID only after an external DNS provider has published real SVCB/TXT or TLSA records with DNSSEC as required', paths: [...configSources, 'config.yml:agentDiscovery.dnsAid', 'external authoritative DNS zone'], prerequisites: ['Deploy the advertised agent endpoint', 'Verify the public DNS records and DNSSEC chain before enabling the flag'], outputs: ['/.well-known/agent.json configured state; DNS records are never generated here'], commands: ['Resolve-DnsName', 'pageskill g --profile', 'pageskill d --dry-run'] },
     { id: 'preview', purpose: 'Open the local development server with a persistent incremental context', paths: ['src/bin/pageskill.mjs', 'src/compiler.ts'], commands: ['pageskill s'] },
-    { id: 'deploy', purpose: 'Build and publish the configured public site target', paths: ['config.yml', 'dist/public/'], commands: ['pageskill d --dry-run', 'pageskill d'] },
+    { id: 'deploy', purpose: 'Build and publish the configured public site target', paths: [...configSources, 'dist/public/'], commands: ['pageskill d --dry-run', 'pageskill d'] },
     { id: 'dynamic-backend', purpose: 'Add runtime business logic, secrets, writes, or webhooks', paths: ['backend/handler.ts'], commands: ['pageskill g'] }
   ];
 }
@@ -1817,10 +1174,10 @@ function discoverySettings(ctx: BuildContext, name: string): Record<string, any>
   return isRecord(value) ? value : {};
 }
 
-function discoveryEnabled(ctx: BuildContext, name: string, fallback = false): boolean {
-  // A capability is opt-in unless its renderer default is explicitly true.
-  const settings = discoverySettings(ctx, name);
-  return settings.enabled === undefined ? fallback : settings.enabled === true;
+function discoveryEnabled(ctx: BuildContext, name: string): boolean {
+  // Config loading applies the one built-in default table before rendering;
+  // this helper only reads the normalized value.
+  return discoverySettings(ctx, name).enabled === true;
 }
 
 function absoluteDiscoveryUrl(siteUrl: string, value: unknown, locale: string): string {
@@ -1914,7 +1271,7 @@ function apiCatalogMarkdown(entries: ApiCatalogEntry[]): string {
 }
 
 async function writeApiCatalog(ctx: BuildContext, siteUrl: string): Promise<void> {
-  if (!discoveryEnabled(ctx, 'apiCatalog', false)) return;
+  if (!discoveryEnabled(ctx, 'apiCatalog')) return;
   const entries = configuredApiCatalogEntries(ctx, siteUrl);
   if (!entries.length) return;
   // RFC 9727 requires the Linkset media type at the well-known location.
@@ -1999,7 +1356,7 @@ function agentSkillDescription(ctx: BuildContext): string {
   if (typeof configured === 'string' && configured.trim()) return configured.trim().replaceAll(/[\r\n]+/g, ' ').slice(0, 1024);
   // A missing description is derived from the registered capabilities instead
   // of introducing a second, hand-maintained description of the renderer.
-  return agentFunctionMap().map((entry: any) => String(entry.purpose || '').trim()).filter(Boolean).join('; ').slice(0, 1024);
+  return agentFunctionMap(ctx).map((entry: any) => String(entry.purpose || '').trim()).filter(Boolean).join('; ').slice(0, 1024);
 }
 
 function agentSkillValue(value: unknown): string {
@@ -2023,7 +1380,7 @@ function generatedAgentSkill(ctx: BuildContext): string {
   const instructions = Array.isArray(settings.instructions)
     ? settings.instructions.map((value: unknown) => String(value).replaceAll(/[\r\n]+/g, ' ').trim()).filter(Boolean)
     : [];
-  const sections = (agentFunctionMap() as Array<Record<string, unknown>>).map(generatedAgentCapabilitySection);
+  const sections = (agentFunctionMap(ctx) as Array<Record<string, unknown>>).map(generatedAgentCapabilitySection);
   return [
     '---',
     `name: ${JSON.stringify(agentSkillName(ctx))}`,
@@ -2041,7 +1398,7 @@ function generatedAgentSkill(ctx: BuildContext): string {
 async function writeAgentSkills(ctx: BuildContext): Promise<void> {
   // Write both the index and the content from the same generated skill text so
   // its integrity hash always describes what the renderer actually published.
-  if (!discoveryEnabled(ctx, 'skills', true)) return;
+  if (!discoveryEnabled(ctx, 'skills')) return;
   const skill = generatedAgentSkill(ctx);
   const skillPath = `.well-known/agent-skills/${agentSkillName(ctx)}/SKILL.md`;
   await writeIfChanged(ctx, skillPath, skill);
@@ -2060,12 +1417,12 @@ async function writeAgentSkills(ctx: BuildContext): Promise<void> {
 /** Plan only discovery files whose feature is enabled and whose inputs exist. */
 function plannedDiscoveryPaths(ctx: BuildContext): string[] {
   const paths = ['.well-known/agent.json'];
-  if (discoveryEnabled(ctx, 'apiCatalog', false) && configuredApiCatalogEntries(ctx, String(ctx.config.siteUrl || '').replace(/\/$/, '')).length) paths.push('.well-known/api-catalog', '.well-known/api-catalog.md');
-  if (discoveryEnabled(ctx, 'ard', true)) paths.push('.well-known/ai-catalog.json');
-  if (discoveryEnabled(ctx, 'skills', true)) paths.push('.well-known/agent-skills/index.json', `.well-known/agent-skills/${agentSkillName(ctx)}/SKILL.md`);
+  if (discoveryEnabled(ctx, 'apiCatalog') && configuredApiCatalogEntries(ctx, String(ctx.config.siteUrl || '').replace(/\/$/, '')).length) paths.push('.well-known/api-catalog', '.well-known/api-catalog.md');
+  if (discoveryEnabled(ctx, 'ard')) paths.push('.well-known/ai-catalog.json');
+  if (discoveryEnabled(ctx, 'skills')) paths.push('.well-known/agent-skills/index.json', `.well-known/agent-skills/${agentSkillName(ctx)}/SKILL.md`);
   if (authSettings(ctx).enabled === true) paths.push('.well-known/oauth-protected-resource', 'auth.md');
   if (authSettings(ctx).enabled === true && authSettings(ctx).authorizationEndpoint && authSettings(ctx).tokenEndpoint) paths.push('.well-known/oauth-authorization-server');
-  if (discoveryEnabled(ctx, 'mcp', false)) paths.push('.well-known/mcp/server-card.json');
+  if (discoveryEnabled(ctx, 'mcp')) paths.push('.well-known/mcp/server-card.json');
   return paths;
 }
 
@@ -2136,7 +1493,7 @@ function ardEntry(host: string, siteUrl: string, pathName: string, identifier: s
 async function writeArdManifest(ctx: BuildContext, siteUrl: string): Promise<void> {
   // ARD entries point only at public files generated in this build; optional
   // representative queries come from config rather than embedded copy.
-  if (!discoveryEnabled(ctx, 'ard', true)) return;
+  if (!discoveryEnabled(ctx, 'ard')) return;
   let host = siteUrl;
   try { host = new URL(siteUrl).host; } catch { /* siteUrl validation is handled by the site deployment */ }
   const siteName = localizedValue(ctx.config.siteName, String(ctx.config.defaultLocale || 'en'), 'Pageskill');
@@ -2156,11 +1513,17 @@ async function writeArdManifest(ctx: BuildContext, siteUrl: string): Promise<voi
 }
 
 function catalog(ctx: BuildContext) {
-  const privacySettings = cookieConsentSettings(ctx);
   const locale = ctx.config.defaultLocale || 'en';
-  const basePrivacyCategories = cookieCategories(privacySettings, locale, themeLocaleData(ctx, locale).cookieConsent?.categories || [], themePluginCopy(ctx, 'privacyConsent', locale));
-  const privacyIntegrationsData = privacyIntegrations(privacySettings, basePrivacyCategories);
-  const privacyCategories = decorateCookieCategories(basePrivacyCategories, privacyIntegrationsData, locale);
+  const privacySettings = privacyConsentSettings(ctx);
+  const allIntegrations = configuredIntegrations(ctx, true);
+  const activeIntegrations = allIntegrations.filter(integration => integration.enabled);
+  const privacyPurposeCategories = privacyCategories(ctx, activeIntegrations, locale);
+  const providers = Object.entries(integrationAdapters(ctx.themeDefinition)).map(([id, adapter]) => ({
+    id,
+    schema: adapter.schema,
+    privacy: adapter.privacy,
+    ...(adapter.labelKey ? { labelKey: adapter.labelKey } : {})
+  }));
   return {
     version: 2,
     theme: {
@@ -2178,7 +1541,11 @@ function catalog(ctx: BuildContext) {
         settings: themePluginSettings(ctx, name)
       }]))
     },
-    compiler: { runtime: 'node22-esm', renderer: 'typescript-safe-html', markdown: 'commonmark-gfm', yaml: 'yaml-1.2', directives: 'pagekiln-block-directive' },
+    compiler: { runtime: 'node22-esm', renderer: 'typescript-safe-html', markdown: 'commonmark-gfm', yaml: 'yaml-1.2', directives: 'pageskill-block-directive' },
+    integrations: {
+      providers,
+      configured: allIntegrations.map(integration => publicPrivacyIntegration(integration, integration.enabled))
+    },
     presets: Object.entries(ctx.theme.presets || {}).map(([name, value]) => ({ name, ...(value as Record<string, any>) })),
     patterns: Object.values(ctx.themeDefinition.patterns).map(pattern => ({ name: pattern.name, contexts: pattern.contexts, resources: { styles: resourcePaths(pattern.resources, 'styles'), scripts: resourcePaths(pattern.resources, 'scripts') } })),
     blocks: Object.values(ctx.themeDefinition.blocks).map(block => ({
@@ -2209,20 +1576,19 @@ function catalog(ctx: BuildContext) {
       role: 'assistive',
       defaultCommands: ['npm install', 'pageskill s', 'pageskill g'],
       ...discoveryBoundaries(ctx),
-      functionMap: agentFunctionMap()
+      functionMap: agentFunctionMap(ctx)
     },
     privacy: {
-      cookieConsent: {
-        enabled: privacySettings.enabled === true && pluginEnabled(ctx, 'privacyConsent'),
-        storage: String(privacySettings.storage || 'cookie'),
-        retentionDays: Math.max(0, Number(privacySettings.retentionDays || 365)),
-        categories: privacyCategories.map(publicPrivacyCategory),
-        integrations: privacyIntegrationsData.map(publicPrivacyIntegration),
-        policyRoute: String(privacySettings.policyRoute || '/:locale/privacy/'),
-        agentRoute: String(privacySettings.agentRoute || '/.well-known/agent.json'),
+      consent: {
+        enabled: privacyConsentRequired(ctx) && privacySettings.enabled !== false && pluginEnabled(ctx, 'privacyConsent'),
+        decisionRetentionDays: decisionRetentionDays(ctx),
+        purposes: privacyPurposeCategories,
         choices: { optionalDefault: false, rejectAvailable: true, withdrawAvailable: true }
       },
-      machineReadable: { agent: '/.well-known/agent.json', catalog: '/.pagekiln/catalog.json', sitemap: '/sitemap.xml', llms: '/llms.txt' }
+      integrations: activeIntegrations.map(integration => publicPrivacyIntegration(integration)),
+      policyRoute: privacyPolicyRoute(ctx, locale),
+      agentRoute: privacyAgentRoute(ctx),
+      machineReadable: { agent: '/.well-known/agent.json', catalog: '/.pageskill/catalog.json', sitemap: '/sitemap.xml', llms: '/llms.txt' }
     },
     routes: ctx.routes.size
       ? [...ctx.routes.entries()].map(([route, candidate]) => ({ route, id: candidate.id, collection: candidate.collection, locale: candidate.locale }))
@@ -2258,16 +1624,10 @@ async function writeIfChanged(ctx: BuildContext, relative: string, data: string 
       return;
     } catch { /* regenerate a missing cached output */ }
   }
-  let unchangedLegacy = false;
-  if (!cachedHash && (ctx.cache.outputs || []).includes(normalized)) {
-    try { unchangedLegacy = (await fs.readFile(target)).equals(incoming); } catch { /* missing legacy output */ }
-  }
-  if (!unchangedLegacy) {
-    const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
-    await fs.writeFile(temporary, incoming);
-    await fs.rename(temporary, target);
-    ctx.profile.changedOutputs += 1;
-  }
+  const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
+  await fs.writeFile(temporary, incoming);
+  await fs.rename(temporary, target);
+  ctx.profile.changedOutputs += 1;
   ctx.outputs.add(normalized);
   ctx.outputHashes[normalized] = incomingHash;
 }
@@ -2372,7 +1732,6 @@ async function copyThemeAndAssets(ctx: BuildContext) {
     ...resourcePaths(themeResources(ctx), 'scripts'),
     ...genericPluginResourcePaths(ctx, 'styles'),
     ...genericPluginResourcePaths(ctx, 'scripts'),
-    ...gatedScriptResourcePaths(ctx),
     ...(pluginEnabled(ctx, 'privacyConsent') ? pluginResourcePaths(ctx, ['privacyConsent', 'cookies'], 'styles') : []),
     ...(pluginEnabled(ctx, 'privacyConsent') ? pluginResourcePaths(ctx, ['privacyConsent', 'cookies'], 'scripts') : []),
     ...(pluginEnabled(ctx, 'search') ? pluginResourcePaths(ctx, ['search'], 'styles') : []),
@@ -2410,13 +1769,6 @@ async function copyThemeAndAssets(ctx: BuildContext) {
   await writeIfChanged(ctx, 'site.webmanifest', JSON.stringify({ name: siteName, short_name: siteName, start_url: '/', display: 'minimal-ui', background_color: ctx.config.pwa?.backgroundColor || '#ffffff', theme_color: ctx.config.pwa?.themeColor || '#000000', icons: manifestIcons }, null, 2));
 }
 
-async function removeLegacyOutputs(ctx: BuildContext) {
-  const legacyFiles = ['icon-192.png', 'icon-512.png', 'icon-source.png', 'og-default.png', 'og-default.jpg', 'og-default-source.png'];
-  for (const file of legacyFiles) {
-    try { await fs.rm(outputTarget(ctx, file).target); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
-  }
-}
-
 function xml(value: string) { return escapeHtml(value).replaceAll('&quot;', '&quot;'); }
 function collectionSettings(ctx: BuildContext, collection: string): Record<string, any> {
   const value = ctx.config.content?.collections?.[collection];
@@ -2433,14 +1785,15 @@ function isPostCollection(ctx: BuildContext, collection: string): boolean {
 }
 
 async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
-  // Agent metadata describes active consent, locale, and discovery outputs;
-  // it does not expose private configuration or claim disabled services.
-  const settings = cookieConsentSettings(ctx);
+  // Agent metadata describes configured adapters and active consent purposes;
+  // it does not expose provider identifiers or claim disabled services.
+  const settings = privacyConsentSettings(ctx);
   const locale = ctx.config.defaultLocale || 'en';
-  const policyRoute = String(settings.policyRoute || '/:locale/privacy/');
+  const policyRoute = privacyPolicyRoute(ctx, ':locale');
   const policyRoutes = Object.fromEntries((ctx.config.activeLocales || [locale]).map((candidate: string) => [candidate, policyRoute.replace(':locale', candidate)]));
-  const baseCategories = cookieCategories(settings, locale, themeLocaleData(ctx, locale).cookieConsent?.categories || [], themePluginCopy(ctx, 'privacyConsent', locale));
-  const integrations = privacyIntegrations(settings, baseCategories);
+  const allIntegrations = configuredIntegrations(ctx, true);
+  const activeIntegrations = allIntegrations.filter(integration => integration.enabled);
+  const purposes = privacyCategories(ctx, activeIntegrations, locale);
   await writeIfChanged(ctx, '.well-known/agent.json', JSON.stringify({
     version: 1,
     site: { name: localizedValue(ctx.config.siteName, locale, 'Pageskill'), defaultLocale: locale, locales: ctx.config.activeLocales || [locale] },
@@ -2466,25 +1819,23 @@ async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
       audience: 'agent',
       format: 'application/json',
       humanSelector: 'HTML dialog on localized pages',
-      consentRequiredForOptional: true,
-      optionalCookiesDefault: false,
-      withdrawalAvailable: settings.enabled === true && pluginEnabled(ctx, 'privacyConsent'),
-      enabled: settings.enabled === true && pluginEnabled(ctx, 'privacyConsent'),
-      storage: String(settings.storage || 'cookie'),
-      retentionDays: Math.max(0, Number(settings.retentionDays || 365)),
-      categories: decorateCookieCategories(baseCategories, integrations, locale).map(publicPrivacyCategory),
-      integrations: integrations.map(publicPrivacyIntegration),
-      noAnalyticsByDefault: true,
+      consent: {
+        enabled: privacyConsentRequired(ctx) && settings.enabled !== false && pluginEnabled(ctx, 'privacyConsent'),
+        decisionRetentionDays: decisionRetentionDays(ctx),
+        purposes,
+        optionalDefault: false
+      },
+      integrations: activeIntegrations.map(integration => publicPrivacyIntegration(integration)),
       policyRoute,
       policyRoutes,
-      agentRoute: String(settings.agentRoute || '/.well-known/agent.json'),
-      note: 'Generated behavior disclosure; controller, provider, retention, and transfer details come from site configuration and deployment.'
+      agentRoute: privacyAgentRoute(ctx),
+      note: 'Generated behavior disclosure; provider purpose and load policy come from the active theme adapter registry.'
     },
     agentGuidance: {
       optional: true,
       role: 'assistive',
       ...discoveryBoundaries(ctx),
-      functionMap: agentFunctionMap()
+      functionMap: agentFunctionMap(ctx)
     },
     generatedBy: { name: 'Pageskill', version: 3, static: true, siteUrl }
   }, null, 2));
@@ -2512,7 +1863,7 @@ function archiveCollections(ctx: BuildContext): string[] {
   return Object.entries(ctx.config.content?.collections || {}).filter(([, value]) => (value as any)?.archive === true).map(([name]) => name);
 }
 function feedXml(ctx: BuildContext, locale: string, collection: string) {
-  const entries = documentsForCollection(ctx, collection, locale).slice(0, Number(ctx.config.feed?.limit || 20));
+  const entries = documentsForCollection(ctx, collection, locale).slice(0, Number(ctx.config.feed?.limit));
   const site = String(ctx.config.siteUrl || '').replace(/\/$/, '');
   return `<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>${xml(localizedValue(ctx.config.feed?.title, locale, localizedValue(ctx.config.siteName, locale, 'Site')))}</title><link>${xml(site)}</link><description>${xml(localizedValue(ctx.config.description, locale, ''))}</description>${entries.map(entry => { const parsed = entry.date ? new Date(entry.date) : null; const published = parsed && !Number.isNaN(parsed.valueOf()) ? parsed.toUTCString() : entry.date || ''; return `<item><title>${xml(entry.title)}</title><link>${xml(`${site}${routeFor(ctx, entry)}`)}</link><guid>${xml(`${site}${routeFor(ctx, entry)}`)}</guid><pubDate>${xml(published)}</pubDate><description>${xml(entry.description)}</description></item>`; }).join('')}</channel></rss>`;
 }
@@ -2526,6 +1877,7 @@ function searchIndex(ctx: BuildContext, locale: string) {
     description: doc.description,
     url: routeFor(ctx, doc),
     date: doc.date || '',
+    update: doc.update || '',
     headings: doc.nodes.filter(node => node.kind === 'heading').map(node => node.text).join(' '),
     text: doc.markdown.replaceAll(/[`*_>#]/g, ' ').replaceAll(/:::.*$/gm, ' ').replaceAll(/\s+/g, ' ').trim()
   }));
@@ -2535,7 +1887,7 @@ async function writeSearch(ctx: BuildContext, locale: string) {
   const settings = themePluginSettings(ctx, 'search');
   if (!pluginEnabled(ctx, 'search')) return;
   const entries = searchIndex(ctx, locale);
-  const shardSize = Math.max(50, Number(settings.shardSize || 500));
+  const shardSize = Math.max(50, numericPluginSetting(ctx, 'search', 'shardSize', 50));
   if (entries.length <= shardSize) {
     await writeIfChanged(ctx, `assets/search-index.${locale}.json`, JSON.stringify(entries));
     return;
@@ -2555,7 +1907,7 @@ async function writeLlms(ctx: BuildContext, siteUrl: string) {
   await writeIfChanged(ctx, 'llms.txt', `${localizedValue(ctx.config.llms?.title, ctx.config.defaultLocale || 'en', 'Site')}\n\n${localizedValue(ctx.config.llms?.description, ctx.config.defaultLocale || 'en', '')}\n\n${entries.map(([route, doc]) => `- [${doc.title}](${siteUrl}${route}): ${doc.description}`).join('\n')}\n`);
   if (ctx.config.llms?.full?.enabled === false) return;
   const documents = [...ctx.docs].sort((left, right) => left.source.localeCompare(right.source));
-  const shardSize = Math.max(50, Number(ctx.config.llms?.full?.shardSize || 250));
+  const shardSize = Math.max(50, Number(ctx.config.llms?.full?.shardSize));
   const renderDocuments = (items: Document[]) => items.map(doc => `# ${doc.title}\n\nSource: ${normalizePath(path.relative(ctx.root, doc.source))}\nRoute: ${routeFor(ctx, doc)}\n\n${doc.markdown.trim()}`).join('\n\n');
   if (documents.length <= shardSize) {
     await writeIfChanged(ctx, 'llms-full.txt', `${localizedValue(ctx.config.llms?.title, ctx.config.defaultLocale || 'en', 'Site')}\n\n${renderDocuments(documents)}\n`);
@@ -2600,7 +1952,7 @@ function robotsText(ctx: BuildContext, siteUrl: string): string {
 
 async function writeArchives(ctx: BuildContext): Promise<string[]> {
   const routes: string[] = [];
-  const pageSize = Math.max(10, Number(ctx.config.archive?.pageSize || 50));
+  const pageSize = Math.max(10, Number(ctx.config.archive?.pageSize));
   for (const collection of archiveCollections(ctx)) for (const locale of ctx.config.activeLocales || [ctx.config.defaultLocale || 'en']) {
     const entries = documentsForCollection(ctx, collection, locale);
     if (!entries.length) continue;
@@ -2615,17 +1967,17 @@ async function writeArchives(ctx: BuildContext): Promise<string[]> {
       const publishedLabel = themeText(ctx, locale, 'post.published', 'Published');
       const authorLabel = themeText(ctx, locale, 'post.author', 'Author');
       const coverAltLabel = themeText(ctx, locale, 'post.coverAlt', 'Cover image');
-      const pageCount = locale.startsWith('zh-tw') ? `第 ${page} 頁，共 ${pages} 頁` : locale.startsWith('zh') ? `第 ${page} 页，共 ${pages} 页` : `Page ${page} of ${pages}`;
+      const pageCount = interpolateMessage(themeText(ctx, locale, 'archive.pageCount', 'Page {page} of {pages}'), { page, pages });
       const listing = entries.slice((page - 1) * pageSize, page * pageSize).map(entry => {
         const coverUrl = publicImageUrl(entry.data?.cover || entry.data?.ogImage);
         const coverMarkup = coverUrl ? `<div class="archive-entry-cover"><img src="${coverUrl}" alt="${escapeHtml(`${coverAltLabel}: ${entry.title}`)}" width="1200" height="630" sizes="144px" loading="lazy" decoding="async"></div>` : '';
         const author = entry.author || localizedValue(ctx.config.author, locale, 'Site Owner');
-        return `<article class="archive-entry">${coverMarkup}<p class="archive-entry-index"><span class="archive-entry-label">${escapeHtml(publishedLabel)}</span><time datetime="${escapeHtml(entry.date || '')}">${formatDate(entry.date, locale)}</time></p><div class="archive-entry-main"><h2><a href="${safeUrl(routeFor(ctx, entry))}">${escapeHtml(entry.title)}</a></h2>${entry.description ? `<p class="archive-entry-summary">${escapeHtml(entry.description)}</p>` : ''}<p class="archive-entry-author"><span class="archive-entry-label">${escapeHtml(authorLabel)}</span> ${escapeHtml(author)}</p><p class="archive-entry-action"><a href="${safeUrl(routeFor(ctx, entry))}">${escapeHtml(readLabel)} <span aria-hidden="true">↗</span></a></p></div></article>`;
+        return `<article class="archive-entry">${coverMarkup}<p class="archive-entry-index"><span class="archive-entry-label">${escapeHtml(publishedLabel)}</span><time datetime="${escapeHtml(entry.date || '')}">${formatDate(entry.date, locale, dateLocaleFor(ctx, locale))}</time></p><div class="archive-entry-main"><h2><a href="${safeUrl(routeFor(ctx, entry))}">${escapeHtml(entry.title)}</a></h2>${entry.description ? `<p class="archive-entry-summary">${escapeHtml(entry.description)}</p>` : ''}<p class="archive-entry-author"><span class="archive-entry-label">${escapeHtml(authorLabel)}</span> ${escapeHtml(author)}</p><p class="archive-entry-action"><a href="${safeUrl(routeFor(ctx, entry))}">${escapeHtml(readLabel)} <span aria-hidden="true">↗</span></a></p></div></article>`;
       }).join('');
       const previousHref = page === 2 ? archiveBase : `${archiveBase}page/${page - 1}/`;
       const nextHref = `${archiveBase}page/${page + 1}/`;
       const pagination = `<nav class="archive-pagination" aria-label="${escapeHtml(title)}">${page > 1 ? `<a href="${safeUrl(previousHref)}">${escapeHtml(themeText(ctx, locale, 'archive.previousPage', 'Previous page'))}</a>` : '<span aria-hidden="true"></span>'}<span class="archive-page-count">${escapeHtml(pageCount)}</span>${page < pages ? `<a href="${safeUrl(nextHref)}">${escapeHtml(themeText(ctx, locale, 'archive.nextPage', 'Next page'))}</a>` : '<span aria-hidden="true"></span>'}</nav>`;
-      const document: Document = { id: `archive-${collection}-${page}`, collection: 'archive', locale, source: `generated:archive:${collection}:${locale}:${page}`, title, description: archiveDescription, pattern: 'document', date: undefined, data: { route, archiveCollection: collection }, markdown: '', excerpt: '', bodyLine: 1, nodes: [], directives: [], dependencyKeys: [], blockNames: [], hash: '', stat: { mtimeMs: 0, size: 0 } };
+      const document: Document = { id: `archive-${collection}-${page}`, collection: 'archive', locale, source: `generated:archive:${collection}:${locale}:${page}`, title, description: archiveDescription, pattern: 'document', date: undefined, data: { route, archiveCollection: collection }, markdown: '', excerpt: '', bodyLine: 1, nodes: [], directives: [], metrics: calculateContentMetrics(''), dependencyKeys: [], blockNames: [], hash: '', stat: { mtimeMs: 0, size: 0 } };
       const archiveHeader = `<header class="archive-header"><p class="eyebrow">${escapeHtml(themeText(ctx, locale, `collections.${collection}`, collection))}</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(archiveDescription)}</p></header>`;
       await writeIfChanged(ctx, `${route.replace(/^\//, '')}index.html`, pageShell(ctx, document, `${archiveHeader}<section class="archive-list">${listing}</section>${pagination}`));
       routes.push(route);
@@ -2635,10 +1987,10 @@ async function writeArchives(ctx: BuildContext): Promise<string[]> {
 }
 
 async function writeDeployments(ctx: BuildContext) {
-  if (ctx.config.deployment?.enabled === false) return;
+  if (!ctx.deployment.enabled) return;
   const locale = ctx.config.defaultLocale || 'en';
-  const deployment = ctx.config.deployment && typeof ctx.config.deployment === 'object' ? ctx.config.deployment : {};
-  const publicDirectory = configuredPublicDirectory(ctx.config);
+  const deployment = ctx.deployment;
+  const publicDirectory = ctx.deployment.publicDirectory;
   const publicDirectoryLiteral = JSON.stringify(publicDirectory);
   // Embed only renderer-derived public metadata in adapters; private config
   // and backend implementation details never cross the deployment boundary.
@@ -2652,49 +2004,47 @@ async function writeDeployments(ctx: BuildContext) {
     try { fetchRouterSource = await fs.readFile(candidate, 'utf8'); break; } catch { /* try source-mode runtime location */ }
   }
   if (!fetchRouterSource) throw new Error('compiled Fetch router is missing; run npm run compile-runtime');
-  await writeIfChanged(ctx, '_pagekiln/fetch-router.js', fetchRouterSource);
-  await writeIfChanged(ctx, 'server/_pagekiln/fetch-router.js', fetchRouterSource);
+  await writeIfChanged(ctx, '_pageskill/fetch-router.js', fetchRouterSource);
+  await writeIfChanged(ctx, 'server/_pageskill/fetch-router.js', fetchRouterSource);
   const securityRuntimeCandidates = [path.join(moduleDirectory, 'lib', 'static-security.js'), path.join(moduleDirectory, 'runtime', 'lib', 'static-security.js')];
   let securityRuntimeSource = '';
   for (const candidate of securityRuntimeCandidates) {
     try { securityRuntimeSource = await fs.readFile(candidate, 'utf8'); break; } catch { /* try the other compiled runtime location */ }
   }
   if (!securityRuntimeSource) throw new Error('compiled static-security runtime is missing; run npm run compile-runtime');
-  await writeIfChanged(ctx, '_pagekiln/lib/static-security.js', securityRuntimeSource);
-  await writeIfChanged(ctx, 'server/_pagekiln/lib/static-security.js', securityRuntimeSource);
+  await writeIfChanged(ctx, '_pageskill/lib/static-security.js', securityRuntimeSource);
+  await writeIfChanged(ctx, 'server/_pageskill/lib/static-security.js', securityRuntimeSource);
 
   const backendSource = path.join(ctx.root, 'backend', 'handler.ts');
   let backendEnabled = false;
-  try { await fs.access(backendSource); backendEnabled = ctx.config.deployment?.backend !== false; } catch { /* static-only project */ }
+  try { await fs.access(backendSource); backendEnabled = ctx.deployment.backend; } catch { /* static-only project */ }
   if (backendEnabled) {
-    const backendRuntime = path.join(ctx.root, '.pagekiln', 'backend-runtime');
+    const backendRuntime = path.join(ctx.root, '.pageskill', 'backend-runtime');
     const backendEntry = path.join(backendRuntime, 'backend', 'handler.js');
     try { await fs.access(backendEntry); } catch { throw new Error('backend/handler.ts exists but its JavaScript runtime is missing; run npm run compile-backend'); }
     for (const file of await walk(backendRuntime, ['.js'])) {
       const relative = normalizePath(path.relative(backendRuntime, file));
       const source = await fs.readFile(file);
-      await writeIfChanged(ctx, `_pagekiln/${relative}`, source);
-      await writeIfChanged(ctx, `server/_pagekiln/${relative}`, source);
+      await writeIfChanged(ctx, `_pageskill/${relative}`, source);
+      await writeIfChanged(ctx, `server/_pageskill/${relative}`, source);
     }
   }
 
-  const backendImport = backendEnabled ? `import { router } from './_pagekiln/backend/handler.js';\n` : 'const router = undefined;\n';
+  const backendImport = backendEnabled ? `import { router } from './_pageskill/backend/handler.js';\n` : 'const router = undefined;\n';
   const localeLiteral = JSON.stringify(String(locale));
-  const worker = `import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${backendImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${localeLiteral}, staticDirectory: ${publicDirectoryLiteral}, discovery: ${discoveryLiteral} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`;
+  const worker = `import { createSiteFetchHandler } from './_pageskill/fetch-router.js';\n${backendImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${localeLiteral}, staticDirectory: ${publicDirectoryLiteral}, discovery: ${discoveryLiteral} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`;
   await writeIfChanged(ctx, 'cloudflare-worker.mjs', worker);
   if (backendEnabled) await writeIfChanged(ctx, '_worker.js', worker);
-  await writeIfChanged(ctx, '.assetsignore', `_worker.js\ncloudflare-worker.mjs\nvps-server.mjs\nwrangler.toml\n_pagekiln/*\nserver/*\n.pagekiln/*\n`);
-  // Keep the old list readable for static-only projects, but a backend must
-  // run first for every pathname: registered Router paths are not an asset
-  // allowlist and may live outside `/api`.
-  const routes = legacyDynamicRoutes(ctx.config);
-  const workerFirst = backendEnabled ? 'true' : routes.length ? `[ ${routes.map(route => JSON.stringify(route)).join(', ')} ]` : 'false';
-  const workerName = String(workers.name || 'pageskill-site');
-  const compatibilityDate = String(workers.compatibilityDate || '2026-08-10');
+  await writeIfChanged(ctx, '.assetsignore', `_worker.js\ncloudflare-worker.mjs\nvps-server.mjs\nwrangler.toml\n_pageskill/*\nserver/*\n.pageskill/*\n`);
+  // A backend must run first for every pathname: registered Router paths are
+  // not an asset allowlist and may live outside `/api`.
+  const workerFirst = backendEnabled ? 'true' : 'false';
+  const workerName = String(workers.name);
+  const compatibilityDate = String(workers.compatibilityDate);
   const accountId = cloudflare.accountId ? `account_id = ${JSON.stringify(String(cloudflare.accountId))}\n` : '';
   await writeIfChanged(ctx, 'wrangler.toml', `${accountId}name = ${JSON.stringify(workerName)}\nmain = "cloudflare-worker.mjs"\ncompatibility_date = ${JSON.stringify(compatibilityDate)}\n\n[assets]\ndirectory = ${JSON.stringify(`./${publicDirectory}`)}\nbinding = "ASSETS"\nrun_worker_first = ${workerFirst}\nhtml_handling = "auto-trailing-slash"\nnot_found_handling = "404-page"\n`);
-  const denoBackendImport = backendEnabled ? `import { router } from './_pagekiln/backend/handler.js';\n` : 'const router = undefined;\n';
-  const vpsStaticSource = `import { publicPathFromUrl, isPublicPath } from './_pagekiln/lib/static-security.js';\nconst staticRootPath = await Deno.realPath(new URL(${JSON.stringify(`./${publicDirectory}/`)}, import.meta.url));\nconst staticRoot = staticRootPath.replaceAll('\\\\', '/');\nconst staticRootPrefix = staticRoot.endsWith('/') ? staticRoot : staticRoot + '/';\nconst staticTypes = ${JSON.stringify({
+  const denoBackendImport = backendEnabled ? `import { router } from './_pageskill/backend/handler.js';\n` : 'const router = undefined;\n';
+  const vpsStaticSource = `import { publicPathFromUrl, isPublicPath } from './_pageskill/lib/static-security.js';\nconst staticRootPath = await Deno.realPath(new URL(${JSON.stringify(`./${publicDirectory}/`)}, import.meta.url));\nconst staticRoot = staticRootPath.replaceAll('\\\\', '/');\nconst staticRootPrefix = staticRoot.endsWith('/') ? staticRoot : staticRoot + '/';\nconst staticTypes = ${JSON.stringify({
     '.css': 'text/css; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.eot': 'application/vnd.ms-fontobject',
     '.gif': 'image/gif', '.html': 'text/html; charset=utf-8', '.ico': 'image/x-icon', '.jpeg': 'image/jpeg',
     '.jpg': 'image/jpeg', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
@@ -2724,21 +2074,17 @@ async function fetchStaticAsset(request) {
   return new Response(method === 'HEAD' ? null : body, { status: 200, headers });
 }
 `;
-  await writeIfChanged(ctx, 'vps-server.mjs', `${vpsStaticSource}import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${denoBackendImport}const runtimeEnv = new Proxy({}, { get: (_target, key) => Deno.env.get(String(key)) });\nconst fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${JSON.stringify(String(locale))}, staticDirectory: ${publicDirectoryLiteral}, discovery: ${discoveryLiteral}, assets: fetchStaticAsset });\nconst port = Number(Deno.env.get('PORT') || '8787');\nconst hostname = Deno.env.get('HOST') || '127.0.0.1';\nDeno.serve({ port, hostname }, (request, info) => fetchHandler(request, runtimeEnv, info));\nexport { fetchHandler };\n`);
-  const sitesBackendImport = backendEnabled ? `import { router } from './_pagekiln/backend/handler.js';\n` : 'const router = undefined;\n';
-  const openAiSites = hasOpenAiSitesDeployment(ctx.config);
+  await writeIfChanged(ctx, 'vps-server.mjs', `${vpsStaticSource}import { createSiteFetchHandler } from './_pageskill/fetch-router.js';\n${denoBackendImport}const runtimeEnv = new Proxy({}, { get: (_target, key) => Deno.env.get(String(key)) });\nconst fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${JSON.stringify(String(locale))}, staticDirectory: ${publicDirectoryLiteral}, discovery: ${discoveryLiteral}, assets: fetchStaticAsset });\nconst port = Number(Deno.env.get('PORT') || '8787');\nconst hostname = Deno.env.get('HOST') || '127.0.0.1';\nDeno.serve({ port, hostname }, (request, info) => fetchHandler(request, runtimeEnv, info));\nexport { fetchHandler };\n`);
+  const sitesBackendImport = backendEnabled ? `import { router } from './_pageskill/backend/handler.js';\n` : 'const router = undefined;\n';
+  const openAiSites = ctx.deployment.targets.includes('openai-sites');
   const staticOption = openAiSites ? `, staticDirectory: ${publicDirectoryLiteral}` : '';
-  const staticAssetsImport = openAiSites ? `import { fetchStaticAsset } from './_pagekiln/static-assets.js';\n` : '';
+  const staticAssetsImport = openAiSites ? `import { fetchStaticAsset } from './_pageskill/static-assets.js';\n` : '';
   const staticAssetsOption = openAiSites ? ', assets: fetchStaticAsset' : '';
-  await writeIfChanged(ctx, 'server/index.js', `import { createSiteFetchHandler } from './_pagekiln/fetch-router.js';\n${sitesBackendImport}${staticAssetsImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${localeLiteral}${staticOption}, discovery: ${discoveryLiteral}${staticAssetsOption} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`);
-}
-
-function openaiSitesStaticDirectory(ctx: BuildContext): string {
-  return configuredStaticDirectory(ctx.config);
+  await writeIfChanged(ctx, 'server/index.js', `import { createSiteFetchHandler } from './_pageskill/fetch-router.js';\n${sitesBackendImport}${staticAssetsImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${localeLiteral}${staticOption}, discovery: ${discoveryLiteral}${staticAssetsOption} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`);
 }
 
 async function writeSiteStaticDirectory(ctx: BuildContext) {
-  const staticDirectory = configuredPublicDirectory(ctx.config);
+  const staticDirectory = ctx.deployment.publicDirectory;
   if (!staticDirectory) return;
   const targetPrefix = `${staticDirectory}/`;
   // A route or asset whose URL already occupies the configured public prefix
@@ -2778,8 +2124,9 @@ async function writeSiteStaticRuntime(ctx: BuildContext) {
   // The Sites adapter is the only consumer that needs a generated base64
   // asset table. Mixed deployments use the public directory through ASSETS
   // (or the Deno callback in vps-server.mjs) by default.
-  if (!hasOpenAiSitesDeployment(ctx.config)) return;
-  const staticDirectory = configuredPublicDirectory(ctx.config);
+  const openAiSites = ctx.deployment.targets.includes('openai-sites');
+  if (!openAiSites) return;
+  const staticDirectory = ctx.deployment.publicDirectory;
   if (!staticDirectory) return;
   const staticPrefix = `${staticDirectory}/`;
   const entries: string[] = [];
@@ -2798,27 +2145,29 @@ async function writeSiteStaticRuntime(ctx: BuildContext) {
   }
   const staticDirectoryLiteral = JSON.stringify(staticDirectory);
   const source = `import { publicPathFromUrl } from './lib/static-security.js';\n\nconst assets = {\n${entries.join(',\n')}\n};\n\nfunction decode(value) {\n  const binary = atob(value);\n  const bytes = new Uint8Array(binary.length);\n  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);\n  return bytes;\n}\n\nfunction staticCacheControl(pathname) { return /^\\/assets\\/(?:[^/]+\\/)*[^/]+\\.[a-f0-9]{12}\\.(?:css|js|mjs)$/i.test(pathname) ? 'public, max-age=31536000, immutable' : 'no-cache'; }\n\nexport function fetchStaticAsset(request) {\n  const method = String(request.method || 'GET').toUpperCase();\n  if (method !== 'GET' && method !== 'HEAD') return new Response('Method Not Allowed', { status: 405, headers: { allow: 'GET, HEAD' } });\n  const decodedPath = publicPathFromUrl(request.url, { staticDirectory: ${staticDirectoryLiteral} });\n  if (!decodedPath) return new Response('Not found', { status: 404 });\n  const pathname = decodedPath === '/' || decodedPath.endsWith('/') ? decodedPath + 'index.html' : decodedPath;\n  const asset = assets[pathname];\n  if (!asset) return new Response('Not found', { status: 404 });\n  const headers = new Headers({ 'content-type': asset[0], 'cache-control': staticCacheControl(pathname) });\n  return new Response(method === 'HEAD' ? null : decode(asset[1]), { status: 200, headers });\n}\n`;
-  await writeIfChanged(ctx, 'server/_pagekiln/static-assets.js', source);
+  await writeIfChanged(ctx, 'server/_pageskill/static-assets.js', source);
 }
 
 export async function createContext(root = process.cwd()): Promise<BuildContext> {
+  root = await fs.realpath(root);
   const discoverStart = performance.now();
-  let cache = await readJson<CacheManifest>(path.join(root, '.pagekiln', 'manifest.json'), { version: 2, documents: {}, outputs: [] });
-  if (cache.rendererVersion !== RENDERER_VERSION) cache = { ...cache, documents: {} };
-  const configFile = path.join(root, 'config.yml');
-  const configSource = await fs.readFile(configFile, 'utf8');
-  const config = parseYaml(configSource);
-  assertConfigSurface(config);
+  let cache = await readJson<CacheManifest>(path.join(root, '.pageskill', 'manifest.json'), { version: 4, documents: {}, outputs: [] });
+  if (cache.rendererVersion !== RENDERER_VERSION || cache.version !== 4) cache = { ...cache, version: 4, documents: {} };
+  const loadedConfig = await loadConfig(root);
+  const config = loadedConfig.config;
   const themeName = configuredThemeName(config);
   const themeRoot = containedPath(path.join(root, 'themes'), themeName, 'theme directory');
-  const themeSource = await fs.readFile(path.join(themeRoot, 'theme.yml'), 'utf8').catch(() => '{}');
-  const theme = parseYaml(themeSource);
+  const loadedThemeConfig = await loadThemeConfig(root, config);
+  const theme: Record<string, any> = {};
   const themeFiles = await walk(themeRoot, ['.yml', '.css', '.js', '.mjs', '.ts']);
   const themeReads = await parallelMap(themeFiles, 16, async file => ({
     relative: normalizePath(path.relative(themeRoot, file)),
     source: await fs.readFile(file, 'utf8')
   }));
   const themeChunks = themeReads.map(({ relative, source }) => `${relative}\0${source}`);
+  if (loadedThemeConfig.file && !themeReads.some(entry => path.resolve(path.join(themeRoot, entry.relative)) === path.resolve(loadedThemeConfig.file!))) {
+    themeChunks.push(`@instance/${normalizePath(path.relative(root, loadedThemeConfig.file))}\0${loadedThemeConfig.source}`);
+  }
   const themeStyleSources = new Map(themeReads
     .filter(({ relative }) => path.extname(relative).toLowerCase() === '.css')
     .map(({ relative, source }) => [relative, source] as const));
@@ -2835,18 +2184,25 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
     return [normalizePath(path.relative(backendRoot, file)), String(stat.mtimeMs), String(stat.size)].join('\0');
   });
   const backendHash = shortHash(backendStats.join('\0'));
-  const configHash = shortHash(configSource);
   const themeHash = shortHash(themeChunks.join('\0'));
   // The public asset fingerprint remains content based.  Theme module imports
   // use a per-context generation so a long-lived preview process cannot keep
   // an old nested layout/component module from Node's ESM cache.
   const generation = `${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}`;
-  const themeDefinition = await loadThemeDefinition(root, themeName, theme, themeHash, generation);
-  const themeConfig = normalizeThemeConfig(config, theme, themeDefinition, themeName);
+  const themeDefinition = await loadThemeDefinition(root, themeName, generation);
+  validateConfiguredIntegrations(config, themeDefinition);
+  const configuredAdapters = resolveConfiguredIntegrations(config, themeDefinition).filter(integration => integration.enabled);
+  if (configuredAdapters.some(integration => integration.consent !== 'none') && config.privacy?.consent?.enabled === false) {
+    throw new Error('config.yml: privacy.consent.enabled is false, but a configured integration requires consent; keep the provider gated or remove the integration');
+  }
+  if (configuredAdapters.some(integration => integration.consent !== 'none') && !themeDefinition.plugins?.privacyConsent) {
+    throw new Error('active theme must register the privacyConsent UI plugin before configuring an integration that requires consent');
+  }
+  const themeConfig = normalizeThemeConfig(loadedThemeConfig.config, themeDefinition, loadedThemeConfig.file ? normalizePath(path.relative(root, loadedThemeConfig.file)) : 'theme.config');
   const themeI18n = await loadThemeI18n(themeRoot, themeDefinition, String(config.i18n?.fallbackLocale || config.defaultLocale || 'en'));
-  // Keep site-level visual options from the legacy YAML while exposing one
-  // normalized definition to all compiler consumers. Resource discovery is
-  // owned by the defineTheme export, not by a second file registry.
+  // The theme entry is code-owned; the instance file contributes only
+  // schema-validated plugin overrides. Resource discovery is owned by the
+  // defineTheme export, not by a second package configuration registry.
   const runtimeTheme = { ...theme, ...themeDefinition, __fingerprint: themeHash } as Record<string, any>;
   const assetRoot = path.join(root, 'content', 'assets');
   const assetFiles = await walk(assetRoot);
@@ -2895,10 +2251,15 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
     const cached = cache.documents[source];
     if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size && typeof cached.markdown === 'string') {
       const identity = documentIdentity(root, source);
+      // Metrics depend on the effective postMeta reading speeds as well as on
+      // Markdown. Recalculate from cached Markdown so changing the instance
+      // configuration cannot leave stale reading times in an incremental build.
+      const metrics = calculateContentMetrics(cached.markdown, contentMetricsOptions(themeConfig));
       return {
         ...cached,
         ...identity,
         pattern: String(cached.data?.pattern || defaultPattern(config, identity.collection, identity.id, themeDefinition.patterns)),
+        update: cached.update ?? (cached.data?.update ? String(cached.data.update).trim() : undefined),
         author: cached.data?.author ? String(cached.data.author) : localizedValue(config.author, identity.locale, 'Site Owner'),
         cover: cached.cover || (cached.data?.cover ? String(cached.data.cover) : undefined),
         excerpt: typeof cached.excerpt === 'string' ? cached.excerpt : cached.markdown,
@@ -2907,17 +2268,18 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
         stat: { mtimeMs: stat.mtimeMs, size: stat.size },
         nodes: [],
         directives: [],
+        metrics,
         dependencyKeys: cached.dependencies || [],
         blockNames: cached.blocks || []
       } as Document;
     }
-    return loadDocument(root, source, config, sourceParseCache, themeDefinition.patterns);
+    return loadDocument(root, source, config, sourceParseCache, themeDefinition.patterns, themeConfig);
   });
   const docs = loadedDocs.filter((doc): doc is Document => doc !== null);
   profile.load = duration(loadStart);
   profile.documents = docs.length;
   const byKey = new Map(docs.map(doc => [`${doc.collection}:${doc.id}:${doc.locale}`, doc]));
-  return { root, out: path.join(root, 'dist'), config, theme: runtimeTheme, themeConfig, themeI18n, themeDefinition, docs, byKey, routes: new Map(), cache, profile, outputs: new Set(), diagnostics: [], configHash, themeHash, assetHash, backendHash, contentRoots, imageCache: {}, outputHashes: {}, collectionIndex: new Map(), translationIndex: new Map(), documentPositions: new Map(), tagIndex: new Map(), markdownCache: new Map(), sourceParseCache, themeStyleSources, themeAssetHashes };
+  return { root, out: path.join(root, 'dist'), config, configFiles: loadedConfig.configFiles, deployment: resolveDeploymentConfig(config), theme: runtimeTheme, themeConfig, themeConfigFile: loadedThemeConfig.file, themeI18n, themeDefinition, docs, byKey, routes: new Map(), cache, profile, outputs: new Set(), diagnostics: [], configHash: loadedConfig.configHash, themeHash, assetHash, backendHash, contentRoots, imageCache: {}, outputHashes: {}, collectionIndex: new Map(), translationIndex: new Map(), documentPositions: new Map(), tagIndex: new Map(), markdownCache: new Map(), sourceParseCache, themeStyleSources, themeAssetHashes };
 }
 
 export async function refreshContext(ctx: BuildContext, changedFiles: string[] = []): Promise<BuildContext> {
@@ -2929,14 +2291,17 @@ export async function refreshContext(ctx: BuildContext, changedFiles: string[] =
   }
 
   const normalizedRoot = normalizePath(path.resolve(ctx.root)).toLocaleLowerCase();
+  const configFiles = new Set(ctx.configFiles.map(file => normalizePath(path.resolve(file)).toLocaleLowerCase()));
   const configPath = `${normalizedRoot}/config.yml`;
+  const configPrefix = `${normalizedRoot}/config/`;
+  const themeConfigPath = ctx.themeConfigFile ? normalizePath(path.resolve(ctx.themeConfigFile)).toLocaleLowerCase() : '';
   const themePrefix = `${normalizedRoot}/themes/`;
   const contentPrefix = `${normalizedRoot}/content/`;
   const agentPath = `${normalizedRoot}/agents.md`;
   const backendPrefix = normalizedRoot + '/backend/';
   const requiresGlobalReload = absoluteChanges.some(file => {
     const normalized = normalizePath(file).toLocaleLowerCase();
-    return normalized === configPath || normalized === agentPath || normalized.startsWith(themePrefix) || normalized.startsWith(backendPrefix) || (normalized.startsWith(contentPrefix) && path.extname(normalized) !== '.md');
+    return normalized === configPath || configFiles.has(normalized) || normalized.startsWith(configPrefix) || normalized === themeConfigPath || normalized === agentPath || normalized.startsWith(themePrefix) || normalized.startsWith(backendPrefix) || (normalized.startsWith(contentPrefix) && path.extname(normalized) !== '.md');
   });
   if (requiresGlobalReload) {
     const fresh = await createContext(ctx.root);
@@ -2951,7 +2316,7 @@ export async function refreshContext(ctx: BuildContext, changedFiles: string[] =
     if (file !== contentRoot && !file.startsWith(`${contentRoot}${path.sep}`)) continue;
     const existing = ctx.docs.findIndex(doc => path.resolve(doc.source) === file);
     try {
-      const loaded = await loadDocument(ctx.root, file, ctx.config, ctx.sourceParseCache, ctx.themeDefinition.patterns);
+      const loaded = await loadDocument(ctx.root, file, ctx.config, ctx.sourceParseCache, ctx.themeDefinition.patterns, ctx.themeConfig);
       if (existing >= 0) ctx.docs[existing] = loaded;
       else ctx.docs.push(loaded);
     } catch (error: any) {
@@ -2988,7 +2353,7 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   ctx.profile.assets = 0;
   ctx.profile.write = 0;
   if (!outputDirectoryExists) {
-    const stageRoot = path.join(ctx.root, '.pagekiln');
+    const stageRoot = path.join(ctx.root, '.pageskill');
     await fs.mkdir(stageRoot, { recursive: true });
     for (const entry of await fs.readdir(stageRoot, { withFileTypes: true })) if (entry.isDirectory() && entry.name.startsWith('output-stage-')) {
       await fs.rm(path.join(stageRoot, entry.name), { recursive: true, force: true });
@@ -3021,11 +2386,9 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   if (fastUnchanged) {
     for (const output of ctx.cache.outputs || []) retainOutput(ctx, output);
     ctx.profile.total = duration(totalStart);
-    await writeIfChanged(ctx, '.pagekiln/build-profile.json', JSON.stringify(ctx.profile, null, 2));
+    await writeIfChanged(ctx, '.pageskill/build-profile.json', JSON.stringify(ctx.profile, null, 2));
     return ctx;
   }
-
-  await removeLegacyOutputs(ctx);
 
   const affected = new Set<string>();
   for (const doc of ctx.docs) {
@@ -3039,7 +2402,7 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
 
   const validateStart = performance.now();
   for (const doc of ctx.docs) {
-    validateDocumentSchema(ctx, doc);
+    ctx.diagnostics.push(...documentSchemaDiagnostics(ctx.config, doc));
     if (!ctx.themeDefinition.patterns[doc.pattern]) ctx.diagnostics.push(`${doc.source}:1:1: unknown Pattern "${doc.pattern}"; use one of ${Object.keys(ctx.themeDefinition.patterns).join(', ')}`);
   }
   if (ctx.diagnostics.length) throw new Error(ctx.diagnostics.join('\n'));
@@ -3113,7 +2476,11 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   const sitemapDocuments = [...ctx.routes.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([route, doc]) => {
     const translations = ctx.translationIndex.get(translationKey(doc.collection, doc.id)) || [];
     const lines = ['<url>', `  <loc>${xml(`${siteUrl}${route}`)}</loc>`];
-    if (doc.date && !Number.isNaN(new Date(doc.date).valueOf())) lines.push(`  <lastmod>${xml(new Date(doc.date).toISOString().slice(0, 10))}</lastmod>`);
+    // Only dated post documents have an author-controlled last-modified date.
+    // Stable pages and generated archive routes continue to use their
+    // publication/source date and never inherit a post's `update` field.
+    const lastModified = isPostCollection(ctx, doc.collection) ? doc.update || doc.date : doc.date;
+    if (lastModified && publicationTimestamp(lastModified) !== undefined) lines.push(`  <lastmod>${xml(lastModified.slice(0, 10))}</lastmod>`);
     const defaultTranslation = translations.find(translation => translation.locale === (ctx.config.defaultLocale || 'en'));
     if (defaultTranslation) lines.push(`  <xhtml:link rel="alternate" hreflang="x-default" href="${xml(`${siteUrl}${routeFor(ctx, defaultTranslation)}`)}"/>`);
     lines.push(...translations.map(translation => `  <xhtml:link rel="alternate" hreflang="${xml(translation.locale)}" href="${xml(`${siteUrl}${routeFor(ctx, translation)}`)}"/>`), '</url>');
@@ -3138,25 +2505,21 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   await writeAgentSkills(ctx);
   await writeArdManifest(ctx, siteUrl);
   await writeAgentInfo(ctx, siteUrl);
-  await writeIfChanged(ctx, '.pagekiln/catalog.json', JSON.stringify(catalog(ctx), null, 2)); await writeDeployments(ctx); await copyThemeAndAssets(ctx); await writeSiteStaticDirectory(ctx); await writeSiteStaticRuntime(ctx); ctx.profile.assets = duration(assetStart);
+  await writeIfChanged(ctx, '.pageskill/catalog.json', JSON.stringify(catalog(ctx), null, 2)); await writeDeployments(ctx); await copyThemeAndAssets(ctx); await writeSiteStaticDirectory(ctx); await writeSiteStaticRuntime(ctx); ctx.profile.assets = duration(assetStart);
   const previousOutputs = new Set(ctx.cache.outputs || []); const writeStart = performance.now();
   for (const old of previousOutputs) {
     const { normalized, target } = outputTarget(ctx, old);
     if (ctx.outputs.has(normalized)) continue;
     try { await fs.rm(target); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
   }
-  if (openaiSitesStaticDirectory(ctx) === 'dist') {
-    const legacyStaticDirectory = outputTarget(ctx, 'static').target;
-    await fs.rm(legacyStaticDirectory, { recursive: true, force: true });
-  }
   ctx.profile.write = duration(writeStart);
-  ctx.outputs.add('.pagekiln/build-profile.json');
-  const manifest: CacheManifest = { version: 2, rendererVersion: RENDERER_VERSION, configHash: ctx.configHash, themeHash: ctx.themeHash, assetHash: ctx.assetHash, backendHash: ctx.backendHash, contentRoots: ctx.contentRoots, routeCount: ctx.routes.size, documents: Object.fromEntries(ctx.docs.map(doc => {
+  ctx.outputs.add('.pageskill/build-profile.json');
+  const manifest: CacheManifest = { version: 4, rendererVersion: RENDERER_VERSION, configHash: ctx.configHash, themeHash: ctx.themeHash, assetHash: ctx.assetHash, backendHash: ctx.backendHash, contentRoots: ctx.contentRoots, routeCount: ctx.routes.size, documents: Object.fromEntries(ctx.docs.map(doc => {
     const dependencies = doc.dependencyKeys.length ? doc.dependencyKeys : ctx.cache.documents[doc.source]?.dependencies || [];
     const blocks = doc.blockNames.length ? doc.blockNames : ctx.cache.documents[doc.source]?.blocks || [];
-    return [doc.source, { hash: doc.hash, outputs: documentOutputs(ctx, doc), dependencies, blocks, mtimeMs: doc.stat.mtimeMs, size: doc.stat.size, collection: doc.collection, id: doc.id, locale: doc.locale, title: doc.title, description: doc.description, pattern: doc.pattern, date: doc.date, author: doc.author, cover: doc.cover, data: doc.data, markdown: doc.markdown, excerpt: doc.excerpt, bodyLine: doc.bodyLine || 1 }];
+    return [doc.source, { hash: doc.hash, outputs: documentOutputs(ctx, doc), dependencies, blocks, mtimeMs: doc.stat.mtimeMs, size: doc.stat.size, collection: doc.collection, id: doc.id, locale: doc.locale, title: doc.title, description: doc.description, pattern: doc.pattern, date: doc.date, update: doc.update, author: doc.author, cover: doc.cover, data: doc.data, markdown: doc.markdown, excerpt: doc.excerpt, bodyLine: doc.bodyLine || 1, metrics: doc.metrics }];
   })), images: ctx.imageCache, outputs: [...ctx.outputs].sort(), outputHashes: Object.fromEntries([...ctx.outputs].map(output => [output, ctx.outputHashes[output] || ctx.cache.outputHashes?.[output] || '']).filter(([, hash]) => Boolean(hash))) };
-  const cacheDirectory = path.join(ctx.root, '.pagekiln');
+  const cacheDirectory = path.join(ctx.root, '.pageskill');
   await fs.mkdir(cacheDirectory, { recursive: true });
   const manifestTarget = path.join(cacheDirectory, 'manifest.json');
   const manifestTemporary = `${manifestTarget}.tmp-${process.pid}-${Date.now()}`;
@@ -3179,7 +2542,7 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   await fs.writeFile(graphTemporary, JSON.stringify(dependencyGraph, null, 2));
   await fs.rename(graphTemporary, graphTarget);
   ctx.profile.total = duration(totalStart);
-  await writeIfChanged(ctx, '.pagekiln/build-profile.json', JSON.stringify(ctx.profile, null, 2));
+  await writeIfChanged(ctx, '.pageskill/build-profile.json', JSON.stringify(ctx.profile, null, 2));
   ctx.cache = manifest;
   if (ctx.stagedOutput) {
     const staged = ctx.stagedOutput;
@@ -3192,6 +2555,8 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
 
 export async function check(ctx: BuildContext) {
   for (const doc of ctx.docs) if (!doc.nodes.length && doc.markdown) { doc.nodes = parseMarkdown(doc.markdown, doc.source, doc.bodyLine || 1); doc.directives = flattenDirectives(doc.nodes); }
+  ctx.diagnostics.length = 0;
+  for (const doc of ctx.docs) ctx.diagnostics.push(...documentSchemaDiagnostics(ctx.config, doc));
   const errors = [...ctx.diagnostics]; for (const doc of ctx.docs) for (const node of doc.directives) if (!ctx.themeDefinition.blocks[node.name]) errors.push(diagnostic(node.position, `unknown Block "${node.name}"; add it to the active theme or choose a supported Block`));
   if (errors.length) throw new Error(errors.join('\n')); return { ok: true, documents: ctx.docs.length, routes: ctx.routes.size || ctx.cache.routeCount || ctx.docs.length, outputs: ctx.outputs.size };
 }
@@ -3218,6 +2583,9 @@ function inspectDocument(ctx: BuildContext, doc: Document) {
     route: routeFor(ctx, doc),
     source: doc.source,
     title: doc.title,
+    date: doc.date,
+    update: doc.update,
+    metrics: doc.metrics,
     directives: doc.directives.map(node => ({ name: node.name, attrs: node.attrs, position: node.position }))
   };
 }

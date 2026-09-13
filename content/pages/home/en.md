@@ -1,18 +1,28 @@
 ---
-title: Publish your first tutorial and build your site
-description: Preview, generate, and publish a tutorial-friendly site with three commands.
+title: 'Pageskill: build a content site from Markdown'
+description: Build a clear, multilingual content site with Markdown, YAML, and reusable themes.
 pattern: landing
 ---
 
 :::hero{tone="brand" align="left"}
-*Pageskill 3.0.2 · Build with tutorials*
+*Pageskill · Build with Markdown*
 
-# Publish your first tutorial and build your site
+# Build content sites from Markdown and YAML
 
-Pageskill turns Markdown posts, site settings, and styles into a website. Clone the repository, generate it in place, and adapt the content to your project; when you need dynamic behavior, pages and same-origin APIs still keep a clear boundary.
+Pageskill turns Markdown content and a small amount of YAML site data into a multilingual website. Reusable themes handle layout and plugins, while dynamic APIs stay behind a clear same-origin boundary.
 
-[Start in ten minutes](/en/posts/start/) [Browse all tutorials](/en/posts/)
+[Get started](/en/posts/start/) [GitHub](https://github.com/jsw-teams/pageskill)
 :::
+
+The ordinary author workflow is simple: write Markdown, edit `config.yml` and `site/theme.yml` when needed, then generate the site. Add theme or backend code only when the site needs a genuinely new capability.
+
+## What Pageskill brings together
+
+| Content | Theme | Multilingual | Discovery | Deployment |
+| --- | --- | --- | --- | --- |
+| Markdown pages and posts | Patterns, Blocks, plugins | `zh-sg`, `zh-tw`, `en` | Search, feeds, Agent metadata | Static output and same-origin APIs |
+
+The tutorials below show the real source files behind this preview.
 
 :::learning-path
 ### [Start](/en/posts/start/)
@@ -27,8 +37,8 @@ Write with headings, paragraphs, lists, and fenced code, starting with one small
 ### [First tutorial](/en/posts/first-post/)
 Add a dated post under `content/posts/`, choose its Frontmatter category, generate the site, and open it from the post list.
 
-### [How we build a plugin](/en/posts/cookies/)
-Use the Cookie selector as a reference for module resources, safe rendering, partial translations, and consent-aware scripts.
+### [How we build a plugin](/en/posts/plugins/)
+Learn how one reusable plugin owns its resources, safe rendering, and localized messages; the Cookie selector is the advanced reference.
 
 ### [Change the style](/en/posts/customize/)
 Reuse the theme capabilities you have; when a new structure is needed, implement it once for later pages.

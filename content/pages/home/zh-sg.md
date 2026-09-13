@@ -1,18 +1,28 @@
 ---
-title: 发布第一篇教程，搭好你的网站
-description: 用三条命令预览、生成并发布一个适合教程内容的网站。
+title: Pageskill：用 Markdown 搭建内容网站
+description: 用 Markdown、YAML 和可复用主题搭建清晰的多语言内容网站。
 pattern: landing
 ---
 
 :::hero{tone="brand" align="left"}
-*Pageskill 3.0.2 · 用教程搭站*
+*Pageskill · 用 Markdown 搭站*
 
-# 发布第一篇教程，搭好你的网站
+# 用 Markdown 和 YAML 搭建内容网站
 
-Pageskill 把 Markdown post、站点设置和样式组装成一个网站。你可以先克隆仓库、在原目录生成，再按自己的内容修改；需要动态功能时，页面和同源 API 仍然各自放在清楚的边界里。
+Pageskill 把 Markdown 内容和少量 YAML 站点数据编译成多语言网站。可复用主题负责布局和插件，动态 API 则保持在清楚的同源边界之后。
 
-[十分钟开始](/zh-sg/posts/start/) [查看全部教程](/zh-sg/posts/)
+[开始使用](/zh-sg/posts/start/) [GitHub](https://github.com/jsw-teams/pageskill)
 :::
+
+普通作者只需要写 Markdown，需要时修改 `config.yml` 和 `site/theme.yml`，再生成网站。只有站点需要真正新增能力时，才修改主题或 backend 代码。
+
+## Pageskill 组合了什么
+
+| 内容 | 主题 | 多语言 | 发现能力 | 部署 |
+| --- | --- | --- | --- | --- |
+| Markdown 页面和文章 | Pattern、Block、Plugin | `zh-sg`、`zh-tw`、`en` | 搜索、Feed、Agent 元数据 | 静态输出和同源 API |
+
+下面的教程会展示这个预览站实际使用的源文件。
 
 :::learning-path
 ### [开始](/zh-sg/posts/start/)
@@ -27,8 +37,8 @@ Pageskill 把 Markdown post、站点设置和样式组装成一个网站。你�
 ### [第一篇教程](/zh-sg/posts/first-post/)
 在 `content/posts/` 新建带日期的 post，选择 Frontmatter 分类，生成后从 post 列表打开它。
 
-### [我们如何构建插件](/zh-sg/posts/cookies/)
-以 Cookie 选择器为参考，学习模块资源、安全渲染、部分翻译和同意后加载脚本。
+### [我们如何构建插件](/zh-sg/posts/plugins/)
+学习一个可复用插件如何拥有自己的资源、安全渲染和本地化文案；Cookie 选择器是更高级的参考实现。
 
 ### [换样式](/zh-sg/posts/customize/)
 先复用主题已有能力；需要新结构时实现一次，让之后的页面继续使用。

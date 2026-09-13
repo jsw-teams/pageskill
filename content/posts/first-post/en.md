@@ -60,4 +60,4 @@ Do not use a different directory name for each language or put the post in a rou
 
 ## Next step
 
-Read [How we build a plugin](/en/posts/cookies/) to study the Cookie selector reference implementation.
+Read [How we build a plugin](/en/posts/plugins/) to study reusable plugin design, then see [Configure integrations and privacy consent](/en/posts/cookies/) for the Cookie selector reference implementation.

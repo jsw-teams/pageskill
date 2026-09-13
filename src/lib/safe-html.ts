@@ -1,4 +1,4 @@
-const SAFE_HTML = Symbol('Pagekiln.SafeHtml');
+const SAFE_HTML = Symbol('Pageskill.SafeHtml');
 
 export class Html extends String {
   readonly [SAFE_HTML] = true;
@@ -17,7 +17,7 @@ export function safeUrl(value: unknown): string {
   const input = String(value ?? '').trim();
   if (!input) return '#';
   try {
-    const url = new URL(input, 'https://pagekiln.invalid');
+    const url = new URL(input, 'https://pageskill.invalid');
     if (!['http:', 'https:', 'mailto:', 'tel:'].includes(url.protocol)) return '#';
     return escapeHtml(input);
   } catch {

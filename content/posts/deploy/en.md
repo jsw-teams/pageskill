@@ -33,7 +33,7 @@ Build command: npm run g
 Build output directory: dist/public
 ```
 
-`npm run build` is not a Pageskill command and should not be added as a compatibility alias. `dist/public` is the public snapshot: it contains generated pages, assets, feeds, and the sitemap. Do not set the output directory to `dist`; the private build root can also contain `_pagekiln/`, `server/`, `.pagekiln/`, `_worker.js`, and other deployment files. Publishing the whole `dist/` directory can expose backend code or private runtime files.
+`npm run build` is not a Pageskill command. `dist/public` is the public snapshot: it contains generated pages, assets, feeds, and the sitemap. Do not set the output directory to `dist`; the private build root can also contain `_pageskill/`, `server/`, `.pageskill/`, `_worker.js`, and other deployment files. Publishing the whole `dist/` directory can expose backend code or private runtime files.
 
 This Git integration path is static-only. It does not automatically package `backend/handler.ts` as a same-package Pages Worker. If the site has no runtime API, set `deployment.backend: false` when appropriate; the output directory must still be `dist/public`.
 
@@ -80,7 +80,7 @@ deployment:
       project: your-pages-project
 ```
 
-Keep `CLOUDFLARE_API_TOKEN` in the deployment environment, then run `npm run d -- --dry-run` and, when the result is correct, `npm run d`. The CLI builds `dist`, copies only the public tree into a temporary `.pagekiln/pages-upload-*` directory, and adds the generated `_worker.js` plus its private `_pagekiln` runtime there. That staged directory is the Pages upload source, so the backend and public assets are integrated without publishing the private `dist/` root. The existing Git integration cannot perform this extra staging step automatically; changing the console output directory to `dist` is not a safe workaround.
+Keep `CLOUDFLARE_API_TOKEN` in the deployment environment, then run `npm run d -- --dry-run` and, when the result is correct, `npm run d`. The CLI builds `dist`, copies only the public tree into a temporary `.pageskill/pages-upload-*` directory, and adds the generated `_worker.js` plus its private `_pageskill` runtime there. That staged directory is the Pages upload source, so the backend and public assets are integrated without publishing the private `dist/` root. The existing Git integration cannot perform this extra staging step automatically; changing the console output directory to `dist` is not a safe workaround.
 
 ## Expected result
 

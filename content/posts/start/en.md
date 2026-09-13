@@ -45,7 +45,7 @@ The home page opens, static files are under `dist/public`, and `content/pages/ho
 
 ## Common trap
 
-If generation fails before the content is read, run `npm install` again from the cloned repository and check that Node.js is version 22 or newer. Do not edit generated files under `dist/` or `.pagekiln/`.
+If generation fails before the content is read, run `npm install` again from the cloned repository and check that Node.js is version 22 or newer. Do not edit generated files under `dist/` or `.pageskill/`.
 
 ## Next step
 

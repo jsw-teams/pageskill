@@ -45,7 +45,7 @@ npm run s
 
 ## 常见坑
 
-如果生成在读取内容前失败，请在克隆的仓库中再次运行 `npm install`，并确认 Node.js 是 22 或更高版本。不要修改 `dist/` 或 `.pagekiln/` 下的生成文件。
+如果生成在读取内容前失败，请在克隆的仓库中再次运行 `npm install`，并确认 Node.js 是 22 或更高版本。不要修改 `dist/` 或 `.pageskill/` 下的生成文件。
 
 ## 下一步
 

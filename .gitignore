@@ -1,5 +1,5 @@
 node_modules/
-.pagekiln/
+.pageskill/
 src/runtime/
 public/
 dist/
@@ -24,7 +24,5 @@ yarn-error.log*
 pnpm-debug.log*
 serve.log
 serve.err.log
-pagekiln-preview.log
-pagekiln-preview.err.log
 pageskill-preview.log
 pageskill-preview.err.log

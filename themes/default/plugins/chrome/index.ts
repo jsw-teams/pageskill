@@ -4,9 +4,11 @@ const chromeLink: ThemeOptionSchema = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    label: { type: 'string', required: true },
+    key: { type: 'string' },
+    label: { type: 'string' },
     labels: { type: 'object', additionalProperties: true },
-    href: { type: 'string', required: true }
+    href: { type: 'string', required: true },
+    target: { type: 'string', enum: ['_self', '_blank'] }
   }
 };
 

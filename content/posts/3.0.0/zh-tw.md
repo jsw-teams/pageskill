@@ -42,7 +42,7 @@ Pageskill 3.0 繼續用 Markdown、設定和主題產生網站，但第一次使
 
 ## 給進階作者的發現入口
 
-產生後可以閱讀 `dist/.pagekiln/catalog.json` 或 `dist/.well-known/agent.json`，了解主題和內容的可重用能力。Agent 整合可以呼叫內部 `getCatalog` 和 `inspect`，但新手只要先寫 post 和設定，不必把發現檔案加入日常步驟。
+產生後可以閱讀 `dist/.pageskill/catalog.json` 或 `dist/.well-known/agent.json`，了解主題和內容的可重用能力。Agent 整合可以呼叫內部 `getCatalog` 和 `inspect`，但新手只要先寫 post 和設定，不必把發現檔案加入日常步驟。
 
 ## 新的學習入口
 

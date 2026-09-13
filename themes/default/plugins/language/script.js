@@ -7,35 +7,24 @@ if (root) {
   const config = parse(root.dataset.languageCopy) || {};
   const locales = Array.isArray(config.locales) ? config.locales.map(String) : [];
   const normalized = value => String(value || '').trim().toLocaleLowerCase().replaceAll('_', '-');
-  const languageFamily = value => {
-    const language = normalized(value);
-    if (/^zh-(?:hant|tw|hk|mo)(?:-|$)/.test(language)) return 'zh-tw';
-    if (/^zh-(?:hans|cn|sg)(?:-|$)/.test(language) || language === 'zh') return 'zh-sg';
-    if (/^en(?:-|$)/.test(language)) return 'en';
-    return language;
-  };
+  const aliases = config.localeAliases && typeof config.localeAliases === 'object' ? config.localeAliases : {};
   const resolveLocale = value => {
     const language = normalized(value);
     if (!language) return null;
-    const mapped = languageFamily(language);
     return locales.find(locale => normalized(locale) === language)
-      || locales.find(locale => normalized(locale) === mapped)
-      || locales.find(locale => normalized(locale).split('-')[0] === mapped.split('-')[0])
+      || locales.find(locale => Array.isArray(aliases[locale]) && aliases[locale].some(alias => normalized(alias) === language))
       || null;
   };
   const readStoredLocale = () => {
-    const keys = [...new Set([config.storageKey || 'pagekiln-locale', 'pageskill-locale'])];
-    for (const key of keys) {
-      try {
-        const value = window.localStorage.getItem(key);
-        const stored = resolveLocale(value) || resolveLocale(parse(value)?.locale);
-        if (stored) return stored;
-      } catch { /* storage can be disabled or unavailable */ }
-    }
+    const key = config.storageKey || 'pageskill-locale';
+    try {
+      const value = window.localStorage.getItem(key);
+      return resolveLocale(value) || resolveLocale(parse(value)?.locale);
+    } catch { /* storage can be disabled or unavailable */ }
     return null;
   };
   const writeStoredLocale = locale => {
-    const key = config.storageKey || 'pagekiln-locale';
+    const key = config.storageKey || 'pageskill-locale';
     try { window.localStorage.setItem(key, locale); } catch { /* continue with the normal link */ }
   };
   const browserLocale = () => {
@@ -93,16 +82,19 @@ if (root) {
       if (privacy.policyHref) link.setAttribute('href', privacy.policyHref);
     });
     const categories = new Map((Array.isArray(privacy.categories) ? privacy.categories : []).map(category => [String(category.purpose || category.id), category]));
-    const isChinese = String(document.documentElement.lang || '').startsWith('zh');
     consent.querySelectorAll('.cookie-option').forEach(option => {
       const input = option.querySelector('input[data-cookie-purpose],input[data-cookie-category]');
       const purpose = input?.dataset.cookiePurpose || input?.dataset.cookieCategory || '';
       const category = categories.get(purpose);
       if (!category) return;
       setText('strong', category.label, option);
-      const details = [category.description, category.provider, category.retentionDays ? `${category.retentionDays} ${isChinese ? '天' : 'days'}` : ''].filter(Boolean).join(' · ');
+      const providers = Array.isArray(category.providers) ? category.providers.join(', ') : category.provider;
+      const details = [category.description, providers].filter(Boolean).join(' · ');
       setText('small', details, option);
     });
+    setText('[data-pageskill-social-placeholder-title]', privacy.socialPlaceholderTitle);
+    setText('[data-pageskill-social-placeholder-description]', privacy.socialPlaceholderDescription);
+    setText('[data-pageskill-allow-purpose="social-embedding"]', privacy.socialPlaceholderAllowLabel);
   };
   const updateLocaleLinks = (locale, copy) => {
     const localePath = `/${encodeURIComponent(String(locale).replace(/^\/+|\/+$/g, ''))}`;
@@ -121,7 +113,7 @@ if (root) {
   const applyCopy = locale => {
     const copy = config.copy?.[locale];
     if (!copy) return;
-    document.documentElement.lang = locale;
+    document.documentElement.lang = copy.htmlLang || locale;
     if (copy.title && copy.siteName) document.title = `${copy.title} · ${copy.siteName}`;
     const description = document.querySelector('meta[name="description"]');
     if (description && copy.siteDescription) description.setAttribute('content', copy.siteDescription);
@@ -134,10 +126,9 @@ if (root) {
     setText('.brand-copy strong', copy.siteName);
     setText('.brand-copy small', copy.headerNote);
     updateLocaleLinks(locale, copy);
-    const footerLinks = document.querySelectorAll('.site-footer .footer-tool-link');
-    setFooterLabel(footerLinks[0], copy.siteMap);
+    setFooterLabel(document.querySelector('.site-footer [data-site-map]'), copy.siteMap);
     if (copy.privacy) {
-      setFooterLabel(footerLinks[1], copy.privacy.policyLabel);
+      setFooterLabel(document.querySelector('.site-footer [data-privacy-policy]'), copy.privacy.policyLabel);
       setDirectText(document.querySelector('.privacy-trigger'), copy.privacy.settingsLabel);
     }
     const card = [...root.querySelectorAll('[data-locale]')].find(link => resolveLocale(link.dataset.locale) === locale);

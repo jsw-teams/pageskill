@@ -18,7 +18,7 @@ theme:
   name: default
 ```
 
-The active theme keeps plugin options in `themes/default/theme.yml` and uses the thin `themes/default/index.ts` assembly entry. `theme.yml` does not select the theme name.
+The active theme keeps plugin options in the `theme.config`-selected instance file, normally `site/theme.yml`, and uses the thin `themes/default/index.ts` assembly entry. The instance file does not select the theme name.
 
 ## 2. Change one shared style
 
@@ -68,12 +68,12 @@ npm run g
 npm run s
 ```
 
-## 5. Add safe shell links from theme.yml
+## 5. Add safe shell links from the theme instance file
 
 Primary navigation remains site data in `config.yml`. If a theme needs an extra link before or after the standard navigation or footer tools, use the structured `plugins.chrome` option:
 
 ```yaml
-# themes/default/theme.yml
+# site/theme.yml
 plugins:
   chrome:
     enabled: true

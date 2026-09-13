@@ -1,24 +1,26 @@
 ---
 title: Privacy policy
-description: How the Pageskill site handles data, why it handles it, and how to contact the site owner.
+description: How this demo site handles data and how configured integrations participate in consent.
 ---
 
 # Privacy policy
 
-This fixed policy page explains how the site handles information needed to serve pages and how visitors manage optional Cookies.
+This fixed policy page explains how the site handles information needed to serve pages and how visitors manage optional integrations.
 
-## What we process
+## This demo's current state
 
-The site processes only what it needs to serve pages, save a Cookie choice, and run services after consent. Optional analytics, advertising, human-verification, or social-embed services do not run without a visitor's choice. Provider instances are configured in the theme from the provider's own public measurement ID, token, or site key; the site owner must name the active service and its real data flow here when one is enabled.
+The Pageskill demo does not configure a third-party integration. It therefore does not show a consent banner and does not load analytics, advertising, CAPTCHA, or social-embed services.
 
-## Cookie choices
+When a site owner adds an integration under `config.yml`, the active theme's trusted Provider Adapter supplies its public fields, processing purpose, consent requirement, and load policy. Site YAML does not supply a script URL or choose a purpose.
 
-Essential Cookies save your choice; the `measurement`, `advertising`, `fraud-prevention`, and `social-embedding` purposes start disabled. Open Cookie settings from the footer to save a new choice or withdraw optional purposes. Withdrawal stops later loads but cannot undo an action a script already performed.
+## Consent choices
 
-## Retention
+Consent purposes are derived from enabled adapters. Only purposes represented by the site's configured integrations appear in the dialog; essential operation is handled by Pageskill and is not a site-level category. A gated provider remains unloaded until the visitor grants its purpose. Withdrawing consent prevents later loads but cannot undo work a provider already performed.
 
-The essential choice lasts up to 365 days. Optional purposes stay off without consent; follow each third-party service's policy for its own retention and request behavior, including audience measurement, advertising, CAPTCHA, or X embeds when configured. The selector's purpose and display retention are not a promise that every provider creates a Cookie or retains data for the same period.
+## Decision storage
+
+The consent decision is stored by the runtime as a small browser preference containing the schema version, current purpose choices, and update time. `privacy.consent.decisionRetentionDays` changes how long that choice is remembered; it does not control a provider's server-side data retention or policy.
 
 ## Contact
 
-For privacy questions, contact toewpq through [Pageskill GitHub](https://github.com/jsw-teams/pageskill). If the site configures another service, its owner should add the real contact and processing details here.
+For privacy questions, contact toewpq through [Pageskill GitHub](https://github.com/jsw-teams/pageskill). A site that enables an integration must add its real processing details and contact information to this reviewed policy.

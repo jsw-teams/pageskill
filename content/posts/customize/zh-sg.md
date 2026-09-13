@@ -18,7 +18,7 @@ theme:
   name: default
 ```
 
-当前主题把插件选项放在 `themes/default/theme.yml`，并使用负责组装的薄入口 `themes/default/index.ts`；`theme.yml` 不选择主题名称。
+当前主题把插件选项放在 `theme.config` 指向的站点实例文件（通常是 `site/theme.yml`），并使用负责组装的薄入口 `themes/default/index.ts`；实例文件不选择主题名称。
 
 ## 2. 先改一个共用样式
 
@@ -68,12 +68,12 @@ npm run g
 npm run s
 ```
 
-## 5. 在 theme.yml 中安全增加 shell 链接
+## 5. 在主题实例文件中安全增加 shell 链接
 
 主导航仍然是 `config.yml` 中的站点数据。如果主题需要在标准导航或页脚工具前后增加链接，请使用结构化的 `plugins.chrome` 选项：
 
 ```yaml
-# themes/default/theme.yml
+# site/theme.yml
 plugins:
   chrome:
     enabled: true

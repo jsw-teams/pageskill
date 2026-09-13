@@ -33,7 +33,7 @@ deployment:
 构建输出目录：dist/public
 ```
 
-`npm run build` 不是 Pageskill 命令，不要为了兼容控制台而添加别名。`dist/public` 是公开快照，里面只有生成页面、资源、Feed 和站点地图。不要把输出目录设为 `dist`；私有构建根还可能包含 `_pagekiln/`、`server/`、`.pagekiln/`、`_worker.js` 和其他部署文件，直接发布整个 `dist/` 可能暴露 backend 代码或私有运行时文件。
+`npm run build` 不是 Pageskill 命令。`dist/public` 是公开快照，里面只有生成页面、资源、Feed 和站点地图。不要把输出目录设为 `dist`；私有构建根还可能包含 `_pageskill/`、`server/`、`.pageskill/`、`_worker.js` 和其他部署文件，直接发布整个 `dist/` 可能暴露 backend 代码或私有运行时文件。
 
 这条 Git 集成路径只发布静态内容，不会自动把 `backend/handler.ts` 打包成同一个 Pages Worker。如果站点不需要运行时 API，可以按需设置 `deployment.backend: false`；输出目录仍必须是 `dist/public`。
 
@@ -80,7 +80,7 @@ deployment:
       project: your-pages-project
 ```
 
-把 `CLOUDFLARE_API_TOKEN` 放在部署环境中，然后先运行 `npm run d -- --dry-run`，确认结果后再运行 `npm run d`。CLI 会生成 `dist`，把公开目录复制到临时的 `.pagekiln/pages-upload-*`，再把生成的 `_worker.js` 和私有 `_pagekiln` 运行时放进这个上传目录。Pages 上传的是这个临时目录，而不是私有的 `dist/` 根目录，因此 backend 和公开资源可以一起工作，又不会把私有构建文件当成静态资源。现有 Git 集成不会自动执行这一步；把控制台输出目录改成 `dist` 不是安全的解决办法。
+把 `CLOUDFLARE_API_TOKEN` 放在部署环境中，然后先运行 `npm run d -- --dry-run`，确认结果后再运行 `npm run d`。CLI 会生成 `dist`，把公开目录复制到临时的 `.pageskill/pages-upload-*`，再把生成的 `_worker.js` 和私有 `_pageskill` 运行时放进这个上传目录。Pages 上传的是这个临时目录，而不是私有的 `dist/` 根目录，因此 backend 和公开资源可以一起工作，又不会把私有构建文件当成静态资源。现有 Git 集成不会自动执行这一步；把控制台输出目录改成 `dist` 不是安全的解决办法。
 
 ## 成功结果
 

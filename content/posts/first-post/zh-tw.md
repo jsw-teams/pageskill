@@ -60,4 +60,4 @@ npm run s
 
 ## 下一步
 
-接著閱讀[我們如何構建外掛](/zh-tw/posts/cookies/)，以 Cookie 選擇器為參考學習完整的同意後載入外掛。
+先閱讀[我們如何構建外掛](/zh-tw/posts/plugins/)了解可重用的外掛設計，再閱讀[設定整合與隱私同意](/zh-tw/posts/cookies/)查看 Cookie 選擇器參考實作。

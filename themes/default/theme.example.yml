@@ -1,3 +1,7 @@
+# Reference for a site instance file selected by config.yml: theme.config.
+# Plugin code owns defaults and schemas; site/theme.yml should contain only
+# the values this site overrides. A reusable theme package keeps each site's
+# instance data in site/theme.yml.
 plugins:
   chrome:
     enabled: true
@@ -11,77 +15,21 @@ plugins:
       after: []
   search:
     enabled: true
-    provider: Pageskill
     maxResults: 8
     shardSize: 500
-    # Optional localized labels; untranslated keys fall back to messages.yml.
-    copy: {}
+    # Optional localized labels; add copy.<locale> only when overriding
+    # messages.yml, for example: copy: { en: { placeholder: Search } }.
   toc:
     enabled: true
     maxDepth: 3
-    # Example: copy.zh-sg.title changes only this plugin's wording.
-    copy: {}
-  privacyConsent:
+    # Add copy.<locale> only when this site needs different wording.
+  postMeta:
     enabled: true
-    provider: Pageskill
-    storage: cookie
-    retentionDays: 365
-    categories:
-      - purpose: essential
-        required: true
-        default: true
-        retentionDays: 365
-      - purpose: measurement
-        required: false
-        default: false
-        retentionDays: 0
-      - purpose: advertising
-        required: false
-        default: false
-        retentionDays: 0
-      - purpose: fraud-prevention
-        required: false
-        default: false
-        retentionDays: 0
-      - purpose: social-embedding
-        required: false
-        default: false
-        retentionDays: 0
-    # The purpose is registered by the provider adapter; identifier fields
-    # are copied from that provider's dashboard or official snippet.
-    integrations:
-      - provider: google-analytics
-        enabled: false
-        measurementId: ''
-        purpose: measurement
-      - provider: google-ads
-        enabled: false
-        tagId: ''
-        purpose: advertising
-      - provider: cloudflare-web-analytics
-        enabled: false
-        token: ''
-        purpose: measurement
-      - provider: baidu-tongji
-        enabled: false
-        siteSignature: ''
-        purpose: measurement
-      - provider: recaptcha
-        enabled: false
-        siteKey: ''
-        purpose: fraud-prevention
-      - provider: hcaptcha
-        enabled: false
-        siteKey: ''
-        purpose: fraud-prevention
-      - provider: turnstile
-        enabled: false
-        siteKey: ''
-        purpose: fraud-prevention
-      - provider: x-for-websites
-        enabled: false
-        purpose: social-embedding
-    gatedScripts: []
-    # Optional localized consent labels/purposes; code keeps provider
-    # capability registration in plugins/cookies/index.ts.
-    copy: {}
+    wordCount: true
+    readingTime: true
+    updateDate: true
+    updateNotice: true
+    wordsPerMinute: 220
+    cjkCharactersPerMinute: 400
+  # Consent UI has no required instance options. Configure real provider
+  # adapters in config.yml under integrations instead of this theme file.

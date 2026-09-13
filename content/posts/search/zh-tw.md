@@ -11,7 +11,7 @@ Pageskill 搜尋會從頁面和帶日期的 post 產生。瀏覽器讀取目前�
 
 ## 1. 開啟搜尋設定
 
-在 `themes/default/theme.yml` 中設定外掛選項：
+在 `theme.config` 指向的網站實例檔案（通常是 `site/theme.yml`）中設定外掛選項：
 
 ```yaml
 plugins:
@@ -46,7 +46,7 @@ npm run s
 
 ## 常見問題
 
-修改 Markdown 後，已有預覽不會在沒有產生或重建時更新。不要直接改 `dist/` 下產生的搜尋 JSON；應修改來源內容或 `themes/default/theme.yml` 中的搜尋選項。
+修改 Markdown 後，已有預覽不會在沒有產生或重建時更新。不要直接改 `dist/` 下產生的搜尋 JSON；應修改來源內容或 `site/theme.yml` 中的搜尋選項。
 
 ## 下一步
 

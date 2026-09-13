@@ -1,72 +1,89 @@
-# Pageskill: write tutorials, build a site
+# Pageskill: write in Markdown, configure in YAML
 
-[简体中文](README.md) · [中文 changelog](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md)
+[简体中文](README.md) · [Chinese changelog](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md)
 
-Pageskill 3.0.2 turns Markdown content, site settings, and theme styles into a publishable website. Write the content first, then let the theme provide structure and visual behavior; ordinary sites do not need hand-written HTML for every post.
+Pageskill 3.1.0 is a static-first website generator. It compiles Markdown content, YAML site data, and reusable theme code into a publishable site. Ordinary authors maintain content and configuration without hand-writing HTML for every post.
+
+## Minimal configuration
+
+```yaml
+siteUrl: https://example.com
+defaultLocale: en
+activeLocales:
+  - en
+siteName: Example
+
+theme:
+  name: default
+  config: ./site/theme.yml
+
+navigation:
+  links:
+    - key: home
+      href: /:locale/
+    - label: GitHub
+      href: https://github.com/example/example
+      target: _blank
+
+footer:
+  links:
+    - key: privacy
+      href: /:locale/privacy/
+```
+
+When configuration grows, split genuinely related content, discovery, or deployment settings into `config/*.yml` and list them in order:
+
+```yaml
+extends:
+  - ./config/content.yml
+  - ./config/discovery.yml
+```
+
+Objects merge recursively; arrays are replaced as a whole; later scalar values win. See [`config.example.yml`](config.example.yml) for a complete site example and [`themes/default/theme.example.yml`](themes/default/theme.example.yml) for the full plugin reference.
 
 ## Start in ten minutes
-
-The cloned source repository is the site you edit and publish. Install its dependencies and generate it first:
 
 ```powershell
 git clone https://github.com/jsw-teams/pageskill.git
 Set-Location pageskill
 npm install
 npm run g
-```
-
-`npm run g` compiles the runtime, theme, and backend before validating and generating the current site. Continue editing this directory:
-
-```powershell
 npm run s
 ```
 
-`npm run s` keeps a preview running, watches nested theme TypeScript modules and backend changes, and builds an isolated private runtime before reloading; press `Ctrl+C` to stop it, or edit in another terminal and run `npm run g` again. When the site is ready, configure a target in `config.yml` and run a dry run first:
+`g` validates and generates, `s` starts a local preview, and `d` publishes the targets declared in `deployment.targets`. Before publishing, inspect the action with:
 
 ```powershell
 npm run d -- --dry-run
 ```
 
-Run `npm run d` only after the target is ready. Read the complete [Start your site in ten minutes](content/posts/start/en.md) article.
+Read the complete [Start your site in ten minutes](content/posts/start/en.md) guide.
 
-## Learning path
+## The files an ordinary site maintains
 
-Read these short articles in order:
+- `content/pages/<id>/<locale>.md`: stable pages such as Home, About, and the privacy policy.
+- `content/posts/<id>/<locale>.md`: tutorials, blogs, product notes, and release notes. Every post needs an ISO `date`; optional `update` is its last-modified time and never replaces publication date. Word count and reading time are calculated automatically.
+- `config.yml` and `config/*.yml`: site identity, locales, navigation, footer, content, discovery, and deployment settings. Navigation and footer use the same safe internal/external link schema; external `_blank` links receive `noopener noreferrer` automatically.
+- `site/theme.yml`: small site-specific plugin overrides, such as a search result limit. Plugin code owns defaults and schemas.
 
-- [Change the name and navigation](content/posts/site-settings/en.md)
-- [Markdown: write like a note](content/posts/markdown/en.md)
-- [Publish your first tutorial](content/posts/first-post/en.md)
-- [How we build a plugin](content/posts/cookies/en.md)
-- [Change the style, or ask an Agent](content/posts/customize/en.md)
-- [Let visitors search pages and posts](content/posts/search/en.md)
-- [Add a table of contents to long posts](content/posts/toc/en.md)
-- [Develop a reusable plugin](content/posts/plugins/en.md)
-- [Put the site online](content/posts/deploy/en.md)
-- [Configure conditional Agent capabilities](content/posts/agent-discovery/en.md)
-- [About Pageskill](content/pages/about/en.md)
-- [Privacy policy](content/pages/privacy/en.md)
-- [3.0.2 update: clearer archives and responsive reading](content/posts/3.0.2/en.md)
-- [3.0.1 update: article metadata and safer publishing](content/posts/3.0.1/en.md)
-- [3.0 update: a simpler entry](content/posts/3.0.0/en.md)
+`themes/<name>/` contains reusable theme implementation, resources, plugins, and reference examples. It is not a site instance configuration directory. Edit theme code or `backend/handler.ts` only when adding a reusable Pattern, Block, Plugin, browser capability, or dynamic API.
 
-The Simplified Chinese and Traditional Chinese versions sit beside each English tutorial or release note.
+Third-party services belong in root `integrations`, not in theme configuration. List only the providers this site actually uses; the Provider Adapter supplies its schema, purpose, consent requirement, and safe loading behavior:
 
-## Where content and source code live
+```yaml
+integrations:
+  google-analytics:
+    measurementId: G-XXXXXXXXXX
+```
 
-- `content/pages/<id>/<locale>.md` stores stable pages such as the home page, About, and the privacy policy. These pages do not need `date`; the pages collection supplies the default page pattern. All dated tutorials, blogs, product records, and version updates live in `content/posts/<id>/<locale>.md`; `category: tutorial` marks a tutorial, an omitted category defaults to `uncategorized`, and `category: update` marks a version update that appears in the separate `/:locale/updates/<id>/` view. Every post requires a valid ISO `date`. Optional `author` and `cover` fields control the author and cover. The current site's localized author is `toewpq`; a missing author falls back to it. Local covers live under `content/assets/` and use `assets/<path>` or `/assets/<path>` in Frontmatter.
-- `config.yml` stores site names, languages, i18n fallback, navigation, routes, privacy/controller data, images, and deployment targets; `theme.name` selects the theme. It is not a browser-script or HTML injection surface. Plugin instance options and switches belong together in `themes/<name>/theme.yml`; language lists and fallback are site configuration, not plugin settings.
-- `themes/<name>/` owns styles, article structures, and reusable Blocks. The root `index.ts` only assembles `components/index.ts`, `layouts/index.ts`, and `plugins/index.ts`; the site shell lives in `layouts/site/`, shared helpers in `components/shared/`, article relations beside their article component, components in `components/<id>/`, and plugins in `plugins/<id>/`, with each module carrying its `index.ts` plus the CSS, JS, and `messages.yml` it needs. Plugin definitions keep their code-owned `schema`, `implementation`, `resources`, localized messages, and `defaults`; `theme.yml` supplies only schema-whitelisted plugin options and no longer selects the theme name. People can reuse the theme directly, and Agents can extend it under the same contract; articles never need copied HTML.
-- `backend/handler.ts` owns dynamic business logic, writes, webhooks, and runtime secrets. Register any path with the existing `router.get(...)`, `router.post(...)`, or `router.all(...)` methods; runtime matching returns a `Response` or `null` when nothing matches, so generation does not need a per-route `dynamicRoutes` list in `config.yml`. When a backend is present, generated Worker/Pages/VPS entrypoints run the Router first for every pathname and set `run_worker_first = true`; unknown paths then fall through to public assets, while an unmatched `/api` stays 404. API errors and authorization responses remain API responses and do not fall back to static pages. The public static snapshot is `dist/public`; build/generation keeps nested server-side ESM inside the private boundary, and each public CSS/JS resource gets its own content hash so unchanged assets keep their URL and cache identity.
-- The Cookie selector reuses the provided plugin. Optional purposes start disabled, and the chooser shows each purpose's provider and retention explicitly. Code in `themes/<name>/plugins/cookies/index.ts` registers the capability, resources, official provider contracts, purpose mapping, and schema; `themes/<name>/theme.yml` owns provider instances. Built-in configuration uses `google-analytics`/`measurementId`, `google-ads`/`tagId`, `cloudflare-web-analytics`/`token`, `baidu-tongji`/`siteSignature`, CAPTCHA `/siteKey`, and the account-ID-free `x-for-websites` widget. These are code-owned adapter names; values come from each provider's dashboard or snippet rather than a Pageskill-invented ID. `measurement`, `advertising`, `fraud-prevention`, and `social-embedding` are processing-purpose keys backed by provider behavior, not cookie names. Optional resources load only after consent; public site keys/tokens remain data, while secrets and server-side verification stay in the private backend. Not every provider creates a cookie. `config.yml` is not emitted to `dist/public` and has no runtime write route. This borrows a policy generator's transparent fields without pretending that a visitor chooser generates legal policy. The policy remains an authored page under `content/pages/privacy/`, and withdrawal cannot undo an action a script already performed. The Cookie tutorial explains how to build the module.
-- Foundation plugins are configured first through `themes/<name>/theme.yml`: `search`, `toc`, `privacyConsent`, and `chrome` expose schema-bounded switches, limits, purposes, provider instances, shell insertion links, and `copy.<locale>` overrides. Code registers capabilities, resources, defaults, and rendering; language activation and fallback remain site settings in `config.yml`, not plugin settings. A locale can be 50% translated: missing plugin UI keys inherit the fallback, while an existing Markdown file stays exactly as authored instead of mixing fallback paragraphs into it.
-- When changing styles, start with the existing CSS owned by the layout, component, Block, or plugin. To add a style, create it beside that module and register the resource through the module and theme assembly; to remove one, remove its imports, resource entries, and references before generating again. The workflow covers adding, editing, and deleting styles; generated CSS is never the edit target.
+A provider node is enabled by default and its public identifier is validated; secrets come only from the deployment environment or backend. A site with no consent-required integration has no consent UI. See [Configure integrations and privacy consent](content/posts/cookies/en.md) for the complete contract.
 
-## Agent discovery
+## Content and discovery
 
-The renderer generates Agent files from configuration and actual outputs; never hand-edit generated `dist/` content. Public outputs include `/.well-known/agent.json`, `/.well-known/ai-catalog.json`, conditional `/.well-known/api-catalog`, `/.well-known/agent-skills/index.json`, `robots.txt`, and `llms.txt`. When Markdown mirrors are enabled, pages negotiate `Accept: text/markdown`, and the shared Fetch Router adds the RFC 8288 `Link` and `Vary: Accept` headers. The generated Skill walks the code-registered capability fields and configured sections instead of keeping a second field map. `robots.contentSignals` produces `Content-Signal`.
+The default theme provides multilingual content, TOC, search, Cookie consent, archives, RSS, sitemap, PWA, derived images, and responsive article layouts. The renderer also generates Agent Discovery, Agent Skills, API Catalog, Markdown mirrors, and `llms.txt` from real configuration and outputs. It does not claim OAuth, MCP, WebMCP, or DNS-AID capabilities without a real implementation.
 
-The implementation steps for authentication metadata, an MCP card, WebMCP, and DNS-AID are in [Configure conditional Agent capabilities](content/posts/agent-discovery/en.md): implement the real capability in the backend, theme browser module, or external DNS first, then declare it in `config.yml`. `agentDiscovery.auth` requires a real resource and issuer; `agentDiscovery.mcp` must match a live MCP endpoint and tool schemas; WebMCP requires a theme script that registers `document.modelContext` tools; DNS-AID requires published authoritative records and verified DNSSEC. The example keeps all four switches off. The renderer does not invent endpoints or publish DNS records.
+The online example explains configuration, the content model, theme plugins, discovery, and deployment under `content/posts/`; start with [Configuration](content/posts/site-settings/en.md). The README is the quick-start surface; the online docs carry the full configuration and implementation boundaries.
 
-Advanced authors can read `dist/.pagekiln/catalog.json` or `dist/.well-known/agent.json` after generation to discover reusable capabilities; internal integrations can use the exported `getCatalog` and `inspect`. Beginners can start with tutorials, content, and settings.
+Do not edit generated `dist/`, `.pageskill/`, or `src/runtime/` files by hand. The source of truth is `config.yml`, `config/*.yml`, `site/theme.yml`, `content/`, `themes/`, and `backend/`.
 
-`src/runtime/`, `.pagekiln/`, and `dist/` are generated outputs; do not edit them by hand. The source of truth is `config.yml`, `content/`, and `themes/`. Pageskill is MIT licensed; see [LICENSE](LICENSE).
+Pageskill is MIT licensed; see [LICENSE](LICENSE).

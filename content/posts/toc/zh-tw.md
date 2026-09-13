@@ -39,7 +39,7 @@ npm run s
 :::
 ```
 
-預設 `toc` 外掛在 `themes/default/plugins/toc/`；Block、樣式和 messages 是一個可重用模組。在 `themes/default/theme.yml` 的 `plugins.toc` 下設定開關和目錄深度。
+預設 `toc` 外掛在 `themes/default/plugins/toc/`；Block、樣式和 messages 是一個可重用模組。在 `theme.config` 指向的網站實例檔案（通常是 `site/theme.yml`）的 `plugins.toc` 下設定開關和目錄深度。
 
 ```yaml
 plugins:

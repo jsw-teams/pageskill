@@ -1,118 +1,115 @@
 messages:
   zh-sg:
-    cookieConsent:
-      title: Cookie 偏好设置
-      description: 选择哪些可选用途可以工作；必要功能不用于广告或追踪
-      bannerLabel: 隐私选择
-      settingsLabel: Cookie 设置
-      acceptLabel: 接受可选项
-      rejectLabel: 仅必要项
+    privacyConsent:
+      title: 隐私选择
+      description: 选择本站已配置的可选服务是否可以运行；必要功能不会用于广告或追踪。
+      bannerLabel: 可选服务用途
+      settingsLabel: 隐私设置
+      acceptLabel: 全部接受
+      rejectLabel: 仅必要功能
       saveLabel: 保存选择
       closeLabel: 关闭
-      essentialLabel: 必要功能
-      essentialDescription: 保存你的选择；不启用追踪。
-      optionalLabel: 可选用途
-      optionalDescription: 默认关闭；只有同意后才可启用。
       policyLabel: 隐私政策
-      providerLabel: 提供者
-      retentionLabel: 保存期限
-      retentionSession: 会话期间
-      categories:
-        - purpose: essential
-          provider: Pageskill
-          label: 必要功能
-          description: 保存你的 Cookie 选择；不用于广告或追踪。
-        - purpose: measurement
-          provider: 未配置第三方服务
-          label: 可选访问量测量
-          description: Google Analytics、Cloudflare Web Analytics 或百度统计只有在主动同意后才可测量访问量。
-        - purpose: advertising
-          provider: 未配置广告服务
-          label: 可选广告
-          description: 只有主动同意后才允许广告或转化衡量服务。
-        - purpose: fraud-prevention
-          provider: 未配置人机验证服务
-          label: 反滥用与人机验证
-          description: reCAPTCHA、hCaptcha 或 Turnstile 只有在主动同意后才可执行挑战或反滥用检查。
-        - purpose: social-embedding
-          provider: 未配置社交嵌入
-          label: 社交内容
-          description: 只有主动同意后才允许 X 等第三方社交内容嵌入。
+      providerLabel: 服务
+      socialPlaceholder:
+        title: 社交内容已暂停
+        description: 允许社交内容后，才会加载这段嵌入。
+        allow: 允许社交内容
+      purposes:
+        measurement:
+          title: 访问量测量
+          description: 已配置的测量服务会在你同意后统计访问情况。
+        advertising:
+          title: 广告
+          description: 已配置的广告服务会在你同意后运行。
+        fraud-prevention:
+          title: 反滥用与人机验证
+          description: 已配置的人机验证服务会按照其适配器策略运行。
+        social-embedding:
+          title: 社交内容
+          description: 已配置的社交嵌入会在你同意后加载。
+      providers:
+        google-analytics: Google Analytics
+        google-ads: Google Ads
+        cloudflare-web-analytics: Cloudflare Web Analytics
+        baidu-tongji: 百度统计
+        recaptcha: reCAPTCHA
+        hcaptcha: hCaptcha
+        turnstile: Cloudflare Turnstile
+        x-for-websites: X for Websites
   zh-tw:
-    cookieConsent:
-      title: Cookie 偏好設定
-      description: 選擇哪些可選用途可以運作；必要功能不用於廣告或追蹤
-      bannerLabel: 隱私選擇
-      settingsLabel: Cookie 設定
-      acceptLabel: 接受可選項目
-      rejectLabel: 僅必要項目
+    privacyConsent:
+      title: 隱私選擇
+      description: 選擇本站已設定的可選服務是否可以運作；必要功能不會用於廣告或追蹤。
+      bannerLabel: 可選服務用途
+      settingsLabel: 隱私設定
+      acceptLabel: 全部接受
+      rejectLabel: 僅必要功能
       saveLabel: 儲存選擇
       closeLabel: 關閉
-      essentialLabel: 必要功能
-      essentialDescription: 儲存你的選擇；不啟用追蹤。
-      optionalLabel: 可選用途
-      optionalDescription: 預設關閉；只有同意後才可啟用。
       policyLabel: 隱私政策
-      providerLabel: 提供者
-      retentionLabel: 保存期限
-      retentionSession: 工作階段
-      categories:
-        - purpose: essential
-          provider: Pageskill
-          label: 必要功能
-          description: 儲存你的 Cookie 選擇；不用於廣告或追蹤。
-        - purpose: measurement
-          provider: 未設定第三方服務
-          label: 可選訪問量測量
-          description: Google Analytics、Cloudflare Web Analytics 或百度統計只有在主動同意後才可測量訪問量。
-        - purpose: advertising
-          provider: 未設定廣告服務
-          label: 可選廣告
-          description: 廣告或轉換衡量服務只有在主動同意後才可啟用。
-        - purpose: fraud-prevention
-          provider: 未設定人機驗證服務
-          label: 反濫用與人機驗證
-          description: reCAPTCHA、hCaptcha 或 Turnstile 只有在主動同意後才可執行挑戰或反濫用檢查。
-        - purpose: social-embedding
-          provider: 未設定社交嵌入
-          label: 社交內容
-          description: X 等第三方社交內容嵌入只有在主動同意後才可啟用。
+      providerLabel: 服務
+      socialPlaceholder:
+        title: 社交內容已暫停
+        description: 允許社交內容後，才會載入這段嵌入。
+        allow: 允許社交內容
+      purposes:
+        measurement:
+          title: 訪問量測量
+          description: 已設定的測量服務會在你同意後統計訪問情況。
+        advertising:
+          title: 廣告
+          description: 已設定的廣告服務會在你同意後運作。
+        fraud-prevention:
+          title: 反濫用與人機驗證
+          description: 已設定的人機驗證服務會按照其適配器策略運作。
+        social-embedding:
+          title: 社交內容
+          description: 已設定的社交嵌入會在你同意後載入。
+      providers:
+        google-analytics: Google Analytics
+        google-ads: Google Ads
+        cloudflare-web-analytics: Cloudflare Web Analytics
+        baidu-tongji: 百度統計
+        recaptcha: reCAPTCHA
+        hcaptcha: hCaptcha
+        turnstile: Cloudflare Turnstile
+        x-for-websites: X for Websites
   en:
-    cookieConsent:
-      title: Cookie preferences
-      description: Choose which optional purposes may run; essential functions are not used for advertising or tracking.
-      bannerLabel: Privacy choices
-      settingsLabel: Cookie settings
-      acceptLabel: Accept optional
+    privacyConsent:
+      title: Privacy choices
+      description: Choose whether configured optional services may run; essential functions are not used for advertising or tracking.
+      bannerLabel: Optional service purposes
+      settingsLabel: Privacy settings
+      acceptLabel: Accept all
       rejectLabel: Essential only
       saveLabel: Save choices
       closeLabel: Close
-      essentialLabel: Essential
-      essentialDescription: Stores your choice; does not enable tracking.
-      optionalLabel: Optional purposes
-      optionalDescription: Off by default; enabled only after consent.
       policyLabel: Privacy policy
-      providerLabel: Provider
-      retentionLabel: Retention
-      retentionSession: Session
-      categories:
-        - purpose: essential
-          provider: Pageskill
-          label: Essential
-          description: Stores your Cookie choice; it is not used for advertising or tracking.
-        - purpose: measurement
-          provider: No third-party service configured
-          label: Optional audience measurement
-          description: Google Analytics, Cloudflare Web Analytics, or Baidu Tongji may measure visits only after an affirmative choice.
-        - purpose: advertising
-          provider: No advertising service configured
-          label: Optional advertising
-          description: Advertising or conversion measurement may run only after an affirmative choice and only when configured.
-        - purpose: fraud-prevention
-          provider: No human-verification service configured
-          label: Fraud prevention and human verification
-          description: reCAPTCHA, hCaptcha, or Turnstile may run challenges or anti-abuse checks only after an affirmative choice.
-        - purpose: social-embedding
-          provider: No social embeds configured
-          label: Social content
-          description: X and other third-party social embeds may run only after an affirmative choice and only when configured.
+      providerLabel: Providers
+      socialPlaceholder:
+        title: Social content is paused
+        description: Allow social content to load this embed.
+        allow: Allow social content
+      purposes:
+        measurement:
+          title: Audience measurement
+          description: Configured measurement services may measure visits after an affirmative choice.
+        advertising:
+          title: Advertising
+          description: Configured advertising services may run after an affirmative choice.
+        fraud-prevention:
+          title: Fraud prevention
+          description: Configured human-verification services follow their adapter load policy.
+        social-embedding:
+          title: Social content
+          description: Configured social embeds load after an affirmative choice.
+      providers:
+        google-analytics: Google Analytics
+        google-ads: Google Ads
+        cloudflare-web-analytics: Cloudflare Web Analytics
+        baidu-tongji: Baidu Tongji
+        recaptcha: reCAPTCHA
+        hcaptcha: hCaptcha
+        turnstile: Cloudflare Turnstile
+        x-for-websites: X for Websites

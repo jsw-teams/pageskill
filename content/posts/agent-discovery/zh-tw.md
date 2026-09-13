@@ -7,7 +7,7 @@ category: tutorial
 
 # 設定條件式 Agent 能力
 
-Pageskill 會產生基本的網站探索檔案，但不會替你實作驗證伺服器、MCP 服務、瀏覽器工具或 DNS。`config.yml` 裡的 `agentDiscovery` 是公開宣告入口：只有對應能力已經實際部署並驗證，才把相應開關改成 `true`。
+Pageskill 會產生基本的網站探索檔案，但不會替你實作驗證伺服器、MCP 服務、瀏覽器工具或 DNS。`config.yml` 或其專案內 extends 檔案裡的 `agentDiscovery` 是公開宣告入口：只有對應能力已經實際部署並驗證，才把相應開關改成 `true`。
 
 這篇教學處理四種條件能力：驗證中繼資料、MCP server card、WebMCP 瀏覽器工具登記和 DNS-AID。設定值必須來自實際服務或 DNS 提供者，不要為了讓產生通過而填寫虛構的 endpoint、帳戶 ID 或記錄。
 
@@ -17,7 +17,7 @@ Pageskill 會產生基本的網站探索檔案，但不會替你實作驗證伺�
 | --- | --- | --- | --- |
 | 驗證中繼資料 | `backend/handler.ts` 的受保護路由和真實 OAuth/OIDC issuer，或外部資源伺服器 | `config.yml` 的 `agentDiscovery.auth` | 條件產生 `/.well-known/oauth-protected-resource`、`auth.md`；同時提供兩個真實端點時才產生 authorization-server metadata |
 | MCP card | `backend/` 中的 MCP transport，或已上線的外部 MCP 服務 | `config.yml` 的 `agentDiscovery.mcp` | 條件產生 `/.well-known/mcp/server-card.json`；card 不執行工具 |
-| WebMCP | `themes/<name>/plugins/<id>/` 的瀏覽器腳本，並在主題入口登記 | `themes/<name>/theme.yml` 的外掛實例，加上 `config.yml` 的 `agentDiscovery.webmcp` | 瀏覽器腳本在頁面中登記工具；靜態產生器不會建立瀏覽器 endpoint |
+| WebMCP | `themes/<name>/plugins/<id>/` 的瀏覽器腳本，並在主題入口登記 | `theme.config` 選擇的網站實例檔案（通常是 `site/theme.yml`），加上 `config.yml` 的 `agentDiscovery.webmcp` | 瀏覽器腳本在頁面中登記工具；靜態產生器不會建立瀏覽器 endpoint |
 | DNS-AID | 真實 agent endpoint、權威 DNS 區域和 DNSSEC | `config.yml` 的 `agentDiscovery.dnsAid` | 只在 Agent 中繼資料記錄已設定狀態；Pageskill 不寫入 SVCB、TXT、TLSA 或 DNSSEC |
 
 先實作左側，再設定中間一欄，最後執行產生和線上驗證。只修改 `agentDiscovery` 不會憑空產生服務。
@@ -189,7 +189,7 @@ export const plugin: ThemePluginDefinition = {
 };
 ```
 
-在 `themes/default/plugins/index.ts` 匯出這個外掛，在 `themes/default/theme.yml` 設定實例：
+在 `themes/default/plugins/index.ts` 匯出這個外掛，在 `site/theme.yml` 設定實例：
 
 ```yaml
 plugins:
@@ -286,7 +286,7 @@ git diff --check
 npm run d -- --dry-run
 ```
 
-預設關閉時，兩個條件 endpoint 檔案應不存在；開啟某項後，只能看到該項實際產生的檔案或 configured 狀態。最後檢查部署類型：靜態 Git/Pages 只發佈 `dist/public`，無法單獨承載 `backend/handler.ts`；驗證和 MCP 必須同時部署同源 backend，或改用已上線的外部服務。不要手動修改 `dist/`、`.pagekiln/` 或產生的 `.well-known` 檔案。
+預設關閉時，兩個條件 endpoint 檔案應不存在；開啟某項後，只能看到該項實際產生的檔案或 configured 狀態。最後檢查部署類型：靜態 Git/Pages 只發佈 `dist/public`，無法單獨承載 `backend/handler.ts`；驗證和 MCP 必須同時部署同源 backend，或改用已上線的外部服務。不要手動修改 `dist/`、`.pageskill/` 或產生的 `.well-known` 檔案。
 
 ## 常見失敗
 

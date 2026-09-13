@@ -39,7 +39,7 @@ The active post pattern can show the outline beside the body. If the active them
 :::
 ```
 
-The default `toc` plugin lives in `themes/default/plugins/toc/`; its Block, style, and messages are one reusable module. Set its switch and depth in `themes/default/theme.yml` under `plugins.toc`.
+The default `toc` plugin lives in `themes/default/plugins/toc/`; its Block, style, and messages are one reusable module. Set its switch and depth in the `theme.config`-selected instance file, normally `site/theme.yml`, under `plugins.toc`.
 
 ```yaml
 plugins:

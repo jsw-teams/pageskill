@@ -1,4 +1,5 @@
 import type { DirectiveNode, MarkdownNode } from './lib/markdown.ts';
+import type { ContentMetrics } from './lib/content-metrics.ts';
 
 export type ThemeAttributeType = 'string' | 'number' | 'boolean';
 
@@ -11,6 +12,7 @@ export type ThemeDocument = {
   description: string;
   pattern: string;
   date?: string;
+  update?: string;
   /** Effective author after the site-level fallback is applied. */
   author?: string;
   /** Optional cover/hero image declared by the document frontmatter. */
@@ -20,6 +22,7 @@ export type ThemeDocument = {
   excerpt: string;
   nodes: MarkdownNode[];
   directives: DirectiveNode[];
+  metrics: ContentMetrics;
 };
 
 export type ThemeRenderContext = {
@@ -34,14 +37,43 @@ export type ThemeRenderContext = {
   safeUrl: (value: string) => string;
   localized: (value: unknown, fallback: string) => string;
   translate: (key: string, fallback: string) => string;
-  /** Read a localized, schema-validated copy override from theme.yml. */
+  /** Read a localized, schema-validated copy override from the theme instance file. */
   pluginText: (pluginName: string, key: string, fallback: string) => string;
   routeFor: (doc: Pick<ThemeDocument, 'collection' | 'id' | 'locale' | 'data'>) => string;
   collection: (name: string, locale?: string) => ThemeDocument[];
   translations: (collection: string, id: string) => ThemeDocument[];
   position: (doc: Pick<ThemeDocument, 'collection' | 'id' | 'locale'>) => number;
   formatDate: (value?: string) => string;
+  htmlLang?: string;
   blogRelations: () => string;
+};
+
+export type ThemePrivacyContext = {
+  /** A trusted adapter runtime is present, even when no consent UI is needed. */
+  runtimeEnabled: boolean;
+  enabled: boolean;
+  scriptSrc: string;
+  decisionRetentionDays: number;
+  policyHref: string;
+  title: string;
+  description: string;
+  bannerLabel: string;
+  settingsLabel: string;
+  acceptLabel: string;
+  rejectLabel: string;
+  saveLabel: string;
+  closeLabel: string;
+  policyLabel: string;
+  categories: Array<{
+    purpose: string;
+    label: string;
+    description: string;
+    providers: string[];
+  }>;
+  integrations: Array<Record<string, any>>;
+  socialPlaceholderTitle?: string;
+  socialPlaceholderDescription?: string;
+  socialPlaceholderAllowLabel?: string;
 };
 
 export type ThemeShellContext = ThemeRenderContext & {
@@ -55,6 +87,7 @@ export type ThemeShellContext = ThemeRenderContext & {
   homeHref: string;
   brandIcon: string;
   navigationLinks: string;
+  footerLinks: string;
   languageLinks: string;
   chrome: ThemeChromeConfig;
   navigationLabel: string;
@@ -63,8 +96,6 @@ export type ThemeShellContext = ThemeRenderContext & {
   headerNote: string;
   footerNote: string;
   footerKicker: string;
-  attribution: string;
-  showAttribution: boolean;
   searchMarkup: string;
   search: {
     enabled: boolean;
@@ -86,38 +117,7 @@ export type ThemeShellContext = ThemeRenderContext & {
   };
   privacyMarkup: string;
   privacyTriggerMarkup: string;
-  privacy: {
-    enabled: boolean;
-    scriptSrc: string;
-    storage: string;
-    retentionDays: number;
-    policyHref: string;
-    title: string;
-    description: string;
-    bannerLabel: string;
-    settingsLabel: string;
-    acceptLabel: string;
-    rejectLabel: string;
-    saveLabel: string;
-    closeLabel: string;
-    essentialLabel: string;
-    essentialDescription: string;
-    optionalLabel: string;
-    optionalDescription: string;
-    policyLabel: string;
-    categories: Array<{
-      /** Code-owned reason for a provider request, not an account identifier. */
-      purpose: string;
-      label: string;
-      description: string;
-      required: boolean;
-      defaultValue: boolean;
-      provider: string;
-      retentionDays: number;
-    }>;
-    integrations: Array<Record<string, string>>;
-    gatedScripts: Array<{ purpose: string; href: string }>;
-  };
+  privacy: ThemePrivacyContext;
 };
 
 /** Safe, structured links contributed by a theme's shell configuration.  The
@@ -126,6 +126,9 @@ export type ThemeShellContext = ThemeRenderContext & {
 export type ThemeChromeLink = {
   label: string;
   href: string;
+  key?: string;
+  target?: '_self' | '_blank';
+  external?: boolean;
   current?: boolean;
 };
 
@@ -156,9 +159,35 @@ export type ThemeOptionSchema = {
   min?: number;
   max?: number;
   enum?: unknown[];
+  /** Optional code-owned regular expression for string identifiers. */
+  pattern?: string;
   items?: ThemeOptionSchema;
   properties?: Record<string, ThemeOptionSchema>;
   additionalProperties?: boolean;
+};
+
+export type IntegrationConsentRequirement = 'required' | 'optional' | 'none';
+export type IntegrationLoadPolicy = 'immediate' | 'consent' | 'on-demand';
+
+/** A trusted provider adapter registered by a theme/plugin. Site YAML only
+ * selects an adapter and supplies the adapter's public configuration fields. */
+export type ThemeIntegrationAdapter = {
+  id: string;
+  schema: Record<string, ThemeOptionSchema>;
+  privacy: {
+    purpose: string;
+    consent: IntegrationConsentRequirement;
+    load: IntegrationLoadPolicy;
+  };
+  /** Message key for the provider's localized display name. */
+  labelKey?: string;
+  /** Stable browser implementation key; it is never supplied by YAML. */
+  runtime: string;
+  /** Only these schema fields may be sent to a browser adapter. */
+  publicFields?: string[];
+  /** The trusted runtime may show a safe, purpose-scoped placeholder before
+   * an on-demand embed receives consent. Site YAML cannot customize markup. */
+  placeholder?: boolean;
 };
 
 export type ThemeI18nSource = string | {
@@ -174,8 +203,7 @@ export type ThemePluginDefinition = {
   i18n?: ThemeI18nSource | ThemeI18nSource[];
   defaults?: Record<string, any>;
   schema?: Record<string, ThemeOptionSchema>;
-  /** @deprecated Theme capability enablement belongs to the site instance. */
-  enabled?: boolean;
+  integrations?: Record<string, ThemeIntegrationAdapter>;
 };
 
 /** A code-owned theme unit. The entry module may pass these to defineTheme so
@@ -189,11 +217,8 @@ export type ThemeModuleDefinition = {
   resources?: ThemeResources;
   i18n?: ThemeI18nSource | ThemeI18nSource[];
   defaults?: Record<string, any>;
-  /** @deprecated Use i18n; retained for a one-release source migration. */
-  messages?: ThemeI18nSource | ThemeI18nSource[];
-  /** @deprecated Resource paths belong in resources. */
-  plugin?: { enabledBy?: 'config'; script?: string; resources?: ThemeResources; i18n?: ThemeI18nSource | ThemeI18nSource[]; defaults?: Record<string, any>; schema?: Record<string, ThemeOptionSchema> };
   schema?: Record<string, ThemeOptionSchema>;
+  integrations?: Record<string, ThemeIntegrationAdapter>;
 };
 
 export type ThemeBlockDefinition = {
@@ -237,9 +262,6 @@ export type ThemeDefinitionInput = {
   modules?: ThemeModuleDefinition[];
 };
 
-/** @deprecated Use PageskillTheme. Kept as a source-compatible alias for existing themes. */
-export type PagekilnTheme = PageskillTheme;
-
 function mergeResourceList(left: ThemeResource[] = [], right: ThemeResource[] = []): ThemeResource[] {
   const seen = new Set<string>();
   return [...left, ...right].filter(value => {
@@ -258,7 +280,7 @@ function mergeResources(left: ThemeResources | undefined, right: ThemeResources 
 }
 
 function moduleI18nSource(module: ThemeModuleDefinition): ThemeI18nSource | ThemeI18nSource[] | undefined {
-  return module.i18n ?? module.messages ?? module.plugin?.i18n;
+  return module.i18n;
 }
 
 function definitionWithModuleResources<T extends { resources?: ThemeResources }>(definition: T, resources: ThemeResources | undefined): T {
@@ -281,7 +303,7 @@ export function defineTheme(theme: ThemeDefinitionInput): PageskillTheme {
   let moduleDefaults: Record<string, any> = {};
 
   for (const module of modules) {
-    const resources = mergeResources(module.resources, module.plugin?.resources);
+    const resources = module.resources || {};
     if (module.kind === 'shell') {
       moduleResources = mergeResources(moduleResources, resources);
       if (!moduleShell && module.shell) moduleShell = module.shell;
@@ -296,8 +318,9 @@ export function defineTheme(theme: ThemeDefinitionInput): PageskillTheme {
       modulePlugins[module.id] = {
         resources,
         ...(moduleI18nSource(module) !== undefined ? { i18n: moduleI18nSource(module) } : {}),
-        ...(module.defaults || module.plugin?.defaults ? { defaults: { ...(module.defaults || {}), ...(module.plugin?.defaults || {}) } } : {}),
-        ...(module.schema || module.plugin?.schema ? { schema: module.schema || module.plugin?.schema } : {})
+        ...(module.defaults ? { defaults: module.defaults } : {}),
+        ...(module.schema ? { schema: module.schema } : {}),
+        ...(module.integrations ? { integrations: module.integrations } : {})
       };
     }
     const translations = moduleI18nSource(module);
@@ -316,7 +339,8 @@ export function defineTheme(theme: ThemeDefinitionInput): PageskillTheme {
       resources: mergeResources(modulePlugin.resources, definition.resources),
       ...(definition.i18n === undefined && modulePlugin.i18n !== undefined ? { i18n: modulePlugin.i18n } : {}),
       ...(modulePlugin.defaults || definition.defaults ? { defaults: { ...(modulePlugin.defaults || {}), ...(definition.defaults || {}) } } : {}),
-      ...(definition.schema === undefined && modulePlugin.schema !== undefined ? { schema: modulePlugin.schema } : {})
+      ...(definition.schema === undefined && modulePlugin.schema !== undefined ? { schema: modulePlugin.schema } : {}),
+      ...(modulePlugin.integrations || definition.integrations ? { integrations: { ...(modulePlugin.integrations || {}), ...(definition.integrations || {}) } } : {})
     } : definition;
   }
   const blocks: Record<string, ThemeBlockDefinition> = { ...moduleBlocks };

@@ -1,79 +1,86 @@
-// Optional provider resources are created only after an affirmative purpose choice.
+// Provider resources are controlled by the trusted adapter metadata emitted
+// by the compiler. Site YAML never supplies a URL or an executable script.
 const root = document.querySelector('[data-cookie-consent]');
 
 if (root) {
   const banner = root.querySelector('[data-cookie-banner]');
   const dialog = root.querySelector('[data-cookie-dialog]');
-  const preferenceKey = 'pagekiln-consent';
-  const storageMode = root.dataset.cookieStorage || 'cookie';
-  const retentionDays = Math.max(0, Number(root.dataset.cookieRetentionDays || 365));
-  // Keep the storage key stable while migrating old category names to the
-  // purpose vocabulary emitted by the current renderer.
-  const PURPOSE_ALIASES = {
-    analytics: 'measurement',
-    security: 'fraud-prevention',
-    social: 'social-embedding'
-  };
-  const normalizePurpose = value => PURPOSE_ALIASES[value] || value;
-  const integrationPurpose = item => normalizePurpose(item?.purpose || item?.category || '');
-  const normalizeConsent = value => {
-    if (!value || typeof value !== 'object') return null;
-    const categories = Object.fromEntries(Object.entries(value.categories || {}).map(([purpose, granted]) => [normalizePurpose(purpose), Boolean(granted)]));
-    return { ...value, categories };
-  };
+  const hasConsentUi = root.dataset.cookieUi === 'true';
+  // Use the current product namespace. The state stores purpose choices only,
+  // never provider identifiers or site configuration.
+  const preferenceKey = 'pageskill-consent';
+  const decisionRetentionDays = Math.max(0, Number(root.dataset.cookieDecisionRetentionDays || 365));
   const parse = value => {
-    try {
-      return value ? JSON.parse(value) : null;
-    } catch {
-      return null;
-    }
+    try { return value ? JSON.parse(value) : null; } catch { return null; }
   };
   const integrations = parse(root.dataset.cookieIntegrations) || [];
-  const googleIntegrations = integrations.filter(item => item.provider === 'google-analytics' || item.provider === 'google-ads');
-  const captchaIntegrations = integrations.filter(item => item.provider === 'recaptcha' || item.provider === 'hcaptcha' || item.provider === 'turnstile');
-  const xIntegrations = integrations.filter(item => item.provider === 'x-for-websites');
+  const purposes = [...new Set(integrations.map(item => String(item?.purpose || '')).filter(Boolean))];
+  const optionalPurposes = new Set(integrations.filter(item => item?.consent !== 'none').map(item => String(item.purpose || '')).filter(Boolean));
+  const googleIntegrations = integrations.filter(item => item.id === 'google-analytics' || item.id === 'google-ads');
+  const captchaIntegrations = integrations.filter(item => item.id === 'recaptcha' || item.id === 'hcaptcha' || item.id === 'turnstile');
+  const xIntegrations = integrations.filter(item => item.id === 'x-for-websites');
+  const placeholderCopy = {
+    title: root.dataset.cookieSocialPlaceholderTitle || 'Social content is paused',
+    description: root.dataset.cookieSocialPlaceholderDescription || 'Allow social content to load this embed.',
+    allow: root.dataset.cookieSocialPlaceholderAllow || 'Allow social content'
+  };
   const scriptPromises = new Map();
   let lastFocus = null;
+
+  const normalizeConsent = value => {
+    if (!value || typeof value !== 'object' || value.version !== 1) return null;
+    const source = value.purposes && typeof value.purposes === 'object' ? value.purposes : {};
+    const selected = Object.fromEntries([...optionalPurposes].map(purpose => [purpose, source[purpose] === true]));
+    const updatedAt = Date.parse(value.updatedAt || '');
+    return Number.isFinite(updatedAt) ? { version: 1, purposes: selected, updatedAt: new Date(updatedAt).toISOString() } : null;
+  };
 
   const readCookie = () => {
     try {
       const cookie = document.cookie.split('; ').find(entry => entry.startsWith(`${preferenceKey}=`));
       return normalizeConsent(cookie ? parse(decodeURIComponent(cookie.slice(preferenceKey.length + 1))) : null);
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   };
 
-  const readStorage = () => {
-    try {
-      const value = parse(localStorage.getItem(preferenceKey));
-      const updatedAt = Date.parse(value?.updatedAt || '');
-      if (!value || !Number.isFinite(updatedAt) || retentionDays > 0 && Date.now() - updatedAt > retentionDays * 86400000) {
-        localStorage.removeItem(preferenceKey);
-        return null;
-      }
-      return normalizeConsent(value);
-    } catch {
-      return null;
-    }
+  const readLocalStorage = () => {
+    try { return normalizeConsent(parse(localStorage.getItem(preferenceKey))); } catch { return null; }
   };
 
-  const read = () => storageMode === 'localStorage' ? (readStorage() || readCookie()) : (readCookie() || readStorage());
+  const read = () => {
+    const value = readCookie() || readLocalStorage();
+    if (!value) return null;
+    const updatedAt = Date.parse(value.updatedAt);
+    if (decisionRetentionDays === 0 || !Number.isFinite(updatedAt) || Date.now() - updatedAt > decisionRetentionDays * 86400000) {
+      try { localStorage.removeItem(preferenceKey); } catch {}
+      try { document.cookie = `${preferenceKey}=; Max-Age=0; Path=/; SameSite=Lax`; } catch {}
+      return null;
+    }
+    return value;
+  };
 
   const write = value => {
-    const encoded = encodeURIComponent(JSON.stringify(value));
-    if (storageMode !== 'localStorage') {
-      const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-      document.cookie = `${preferenceKey}=${encoded}; Max-Age=${retentionDays * 86400}; Path=/; SameSite=Lax${secure}`;
+    if (decisionRetentionDays === 0) {
+      try { document.cookie = `${preferenceKey}=; Max-Age=0; Path=/; SameSite=Lax`; } catch {}
+      try { localStorage.removeItem(preferenceKey); } catch {}
+      return;
     }
+    const encoded = encodeURIComponent(JSON.stringify(value));
+    const maxAge = decisionRetentionDays * 86400;
     try {
-      localStorage.setItem(preferenceKey, JSON.stringify(value));
+      const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `${preferenceKey}=${encoded}; Max-Age=${maxAge}; Path=/; SameSite=Lax${secure}`;
     } catch {}
+    // Keep a second browser fallback without exposing storage as a site
+    // configuration API.
+    try { localStorage.setItem(preferenceKey, JSON.stringify(value)); } catch {}
   };
 
-  const setState = state => {
-    root.dataset.cookieState = state;
-  };
+  const canLoad = (item, selected) => item?.consent === 'none' || item?.load === 'immediate' || selected?.[item?.purpose] === true;
+  const scriptSource = id => ({
+    recaptcha: 'https://www.google.com/recaptcha/api.js',
+    hcaptcha: 'https://js.hcaptcha.com/1/api.js',
+    turnstile: 'https://challenges.cloudflare.com/turnstile/v0/api.js'
+  }[id]);
 
   const loadScript = (key, source, attributes = {}) => {
     if (!source) return Promise.resolve(false);
@@ -99,94 +106,55 @@ if (root) {
     return promise;
   };
 
-  const loadAllowedScripts = categories => root.querySelectorAll('[data-cookie-script]').forEach(template => {
-    const purpose = normalizePurpose(template.dataset.cookiePurpose || template.dataset.cookieCategory);
-    const source = template.dataset.cookieSrc;
-    if (!purpose || !source || !categories?.[purpose] || template.dataset.loaded === 'true') return;
-    let scriptUrl;
-    try {
-      scriptUrl = new URL(source, window.location.href);
-    } catch {
-      return;
-    }
-    if (scriptUrl.protocol !== 'http:' && scriptUrl.protocol !== 'https:') return;
-    const script = document.createElement('script');
-    script.type = 'module';
-    script.src = scriptUrl.href;
-    script.dataset.cookiePurpose = purpose;
-    // Keep the old data attribute on dynamically inserted scripts for themes
-    // that still inspect it, while all new markup uses data-cookie-purpose.
-    script.dataset.cookieCategory = purpose;
-    script.dataset.pagekilnConsent = 'true';
-    document.head.append(script);
-    template.dataset.loaded = 'true';
+  const googleConsent = selected => ({
+    analytics_storage: googleIntegrations.some(item => item.id === 'google-analytics' && canLoad(item, selected)) ? 'granted' : 'denied',
+    ad_storage: googleIntegrations.some(item => item.id === 'google-ads' && canLoad(item, selected)) ? 'granted' : 'denied',
+    ad_user_data: googleIntegrations.some(item => item.id === 'google-ads' && canLoad(item, selected)) ? 'granted' : 'denied',
+    ad_personalization: googleIntegrations.some(item => item.id === 'google-ads' && canLoad(item, selected)) ? 'granted' : 'denied'
   });
 
-  const googleConsent = categories => {
-    const analyticsGranted = googleIntegrations.some(item => item.provider === 'google-analytics' && categories?.[integrationPurpose(item)]);
-    const advertisingGranted = googleIntegrations.some(item => item.provider === 'google-ads' && categories?.[integrationPurpose(item)]);
-    return {
-      analytics_storage: analyticsGranted ? 'granted' : 'denied',
-      ad_storage: advertisingGranted ? 'granted' : 'denied',
-      ad_user_data: advertisingGranted ? 'granted' : 'denied',
-      ad_personalization: advertisingGranted ? 'granted' : 'denied'
-    };
+  const syncGoogleConsent = selected => {
+    if (typeof window.gtag === 'function') window.gtag('consent', 'update', googleConsent(selected));
   };
 
-  const syncGoogleConsent = categories => {
-    if (typeof window.gtag === 'function') window.gtag('consent', 'update', googleConsent(categories));
-  };
-
-  const loadGoogle = async categories => {
-    const allowed = googleIntegrations.filter(item => categories?.[integrationPurpose(item)]);
-    // GA4 uses a G- measurement ID; Google Ads uses the Google tag ID shown
-    // by Ads (normally AW- or GT-). Neither value is a Pageskill-generated ID.
+  const loadGoogle = async selected => {
+    const allowed = googleIntegrations.filter(item => canLoad(item, selected));
     const ids = [...new Set(allowed.map(item => item.measurementId || item.tagId).filter(Boolean))];
     if (!ids.length) return;
     window.dataLayer = window.dataLayer || [];
     window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
-    if (!window.__pagekilnGoogleConsentDefaulted) {
-      window.gtag('consent', 'default', { ...googleConsent(categories), wait_for_update: 500 });
-      window.__pagekilnGoogleConsentDefaulted = true;
+    if (!window.__pageskillGoogleConsentDefaulted) {
+      window.gtag('consent', 'default', { ...googleConsent(selected), wait_for_update: 500 });
+      window.__pageskillGoogleConsentDefaulted = true;
     }
-    await loadScript('google-tag', `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ids[0])}`, { async: true, 'data-pagekiln-provider': 'google' });
-    window.__pagekilnGoogleConfiguredIds = window.__pagekilnGoogleConfiguredIds || new Set();
-    if (!window.__pagekilnGoogleInitialized) {
+    await loadScript('google-tag', `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ids[0])}`, { async: true, 'data-pageskill-provider': 'google' });
+    window.__pageskillGoogleConfiguredIds = window.__pageskillGoogleConfiguredIds || new Set();
+    if (!window.__pageskillGoogleInitialized) {
       window.gtag('js', new Date());
-      window.__pagekilnGoogleInitialized = true;
+      window.__pageskillGoogleInitialized = true;
     }
     ids.forEach(id => {
-      if (window.__pagekilnGoogleConfiguredIds.has(id)) return;
+      if (window.__pageskillGoogleConfiguredIds.has(id)) return;
       window.gtag('config', id);
-      window.__pagekilnGoogleConfiguredIds.add(id);
+      window.__pageskillGoogleConfiguredIds.add(id);
     });
-    syncGoogleConsent(categories);
+    syncGoogleConsent(selected);
   };
 
-  const loadCloudflare = categories => integrations
-    .filter(item => item.provider === 'cloudflare-web-analytics' && categories?.[integrationPurpose(item)])
-    .forEach(item => {
-      if (item.token) void loadScript(`cloudflare:${item.token}`, 'https://static.cloudflareinsights.com/beacon.min.js', {
-        type: 'module',
-        defer: true,
-        'data-cf-beacon': JSON.stringify({ token: item.token }),
-        'data-pagekiln-provider': 'cloudflare'
-      });
-    });
+  const loadCloudflare = selected => integrations
+    .filter(item => item.id === 'cloudflare-web-analytics' && canLoad(item, selected))
+    .forEach(item => void loadScript(`cloudflare:${item.token}`, 'https://static.cloudflareinsights.com/beacon.min.js', {
+      type: 'module', defer: true, 'data-cf-beacon': JSON.stringify({ token: item.token }), 'data-pageskill-provider': 'cloudflare'
+    }));
 
-  const loadBaidu = categories => integrations
-    .filter(item => item.provider === 'baidu-tongji' && categories?.[integrationPurpose(item)])
+  const loadBaidu = selected => integrations
+    .filter(item => item.id === 'baidu-tongji' && canLoad(item, selected))
     .forEach(item => {
       if (!item.siteSignature) return;
       window._hmt = window._hmt || [];
-      void loadScript(`baidu:${item.siteSignature}`, `https://hm.baidu.com/hm.js?${encodeURIComponent(item.siteSignature)}`, { async: true, 'data-pagekiln-provider': 'baidu' });
+      void loadScript(`baidu:${item.siteSignature}`, `https://hm.baidu.com/hm.js?${encodeURIComponent(item.siteSignature)}`, { async: true, 'data-pageskill-provider': 'baidu' });
     });
 
-  const captchaSources = {
-    recaptcha: 'https://www.google.com/recaptcha/api.js',
-    hcaptcha: 'https://js.hcaptcha.com/1/api.js',
-    turnstile: 'https://challenges.cloudflare.com/turnstile/v0/api.js'
-  };
   const captchaSelectors = {
     recaptcha: '.g-recaptcha,[data-recaptcha],[data-captcha-provider="recaptcha"]',
     hcaptcha: '.h-captcha,[data-hcaptcha],[data-captcha-provider="hcaptcha"]',
@@ -194,78 +162,112 @@ if (root) {
   };
 
   const prepareCaptcha = item => {
-    const selector = captchaSelectors[item.provider];
+    const selector = captchaSelectors[item.id];
     if (!selector) return;
     document.querySelectorAll(selector).forEach(element => {
       if (item.siteKey && !element.getAttribute('data-sitekey')) element.setAttribute('data-sitekey', item.siteKey);
-      element.dataset.pagekilnConsent = 'true';
+      element.dataset.pageskillConsent = item.consent === 'none' ? 'not-required' : 'true';
     });
   };
 
-  const loadCaptcha = categories => captchaIntegrations
-    .filter(item => item.provider && item.siteKey && categories?.[integrationPurpose(item)])
+  const loadCaptcha = selected => captchaIntegrations
+    .filter(item => item.siteKey && canLoad(item, selected))
     .forEach(item => {
       prepareCaptcha(item);
-      const source = captchaSources[item.provider];
+      const source = scriptSource(item.id);
       if (!source) return;
-      void loadScript(`captcha:${item.provider}`, source, {
-        async: true,
-        defer: true,
-        'data-pagekiln-provider': 'captcha',
-        'data-pagekiln-platform': item.provider
+      void loadScript(`captcha:${item.id}`, source, {
+        async: true, defer: true, 'data-pageskill-provider': 'captcha', 'data-pageskill-platform': item.id
       }).then(loaded => {
-        window.dispatchEvent(new CustomEvent('pagekiln:captcha-ready', {
-          detail: { platform: item.provider, siteKey: item.siteKey, loaded: Boolean(loaded) }
+        window.dispatchEvent(new CustomEvent('pageskill:captcha-ready', {
+          detail: { platform: item.id, siteKey: item.siteKey, loaded: Boolean(loaded) }
         }));
       });
     });
 
   const xSelector = 'blockquote.twitter-tweet,blockquote[data-x-embed],[data-x-embed],.twitter-timeline,.twitter-share-button,.twitter-follow-button';
-  const loadX = categories => {
-    if (!xIntegrations.some(item => categories?.[integrationPurpose(item)]) || !document.querySelector(xSelector)) return;
+  const removeXPlaceholders = () => {
+    document.querySelectorAll('[data-pageskill-social-placeholder]').forEach(element => element.remove());
+    document.querySelectorAll(xSelector).forEach(element => {
+      if (element.dataset.pageskillConsentHidden !== 'true') return;
+      element.hidden = false;
+      delete element.dataset.pageskillConsentHidden;
+    });
+  };
+  const prepareXPlaceholder = selected => {
+    const allowed = xIntegrations.some(item => item.placeholder !== false && canLoad(item, selected));
+    if (allowed) {
+      removeXPlaceholders();
+      return;
+    }
+    if (!xIntegrations.some(item => item.placeholder === true)) return;
+    document.querySelectorAll(xSelector).forEach(element => {
+      if (element.dataset.pageskillConsentHidden === 'true') return;
+      const placeholder = document.createElement('aside');
+      placeholder.className = 'privacy-embed-placeholder';
+      placeholder.dataset.pageskillSocialPlaceholder = 'true';
+      placeholder.setAttribute('role', 'note');
+      const title = document.createElement('strong');
+      title.dataset.pageskillSocialPlaceholderTitle = 'true';
+      title.textContent = placeholderCopy.title;
+      const description = document.createElement('p');
+      description.dataset.pageskillSocialPlaceholderDescription = 'true';
+      description.textContent = placeholderCopy.description;
+      const button = document.createElement('button');
+      button.className = 'button-secondary';
+      button.type = 'button';
+      button.dataset.pageskillAllowPurpose = 'social-embedding';
+      button.textContent = placeholderCopy.allow;
+      placeholder.append(title, description, button);
+      element.hidden = true;
+      element.dataset.pageskillConsentHidden = 'true';
+      element.before(placeholder);
+    });
+  };
+  const loadX = selected => {
+    if (!xIntegrations.some(item => canLoad(item, selected))) {
+      prepareXPlaceholder(selected);
+      return;
+    }
+    removeXPlaceholders();
+    if (!document.querySelector(xSelector)) return;
     void loadScript('x-widgets', 'https://platform.x.com/widgets.js', {
-      async: true,
-      defer: true,
-      'data-pagekiln-provider': 'x-for-websites'
+      async: true, defer: true, 'data-pageskill-provider': 'x-for-websites'
     }).then(loaded => {
       if (loaded) window.twttr?.widgets?.load?.();
-      window.dispatchEvent(new CustomEvent('pagekiln:x-ready', { detail: { loaded: Boolean(loaded) } }));
+      window.dispatchEvent(new CustomEvent('pageskill:x-ready', { detail: { loaded: Boolean(loaded) } }));
     });
   };
 
   const clearCookies = prefixes => document.cookie.split(';')
     .map(value => value.trim().split('=')[0])
     .filter(name => prefixes.some(prefix => name.startsWith(prefix)))
-    .forEach(name => {
-      document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax`;
-    });
+    .forEach(name => { document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax`; });
 
   const clearProviderStorage = (before, after) => {
-    const analyticsBefore = googleIntegrations.some(item => item.provider === 'google-analytics' && before?.[integrationPurpose(item)]);
-    const analyticsAfter = googleIntegrations.some(item => item.provider === 'google-analytics' && after?.[integrationPurpose(item)]);
+    const analyticsBefore = googleIntegrations.some(item => item.id === 'google-analytics' && before?.[item.purpose]);
+    const analyticsAfter = googleIntegrations.some(item => item.id === 'google-analytics' && after?.[item.purpose]);
     if (analyticsBefore && !analyticsAfter) clearCookies(['_ga', '_gid', '_gat']);
-    const advertisingBefore = googleIntegrations.some(item => item.provider === 'google-ads' && before?.[integrationPurpose(item)]);
-    const advertisingAfter = googleIntegrations.some(item => item.provider === 'google-ads' && after?.[integrationPurpose(item)]);
+    const advertisingBefore = googleIntegrations.some(item => item.id === 'google-ads' && before?.[item.purpose]);
+    const advertisingAfter = googleIntegrations.some(item => item.id === 'google-ads' && after?.[item.purpose]);
     if (advertisingBefore && !advertisingAfter) {
       clearCookies(['_gcl_']);
-      try {
-        localStorage.removeItem('_gcl_ls');
-      } catch {}
+      try { localStorage.removeItem('_gcl_ls'); } catch {}
     }
-    const baiduBefore = integrations.some(item => item.provider === 'baidu-tongji' && before?.[integrationPurpose(item)]);
-    const baiduAfter = integrations.some(item => item.provider === 'baidu-tongji' && after?.[integrationPurpose(item)]);
+    const baiduBefore = integrations.some(item => item.id === 'baidu-tongji' && before?.[item.purpose]);
+    const baiduAfter = integrations.some(item => item.id === 'baidu-tongji' && after?.[item.purpose]);
     if (baiduBefore && !baiduAfter) clearCookies(['Hm_', '_hmt']);
   };
 
-  const loadProviders = categories => {
-    loadAllowedScripts(categories);
-    void loadGoogle(categories);
-    loadCloudflare(categories);
-    loadBaidu(categories);
-    loadCaptcha(categories);
-    loadX(categories);
+  const loadProviders = selected => {
+    void loadGoogle(selected);
+    loadCloudflare(selected);
+    loadBaidu(selected);
+    loadCaptcha(selected);
+    loadX(selected);
   };
 
+  const setState = state => { root.dataset.cookieState = state; };
   const closeDialog = restore => {
     if (dialog && typeof dialog.close === 'function' && dialog.hasAttribute('open')) dialog.close();
     else dialog?.removeAttribute('open');
@@ -281,62 +283,76 @@ if (root) {
       try {
         if (typeof dialog.showModal === 'function') dialog.showModal();
         else dialog.setAttribute('open', '');
-      } catch {
-        dialog.setAttribute('open', '');
-      }
+      } catch { dialog.setAttribute('open', ''); }
     }
     const existing = read();
-    dialog.querySelectorAll('input[data-cookie-purpose],input[data-cookie-category]').forEach(input => {
-      const purpose = normalizePurpose(input.dataset.cookiePurpose || input.dataset.cookieCategory);
-      if (!input.disabled) input.checked = Boolean(existing?.categories?.[purpose]);
+    dialog.querySelectorAll('input[data-cookie-purpose]').forEach(input => {
+      input.checked = Boolean(existing?.purposes?.[input.dataset.cookiePurpose]);
     });
     dialog.querySelector('button, input')?.focus();
   };
 
-  const readCategories = forceOptional => {
-    const categories = {};
-    root.querySelectorAll('input[data-cookie-purpose],input[data-cookie-category]').forEach(input => {
-      const purpose = normalizePurpose(input.dataset.cookiePurpose || input.dataset.cookieCategory);
-      if (purpose) categories[purpose] = input.disabled ? true : forceOptional ?? Boolean(input.checked);
+  const readPurposes = acceptAll => {
+    const selected = {};
+    root.querySelectorAll('input[data-cookie-purpose]').forEach(input => {
+      const purpose = String(input.dataset.cookiePurpose || '');
+      if (purpose) selected[purpose] = acceptAll === true || acceptAll === false ? acceptAll : Boolean(input.checked);
     });
-    return categories;
+    return selected;
   };
 
-  const save = forceOptional => {
+  const save = acceptAll => {
     const previous = read();
-    const value = { version: 2, essential: true, categories: readCategories(forceOptional), updatedAt: new Date().toISOString() };
+    const value = { version: 1, purposes: readPurposes(acceptAll), updatedAt: new Date().toISOString() };
     write(value);
     setState('saved');
     if (banner) banner.hidden = true;
-    clearProviderStorage(previous?.categories || {}, value.categories);
-    loadProviders(value.categories);
+    clearProviderStorage(previous?.purposes || {}, value.purposes);
+    loadProviders(value.purposes);
     closeDialog();
-    window.dispatchEvent(new CustomEvent('pagekiln:consent', { detail: value }));
+    window.dispatchEvent(new CustomEvent('pageskill:consent', { detail: value }));
   };
 
-  document.querySelectorAll('[data-cookie-action]').forEach(button => button.addEventListener('click', () => {
-    const action = button.dataset.cookieAction;
-    if (action === 'open') openDialog();
-    else if (action === 'accept-all') save(true);
-    else if (action === 'reject-optional') save(false);
-    else if (action === 'save') save();
-    else if (action === 'close') closeDialog();
-  }));
-  dialog?.addEventListener('cancel', event => {
-    event.preventDefault();
-    closeDialog();
-  });
-  dialog?.addEventListener('click', event => {
-    if (event.target === dialog) closeDialog();
-  });
-
-  const existing = read();
-  if (!existing) {
-    setState('pending');
-    if (banner) banner.hidden = false;
-  } else {
+  const grantPurpose = purpose => {
+    if (!optionalPurposes.has(purpose)) return;
+    const previous = read();
+    const selected = Object.fromEntries([...optionalPurposes].map(item => [item, previous?.purposes?.[item] === true]));
+    selected[purpose] = true;
+    const value = { version: 1, purposes: selected, updatedAt: new Date().toISOString() };
+    write(value);
     setState('saved');
     if (banner) banner.hidden = true;
-    loadProviders(existing.categories || {});
+    clearProviderStorage(previous?.purposes || {}, value.purposes);
+    loadProviders(value.purposes);
+    closeDialog(false);
+    window.dispatchEvent(new CustomEvent('pageskill:consent', { detail: value }));
+  };
+
+  document.querySelectorAll('[data-pageskill-allow-purpose]').forEach(button => button.addEventListener('click', () => {
+    grantPurpose(String(button.dataset.pageskillAllowPurpose || ''));
+  }));
+
+  if (hasConsentUi) {
+    document.querySelectorAll('[data-cookie-action]').forEach(button => button.addEventListener('click', () => {
+      const action = button.dataset.cookieAction;
+      if (action === 'open') openDialog();
+      else if (action === 'accept-all') save(true);
+      else if (action === 'reject-optional') save(false);
+      else if (action === 'save') save();
+      else if (action === 'close') closeDialog();
+    }));
+    dialog?.addEventListener('cancel', event => { event.preventDefault(); closeDialog(); });
+    dialog?.addEventListener('click', event => { if (event.target === dialog) closeDialog(); });
+  }
+
+  const existing = read();
+  if (hasConsentUi && !existing) {
+    setState('pending');
+    if (banner) banner.hidden = false;
+    prepareXPlaceholder({});
+  } else {
+    setState(existing ? 'saved' : 'not-required');
+    if (banner) banner.hidden = true;
+    loadProviders(existing?.purposes || {});
   }
 }

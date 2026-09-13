@@ -3,7 +3,7 @@
   "compilerOptions": {
     "noEmit": false,
     "declaration": false,
-    "outDir": ".pagekiln/theme-runtime",
+    "outDir": ".pageskill/theme-runtime",
     "rootDir": ".",
     "rewriteRelativeImportExtensions": true
   },

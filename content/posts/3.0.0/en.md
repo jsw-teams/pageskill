@@ -42,7 +42,7 @@ Pageskill 3.0 still generates sites from Markdown, settings, and themes, but a f
 
 ## Discovery for advanced authors
 
-After generation, read `dist/.pagekiln/catalog.json` or `dist/.well-known/agent.json` to see reusable theme and content capabilities. Agent integrations can call the internal `getCatalog` and `inspect` functions; beginners can write posts and settings without adding discovery files to their daily steps.
+After generation, read `dist/.pageskill/catalog.json` or `dist/.well-known/agent.json` to see reusable theme and content capabilities. Agent integrations can call the internal `getCatalog` and `inspect` functions; beginners can write posts and settings without adding discovery files to their daily steps.
 
 ## A new learning path
 

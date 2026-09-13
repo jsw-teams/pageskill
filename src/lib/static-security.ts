@@ -7,7 +7,7 @@
  */
 
 export type StaticPathOptions = {
-  /** A configured public asset directory, for example `static` or `dist`. */
+  /** A configured public asset directory, for example `public` or `static`. */
   staticDirectory?: string;
 };
 
@@ -15,7 +15,7 @@ export type StaticPathResult =
   | { ok: true; pathname: string }
   | { ok: false; reason: 'invalid' | 'private' };
 
-const PRIVATE_ROOT_DIRECTORIES = new Set(['server', '_pagekiln', '.pagekiln']);
+const PRIVATE_ROOT_DIRECTORIES = new Set(['server', '_pageskill', '.pageskill']);
 const PRIVATE_ROOT_FILES = new Set([
   'config.yml',
   'config.yaml',
@@ -60,12 +60,12 @@ function aliasSegments(value: unknown): string[] {
   return segments.map(segment => segment.toLocaleLowerCase());
 }
 
-function stripPublicAliases(segments: string[], staticDirectory?: string): string[] {
-  const aliases = [['dist'], aliasSegments(staticDirectory)].filter(alias => alias.length).sort((left, right) => right.length - left.length);
+function stripStaticDirectory(segments: string[], staticDirectory?: string): string[] {
+  const aliases = [aliasSegments(staticDirectory)].filter(alias => alias.length);
   let remaining = segments;
   let changed = true;
-  // Strip aliases repeatedly so `/dist/static/...` and `/static/dist/...`
-  // cannot reach a private root by changing the order of the prefixes.
+  // Strip the configured filesystem directory repeatedly so a deployment
+  // adapter can address either its root or its public subdirectory.
   while (changed && remaining.length) {
     changed = false;
     for (const alias of aliases) {
@@ -84,7 +84,7 @@ function isPrivateArtifact(segment: string): boolean {
 }
 
 function isPrivatePath(segments: string[], staticDirectory?: string): boolean {
-  const publicRoot = stripPublicAliases(segments, staticDirectory);
+  const publicRoot = stripStaticDirectory(segments, staticDirectory);
   if (!publicRoot.length) return false;
 
   // The generated deployment/runtime directories and files are private only
@@ -140,17 +140,14 @@ export function decodePathname(pathname: string): string | null {
 
 /**
  * Classify a static pathname and return its canonical decoded form when it is
- * safe and public.  The root `/dist/` and configured static directory are
- * aliases for the same public root and are removed before private checks.
+ * safe and public.  The configured static directory is a filesystem prefix,
+ * not part of the public URL, and is removed before private checks.
  */
 export function classifyPublicPath(pathname: string, options: StaticPathOptions = {}): StaticPathResult {
   const decoded = decodePathnameInternal(pathname);
   if (!decoded) return { ok: false, reason: 'invalid' };
   if (isPrivatePath(decoded.segments, options.staticDirectory)) return { ok: false, reason: 'private' };
-  // `/dist/...` is the legacy root URL and a configured public directory is
-  // an adapter alias. Both must resolve to the same public asset key so a
-  // handler can serve the old URL without exposing the private build root.
-  const publicSegments = stripPublicAliases(decoded.segments, options.staticDirectory);
+  const publicSegments = stripStaticDirectory(decoded.segments, options.staticDirectory);
   const trailingSlash = decoded.pathname.length > 1 && decoded.pathname.endsWith('/');
   return { ok: true, pathname: `/${publicSegments.join('/')}${trailingSlash && publicSegments.length ? '/' : ''}` };
 }
@@ -159,7 +156,7 @@ export function classifyPublicPath(pathname: string, options: StaticPathOptions 
 export function decodePublicPath(pathname: string, options: StaticPathOptions = {}): string | null {
   const decoded = decodePathnameInternal(pathname);
   if (!decoded || isPrivatePath(decoded.segments, options.staticDirectory)) return null;
-  const publicSegments = stripPublicAliases(decoded.segments, options.staticDirectory);
+  const publicSegments = stripStaticDirectory(decoded.segments, options.staticDirectory);
   return canonicalPath(publicSegments, decoded.pathname.endsWith('/'));
 }
 

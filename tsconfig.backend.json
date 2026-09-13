@@ -3,7 +3,7 @@
   "compilerOptions": {
     "noEmit": false,
     "declaration": false,
-    "outDir": ".pagekiln/backend-runtime",
+    "outDir": ".pageskill/backend-runtime",
     "rootDir": ".",
     "rewriteRelativeImportExtensions": true
   },

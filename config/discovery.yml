@@ -1,0 +1,45 @@
+# Public discovery policy and generated representation settings.
+robots:
+  contentSignals:
+    ai-train: "no"
+    search: "yes"
+    ai-input: "yes"
+
+agentDiscovery:
+  apiCatalog:
+    enabled: true
+    # Only list endpoints that the backend really serves.
+    entries:
+      - endpoint: /api/health
+        title: Pageskill health API
+        description: Read-only runtime health information for this site.
+        status: /api/health
+  skills:
+    name: pageskill-authoring
+    title: Pageskill authoring
+    # Skill description and sections are derived from the registered capability map.
+
+llms:
+  title: Pageskill
+  description: A friendly static website compiler that helps beginners turn Markdown and a few clear steps into a localized site; reusable Patterns and Blocks are available when you need them.
+
+outputs:
+  markdownMirrors: true
+
+images:
+  social: assets/og-default-product.webp
+  variants:
+    - source: og-default-bear-source.png
+      output: assets/og-default-product.webp
+      width: 1200
+      height: 630
+      fit: cover
+      format: webp
+      quality: 82
+    - source: product-note-cover-bear-source.png
+      output: assets/product-note-cover.webp
+      width: 1200
+      height: 800
+      fit: cover
+      format: webp
+      quality: 82

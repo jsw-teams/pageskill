@@ -19,11 +19,11 @@ themes/default/plugins/reading-tip/
   messages.yml
 ```
 
-目錄自己保存資源。`themes/default/index.ts` 是組裝入口，`theme.yml` 保存這個主題的外掛實例選項。
+目錄自己保存資源。`themes/default/index.ts` 是組裝入口，由 `theme.config` 選擇的檔案（通常是 `site/theme.yml`）保存這個網站的外掛覆寫項。
 
 ## 2. 先設定已登記的外掛
 
-改程式碼前先查看外掛 schema，再在 `theme.yml` 使用安全選項。基礎外掛的開關、限制、同意中繼資料、shell 插入點和本地化文案都屬於實例資料：
+改程式碼前先查看外掛 schema，再在 `site/theme.yml` 使用安全的外觀選項。基礎外掛的開關、限制、shell 插入點和可選本地化文案屬於實例資料。第三方 Integration 不同：只在根級 `integrations` 設定真正使用的 Provider 識別，purpose 和同意中繼資料由適配器自己擁有：
 
 ```yaml
 plugins:
@@ -39,7 +39,7 @@ plugins:
     maxDepth: 4
 ```
 
-語言啟用不是外掛選項；`activeLocales` 和 `i18n.fallbackLocale` 放在 `config.yml`。新增語言只完成 50% 翻譯也可以產生：缺少的介面 key 使用回退語言，已存在的 Markdown 檔案則完全按原文顯示。
+語言啟用不是外掛選項；`activeLocales` 和 `i18n.fallbackLocale` 放在 `config.yml` 或其擴充檔案。新增語言只完成 50% 翻譯也可以產生：缺少的介面 key 使用回退語言，已存在的 Markdown 檔案則完全按原文顯示。
 
 ## 3. 匯出外掛定義
 
@@ -66,7 +66,7 @@ export const plugin: ThemePluginDefinition = {
 ```ts
 import { plugin as readingTip } from './reading-tip/index.ts';
 
-export const plugins = { search, toc, privacyConsent: cookies, language, readingTip };
+export const plugins = { chrome, search, toc, postMeta, privacyConsent: cookies, language, readingTip };
 ```
 
 ## 4. 寫入最小可運作資源
@@ -98,10 +98,10 @@ messages:
       label: Reading tip
 ```
 
-## 5. 在 theme.yml 保留實例開關
+## 5. 在 site/theme.yml 保留實例開關
 
 ```yaml
-# themes/default/theme.yml
+# site/theme.yml
 plugins:
   readingTip:
     # 不改 renderer 就能開關已登記的能力。
@@ -118,7 +118,7 @@ npm run s
 
 ## 成功結果
 
-產生的頁面會載入外掛腳本和樣式，主要內容區域出現標記。把 `theme.yml` 中的 `plugins.readingTip.enabled` 改為 `false` 後重新產生即可移除；新增文章不需要再寫 HTML。
+產生的頁面會載入外掛腳本和樣式，主要內容區域出現標記。把 `site/theme.yml` 中的 `plugins.readingTip.enabled` 改為 `false` 後重新產生即可移除；新增文章不需要再寫 HTML。
 
 產生時會把模組的資源和 messages 收集到公開主題資源中。伺服器端巢狀 ESM 留在建置/執行時邊界內，未變動的公開資源繼續使用原內容 hash 路徑和快取身分。
 
@@ -126,13 +126,13 @@ npm run s
 
 本主題的 [Cookie 選擇器教學](/zh-tw/posts/cookies/)是一個完整參考實作。它在同樣的模組結構上加入 schema、本地化訊息、同意後瀏覽器行為和安全渲染；當外掛不只需要一個資源時，可以依照這個結構擴充。
 
-導覽和頁尾連結屬於 shell，因此應透過 `themes/default/theme.yml` 的 `plugins.chrome` 設定。不要讓外掛腳本向 `.site-header` 或 `.site-footer` 任意追加連結。chrome 外掛只接受結構化標籤和安全 URL；像本例這樣的頁面級行為仍可掛載到 `main` 內。
+普通導覽和頁尾連結是 `config.yml` 或其擴充檔案中的網站資料；主題插槽仍透過 `site/theme.yml` 的 `plugins.chrome` 設定。不要讓外掛腳本向 `.site-header` 或 `.site-footer` 任意追加連結。chrome 外掛只接受結構化標籤和安全 URL；像本例這樣的頁面級行為仍可掛載到 `main` 內。
 
 如果外掛要向瀏覽器 Agent 暴露 WebMCP 工具，先按[設定條件式 Agent 能力](/zh-tw/posts/agent-discovery/)在外掛腳本中登記真實的 `document.modelContext` 工具，再另外開啟 `config.yml` 的探索宣告；這個開關不會替外掛載入腳本。
 
 ## 7. 乾淨地移除外掛
 
-能力不再需要時，刪除主題組裝入口中的 import、外掛定義和資源登記、`theme.yml` 實例，以及 Markdown directive 或 shell 參照。重新產生並檢查 catalog；不要只刪產生的資源，也不要為舊消費者保留第二套實作。
+能力不再需要時，刪除主題組裝入口中的 import、外掛定義和資源登記、`site/theme.yml` 覆寫項，以及 Markdown directive 或 shell 參照。重新產生並檢查 catalog；不要只刪產生的資源，也不要為舊消費者保留第二套實作。
 
 ## 常見問題
 

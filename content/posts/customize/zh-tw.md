@@ -18,7 +18,7 @@ theme:
   name: default
 ```
 
-目前主題把外掛選項放在 `themes/default/theme.yml`，並使用負責組裝的薄入口 `themes/default/index.ts`；`theme.yml` 不選擇主題名稱。
+目前主題把外掛選項放在 `theme.config` 指向的網站實例檔案（通常是 `site/theme.yml`），並使用負責組裝的薄入口 `themes/default/index.ts`；實例檔案不選擇主題名稱。
 
 ## 2. 先改一個共用樣式
 
@@ -68,12 +68,12 @@ npm run g
 npm run s
 ```
 
-## 5. 在 theme.yml 中安全增加 shell 連結
+## 5. 在主題實例檔案中安全增加 shell 連結
 
 主導覽仍然是 `config.yml` 中的網站資料。如果主題需要在標準導覽或頁尾工具前後增加連結，請使用結構化的 `plugins.chrome` 選項：
 
 ```yaml
-# themes/default/theme.yml
+# site/theme.yml
 plugins:
   chrome:
     enabled: true

@@ -1,89 +1,138 @@
 ---
-title: Change the name and navigation
-description: Set the site name, languages, and navigation in config.yml so the home page reaches your articles.
+title: 'Configuration: one clear source for site settings'
+description: Understand config.yml, optional config layers, site/theme.yml, content, and the boundary between site data and theme code.
 date: 2026-09-07
 category: tutorial
 ---
 
-# Change the name and navigation
+# Configuration: one clear source for site settings
 
-`config.yml` is a settings file: it stores site data and switches, and it does not run code. Change the name and navigation first; add other settings later.
-The localized `author` value is the default for posts that do not set their own Frontmatter author. This site uses `toewpq`; replace it with the real owner when adapting the example.
+Pageskill separates the files a site author changes from the code that implements a theme. The useful mental model is:
 
-## 1. Open the settings file
+```text
+config.yml
+├─ site identity, locales, navigation, footer
+├─ content collections and views
+├─ integrations, privacy policy, discovery, deployment
+└─ optional extends: ./config/*.yml
 
-Edit `config.yml` in the new site root and keep this smallest useful setup:
+site/theme.yml
+└─ small, schema-validated theme/plugin presentation overrides
+
+content/
+└─ Markdown pages, posts, assets, and Frontmatter
+
+themes/default/
+└─ reusable implementation, resources, plugins, and reference examples
+```
+
+Ordinary site work stays in the first three layers. `themes/default/` is not a second site configuration directory.
+
+## 1. Keep the root configuration readable
+
+Start with the site identity and the theme instance:
 
 ```yaml
 siteUrl: https://example.com
 defaultLocale: en
 activeLocales:
-  - zh-sg
-  - zh-tw
   - en
-siteName:
-  zh-sg: 我的文章站
-  zh-tw: 我的文章站
-  en: My article site
-description:
-  zh-sg: 写下我的文章。
-  zh-tw: 寫下我的文章。
-  en: Notes from my work.
-author:
-  zh-sg: toewpq
-  zh-tw: toewpq
-  en: toewpq
-```
+siteName: Example
+description: A site built from Markdown.
 
-## 2. Change the navigation
-
-Add public entries under `navigation.links` in the same file:
-
-```yaml
 theme:
   name: default
+  config: ./site/theme.yml
+```
+
+Add navigation and footer links in the same root config or in a related config layer:
+
+```yaml
 navigation:
   links:
     - key: home
       href: /:locale/
     - key: posts
       href: /:locale/posts/
+    - label: GitHub
+      href: https://github.com/example/example
+      target: _blank
+
+footer:
+  links:
+    - key: privacy
+      href: /:locale/privacy/
+    - label: Project source
+      href: https://github.com/example/example
+      target: _blank
 ```
 
-`:locale` is replaced with `zh-sg`, `zh-tw`, or `en` during generation. Do not splice visitor input into the settings file.
+Internal links may use `:locale`; external links may use HTTP(S). A blank-target link receives `rel="noopener noreferrer"`. Labels can use `labels.<locale>` and fall back through the active locale, configured fallback, English, a translation key, and finally the link key.
 
-Primary navigation is site data, so it belongs here. A theme-owned insertion before or after the standard navigation or footer tools belongs in `themes/default/theme.yml` under `plugins.chrome`:
+## 2. Split only genuinely related settings
+
+When a site grows, reference project-local YAML files from the root:
+
+```yaml
+extends:
+  - ./config/content.yml
+  - ./config/discovery.yml
+  - ./config/deployment.yml
+```
+
+The loader applies built-in defaults, then those files in order, then `config.yml`. Objects merge recursively; arrays replace the previous array; scalars, including explicit `null`, replace the previous value. It does not execute YAML, include arbitrary paths, or append arrays automatically. Every referenced file must remain inside the project root, and cycles or missing files fail with the source path.
+
+Do not create many tiny files just to demonstrate `extends`. The demo keeps content policy and discovery policy separate because they are meaningful groups; a small site can keep everything in one `config.yml`.
+
+## 3. Put provider intent in `config.yml`
+
+Third-party services are site capabilities, not theme presentation. Configure only the services actually used:
+
+```yaml
+integrations:
+  google-analytics:
+    measurementId: G-XXXXXXXXXX
+```
+
+The trusted adapter registry supplies the provider schema, privacy purpose, consent requirement, and safe resource loader. The provider node is enabled by default; `enabled: false` is optional. Do not add `purpose`, script URLs, inline code, category lists, or provider entries set to false. Public identifiers are validated; secrets belong in the deployment environment and backend.
+
+If a configured adapter needs consent, the consent UI is generated with only its actual purposes. If there are no such adapters, there is no banner. A narrow browser-choice policy may be set only when needed:
+
+```yaml
+privacy:
+  consent:
+    decisionRetentionDays: 180
+```
+
+This is the lifetime of the browser's decision, not a provider data-retention setting. See [Configure integrations and privacy consent](/en/posts/cookies/) for the full model.
+
+## 4. Use `site/theme.yml` only for presentation overrides
+
+The site instance file can be empty:
+
+```yaml
+# site/theme.yml
+plugins: {}
+```
+
+In fact, an omitted `theme.config` means the same empty override object. Plugin defaults and schemas live in code, so do not copy every `enabled: true` value into this file. Add a value only when this site differs from the theme default, for example:
 
 ```yaml
 plugins:
-  chrome:
-    navigation:
-      after:
-        - label: Plugin tutorial
-          href: /:locale/posts/cookies/
-    footer:
-      after: []
+  search:
+    maxResults: 12
 ```
 
-The chrome option accepts structured labels and safe links only. It does not accept HTML, scripts, CSS, selectors, or arbitrary attributes.
+The advanced `plugins.chrome.navigation.before/after` and `plugins.chrome.footer.before/after` slots remain useful for a theme author or a site that needs a reusable insertion. They use the same safe link model, but ordinary navigation and footer links belong at the site level.
 
-## 3. Generate and preview
+## 5. Put content in Markdown
 
-```powershell
-npm run g
-npm run s
-```
-
-Open the home page and article entry in all three languages. Check the name, language links, and navigation.
+Stable pages live at `content/pages/<id>/<locale>.md`. Tutorials, blogs, product notes, and release notes live at `content/posts/<id>/<locale>.md`. Every post needs `date`; an optional `update` records a later modification without changing publication date. `category: update` means a release-note view and is unrelated to the `update` timestamp. The [post metadata example](/en/posts/post-meta-demo/) shows both behaviors.
 
 ## Expected result
 
-Each enabled language has a home page, the header shows the new site name, and navigation reaches that language's article list.
-
-## Common trap
-
-YAML indentation uses spaces. Give every enabled language a `siteName` and `description`; labels or mixed tabs make generation fail near the setting.
+The first file a site author opens explains the site, its languages, its links, its content model, and its deployment without exposing a wall of theme defaults. Theme code stays reusable, and generated files remain outputs rather than authoring surfaces.
 
 ## Next step
 
-Read [Markdown: write like a note](/en/posts/markdown/) and make one small article.
+Read [Markdown: write like a note](/en/posts/markdown/) to create your first page or post.

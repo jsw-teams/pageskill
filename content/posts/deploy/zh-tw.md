@@ -33,7 +33,7 @@ Token 或 SSH 金鑰放在本機環境和金鑰檔案，不要寫進 `config.yml
 建置輸出目錄：dist/public
 ```
 
-`npm run build` 不是 Pageskill 指令，不要為了相容控制台而新增別名。`dist/public` 是公開快照，裡面只有產生頁面、資源、Feed 和網站地圖。不要把輸出目錄設成 `dist`；私有建置根目錄還可能包含 `_pagekiln/`、`server/`、`.pagekiln/`、`_worker.js` 和其他部署檔案，直接發佈整個 `dist/` 可能暴露 backend 程式碼或私有執行時檔案。
+`npm run build` 不是 Pageskill 指令。`dist/public` 是公開快照，裡面只有產生頁面、資源、Feed 和網站地圖。不要把輸出目錄設成 `dist`；私有建置根目錄還可能包含 `_pageskill/`、`server/`、`.pageskill/`、`_worker.js` 和其他部署檔案，直接發佈整個 `dist/` 可能暴露 backend 程式碼或私有執行時檔案。
 
 這條 Git 整合路徑只發佈靜態內容，不會自動把 `backend/handler.ts` 打包成同一個 Pages Worker。如果網站不需要執行時 API，可以按需設定 `deployment.backend: false`；輸出目錄仍必須是 `dist/public`。
 
@@ -80,7 +80,7 @@ deployment:
       project: your-pages-project
 ```
 
-把 `CLOUDFLARE_API_TOKEN` 放在部署環境中，然後先執行 `npm run d -- --dry-run`，確認結果後再執行 `npm run d`。CLI 會產生 `dist`，把公開目錄複製到暫存的 `.pagekiln/pages-upload-*`，再把產生的 `_worker.js` 和私有 `_pagekiln` 執行時放進這個上傳目錄。Pages 上傳的是這個暫存目錄，而不是私有的 `dist/` 根目錄，因此 backend 和公開資源可以一起工作，又不會把私有建置檔案當成靜態資源。現有 Git 整合不會自動執行這一步；把控制台輸出目錄改成 `dist` 不是安全的解決方法。
+把 `CLOUDFLARE_API_TOKEN` 放在部署環境中，然後先執行 `npm run d -- --dry-run`，確認結果後再執行 `npm run d`。CLI 會產生 `dist`，把公開目錄複製到暫存的 `.pageskill/pages-upload-*`，再把產生的 `_worker.js` 和私有 `_pageskill` 執行時放進這個上傳目錄。Pages 上傳的是這個暫存目錄，而不是私有的 `dist/` 根目錄，因此 backend 和公開資源可以一起工作，又不會把私有建置檔案當成靜態資源。現有 Git 整合不會自動執行這一步；把控制台輸出目錄改成 `dist` 不是安全的解決辦法。
 
 ## 成功結果
 

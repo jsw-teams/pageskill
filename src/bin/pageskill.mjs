@@ -109,40 +109,21 @@ function contentType(file) {
 }
 
 function staticDirectory(ctx) {
-  const deployment = ctx.config?.deployment;
-  if (!deployment || typeof deployment !== 'object') return '';
-  if (Object.prototype.hasOwnProperty.call(deployment, 'staticDirectory') && deployment.staticDirectory != null && deployment.staticDirectory !== '') {
-    return String(deployment.staticDirectory);
-  }
-  const sites = deployment.openaiSites;
-  if (sites && typeof sites === 'object' && sites.staticDirectory) return String(sites.staticDirectory);
-  return deployment.enabled === false ? '' : 'public';
+  return String(ctx.deployment?.staticDirectory || '');
 }
 
 async function publicRoot(ctx) {
   const outputRoot = path.resolve(ctx.out);
-  const deployment = ctx.config?.deployment;
-  if (deployment?.enabled === false) return outputRoot;
-  const sites = deployment?.openaiSites;
-  const hasExplicit = Boolean(deployment && typeof deployment === 'object' && (
-    Object.prototype.hasOwnProperty.call(deployment, 'staticDirectory') && deployment.staticDirectory != null && deployment.staticDirectory !== ''
-    || sites && typeof sites === 'object' && sites.staticDirectory
-  ));
   const configured = staticDirectory(ctx).replaceAll('\\', '/');
-  const relative = configured;
-  const candidate = configured
-    ? path.resolve(outputRoot, relative)
-    : path.join(outputRoot, 'public');
+  if (!configured) return outputRoot;
+  const candidate = path.resolve(outputRoot, configured);
   const candidateRelative = path.relative(outputRoot, candidate);
   if (candidateRelative.startsWith('..') || path.isAbsolute(candidateRelative)) return outputRoot;
-  if (!hasExplicit) {
-    try {
-      const stat = await fs.lstat(candidate);
-      if (!stat.isDirectory() || stat.isSymbolicLink()) return stat.isSymbolicLink() ? candidate : outputRoot;
-      return candidate;
-    } catch { return outputRoot; }
-  }
-  return candidate;
+  try {
+    const stat = await fs.lstat(candidate);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) return stat.isSymbolicLink() ? candidate : outputRoot;
+    return candidate;
+  } catch { return outputRoot; }
 }
 
 function isSafeRealFile(realRoot, realFile, ctx) {
@@ -207,7 +188,7 @@ function runTypeScriptCompiler(projectFile, outDirectory, label) {
 }
 
 async function compileGeneratedProject(projectFile, outputDirectory, label) {
-  const cacheRoot = path.join(root, '.pagekiln');
+  const cacheRoot = path.join(root, '.pageskill');
   const output = path.join(root, outputDirectory);
   const token = `${process.pid}-${Date.now()}`;
   const temporary = path.join(cacheRoot, `${path.basename(outputDirectory)}-next-${token}`);
@@ -271,8 +252,8 @@ function rewriteBackendModuleImports(source, generation) {
 }
 
 async function prepareBackendGeneration(generation) {
-  const runtimeRoot = path.join(root, '.pagekiln', 'backend-runtime');
-  const generationRoot = path.join(root, '.pagekiln', 'backend-generations', generation);
+  const runtimeRoot = path.join(root, '.pageskill', 'backend-runtime');
+  const generationRoot = path.join(root, '.pageskill', 'backend-generations', generation);
   await fs.rm(generationRoot, { recursive: true, force: true });
   await fs.cp(runtimeRoot, generationRoot, { recursive: true });
   for (const file of await filesUnder(generationRoot)) {
@@ -285,9 +266,9 @@ async function prepareBackendGeneration(generation) {
 }
 
 async function loadPreviewRouter(ctx) {
-  if (ctx.config?.deployment?.backend === false) return undefined;
+  if (ctx.deployment?.backend === false) return undefined;
   try { await fs.access(path.join(root, 'backend', 'handler.ts')); } catch { return undefined; }
-  const entry = path.join(root, '.pagekiln', 'backend-runtime', 'backend', 'handler.js');
+  const entry = path.join(root, '.pageskill', 'backend-runtime', 'backend', 'handler.js');
   try { await fs.access(entry); } catch { throw new Error('backend/handler.ts exists but its JavaScript runtime is missing; run npm run compile-backend'); }
   const generation = Date.now().toString(36) + '-' + Math.random().toString(16).slice(2);
   const generationEntry = await prepareBackendGeneration(generation);
@@ -341,7 +322,7 @@ async function develop(port) {
   let building = false;
   const changedFiles = new Set();
   const liveClients = new Set();
-  const liveReloadScript = `<script>(()=>{const source=new EventSource('/__pagekiln/live');source.onmessage=()=>location.reload()})()</script>`;
+  const liveReloadScript = `<script>(()=>{const source=new EventSource('/__pageskill/live');source.onmessage=()=>location.reload()})()</script>`;
   let backendRouter = await loadPreviewRouter(ctx);
   let fetchHandler = createSiteFetchHandler({
     router: backendRouter,
@@ -359,8 +340,8 @@ async function develop(port) {
         const changes = [...changedFiles];
         changedFiles.clear();
         try {
-          if (changes.some(file => { const value = String(file).toLocaleLowerCase(); return value.startsWith('themes/') && value.endsWith('.ts'); })) await compileGeneratedProject('tsconfig.theme.json', '.pagekiln/theme-runtime', 'Theme');
-          if (changes.some(file => { const value = String(file).toLocaleLowerCase(); return value.startsWith('backend/') && value.endsWith('.ts'); })) await compileGeneratedProject('tsconfig.backend.json', '.pagekiln/backend-runtime', 'Backend');
+          if (changes.some(file => { const value = String(file).toLocaleLowerCase(); return value.startsWith('themes/') && value.endsWith('.ts'); })) await compileGeneratedProject('tsconfig.theme.json', '.pageskill/theme-runtime', 'Theme');
+          if (changes.some(file => { const value = String(file).toLocaleLowerCase(); return value.startsWith('backend/') && value.endsWith('.ts'); })) await compileGeneratedProject('tsconfig.backend.json', '.pageskill/backend-runtime', 'Backend');
           await refreshContext(ctx, changes);
           await build(ctx);
           backendRouter = await loadPreviewRouter(ctx);
@@ -391,8 +372,11 @@ async function develop(port) {
     if (!candidate) return;
     const absolute = path.isAbsolute(candidate) ? candidate : path.join(root, candidate);
     const relative = path.relative(root, absolute).replaceAll('\\', '/');
-    if (!relative || relative.startsWith('../') || ['dist/', '.pagekiln/', 'node_modules/', 'src/runtime/'].some(prefix => relative.startsWith(prefix))) return;
-    if (relative === 'config.yml' || relative === 'AGENTS.md' || relative.startsWith('content/') || relative.startsWith('themes/') || relative.startsWith('backend/')) rebuild(relative);
+    if (!relative || relative.startsWith('../') || ['dist/', '.pageskill/', 'node_modules/', 'src/runtime/'].some(prefix => relative.startsWith(prefix))) return;
+    const configFiles = new Set((ctx.configFiles || []).map(file => path.relative(root, file).replaceAll('\\', '/').toLocaleLowerCase()));
+    const themeConfig = ctx.themeConfigFile ? path.relative(root, ctx.themeConfigFile).replaceAll('\\', '/').toLocaleLowerCase() : '';
+    const normalized = relative.toLocaleLowerCase();
+    if (normalized === 'config.yml' || normalized.startsWith('config/') || configFiles.has(normalized) || normalized === themeConfig || normalized === 'agents.md' || normalized.startsWith('content/') || normalized.startsWith('themes/') || normalized.startsWith('backend/')) rebuild(relative);
   });
   const server = createServer(async (request, response) => {
     let requestUrl;
@@ -402,7 +386,7 @@ async function develop(port) {
       response.end('Bad request');
       return;
     }
-    if (requestUrl.pathname === '/__pagekiln/live') {
+    if (requestUrl.pathname === '/__pageskill/live') {
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', connection: 'keep-alive' });
       response.write(': connected\n\n');
       liveClients.add(response);

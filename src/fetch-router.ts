@@ -45,7 +45,7 @@ export class Router<Environment = Record<string, unknown>, ExecutionContext = un
   on(method: string, pattern: string, handler: RouteHandler<Environment, ExecutionContext>): this {
     if (!pattern.startsWith('/')) throw new TypeError(`Route pattern must start with "/": ${pattern}`);
     if (typeof handler !== 'function') throw new TypeError('Route handler must be a function');
-    const segments = pathSegments(new URL(pattern, 'https://pagekiln.invalid').pathname);
+    const segments = pathSegments(new URL(pattern, 'https://pageskill.invalid').pathname);
     if (!segments) throw new TypeError(`Route pattern is not valid: ${pattern}`);
     this.routes.push({ method: method.toUpperCase(), pattern, segments, handler });
     return this;

@@ -4,6 +4,31 @@
 
 Version labels follow `package.json`, this changelog, and the dated localized update. This file records repository changes; an entry does not claim npm publication or deployment.
 
+## 3.1.0 — 2026-09-13
+
+Pageskill 3.1.0 completes the portable configuration refactor. This entry contains a deliberate configuration API breaking change: existing compiler, theme, plugin, discovery, backend, and deployment capabilities remain, but historical configuration aliases are no longer loaded.
+
+### Changed
+
+- Added project-local layered configuration through `extends`. The loader recursively merges objects, replaces arrays and scalars predictably, checks project-root containment and symlinks, detects cycles, limits depth, deduplicates files, and includes every effective file in the configuration hash and preview dependency graph.
+- Separated theme package code from site instance data with `theme.config`. Site overrides live in `site/theme.yml`; `themes/<name>/` contains only reusable implementation and reference files, while plugin code remains the single source of defaults and schemas.
+- Added one validated Link Schema for navigation, footer, and existing chrome insertion slots. It supports localized internal links and HTTP(S) external links, expands `:locale`, marks only current internal routes, and adds `noopener noreferrer` for `target: _blank`.
+- Added code-owned `postMeta` defaults and localized messages. Posts now calculate Markdown-based word/character metrics and reading time, accept a strict `update` timestamp, render an update notice and metadata, preserve RSS publication dates, use update for sitemap `lastmod`, and expose update in the search index and incremental cache.
+- Redesigned privacy consent around a root `integrations` map and a code-owned Provider Adapter registry. Adapters now own schemas, public identifier validation, purposes, consent requirements, load policy, and trusted resources; active purposes are derived automatically, unused categories disappear, and a site with no consent-required integration has no banner.
+- Moved document loading, frontmatter/date/metrics validation, and pattern selection into a compiler document module while keeping the public `createContext`, `refreshContext`, `build`, `check`, `inspect`, `getCatalog`, and `siteDiscoveryOptions` facade unchanged. Compiler, CLI, and deploy now consume one normalized deployment configuration.
+- Replaced remaining default-theme locale conditionals with message and locale metadata fallbacks and updated generated Agent guidance to point to config extends files and the resolved theme instance.
+- Added Node 22 built-in tests for configuration layers, path security, link resolution, metrics, strict dates, cache/output metadata, sitemap, search, and RSS behavior.
+
+### Breaking changes and migration
+
+- A single `config.yml` remains valid and `extends` is optional. Move site-specific theme settings from `themes/<name>/theme.yml` to `site/theme.yml`, then set `theme.config: ./site/theme.yml`; omitting `theme.config` now means no instance overrides.
+- `branding`, root plugin/search configuration, historical deployment target aliases, `deployment.dynamicRoutes`, and the OpenAI Sites static-directory fallback were removed. Use ordinary `footer.links`, the canonical `deployment.targets` array, `deployment.staticDirectory`, and backend Router registration.
+- Historical `.pagekiln`/`_pagekiln` internal names and the old Cookie consent browser namespace were replaced by `.pageskill`/`_pageskill` and `pageskill-consent`.
+- Navigation and footer now use one `links` schema. The advanced `plugins.chrome.navigation.before/after` and `plugins.chrome.footer.before/after` slots remain available for reusable theme extensions.
+- Removed the old Privacy Consent instance fields (`provider`, `storage`, category arrays, provider arrays, `gatedScripts`, plugin `copy`, and the plugin-level `enabled` switch). Use root `integrations` and, only when necessary, `privacy.consent.decisionRetentionDays`; the consent state stores choices only.
+- Existing posts need no new fields. `update` is optional, and absent update data produces no update date or notice. RSS `pubDate` continues to use the original `date`.
+- The daily commands remain `npm run g`, `npm run s`, and `npm run d`. Run `npm test`, `npm run g -- --profile`, and `npm run d -- --dry-run` before a real publish; a dry run still requires a configured target.
+
 ## 3.0.2 — 2026-09-10
 
 Pageskill 3.0.2 separates version history from tutorial content and tightens the responsive reading layout.

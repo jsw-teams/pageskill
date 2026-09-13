@@ -1,18 +1,28 @@
 ---
-title: 發佈第一篇教學，搭好你的網站
-description: 用三個指令預覽、產生並發佈一個適合教學內容的網站。
+title: Pageskill：用 Markdown 建立內容網站
+description: 用 Markdown、YAML 和可重用主題建立清楚的多語言內容網站。
 pattern: landing
 ---
 
 :::hero{tone="brand" align="left"}
-*Pageskill 3.0.2 · 用教學搭站*
+*Pageskill · 用 Markdown 搭站*
 
-# 發佈第一篇教學，搭好你的網站
+# 用 Markdown 和 YAML 建立內容網站
 
-Pageskill 把 Markdown post、網站設定和樣式組合成一個網站。你可以先複製儲存庫、在原目錄產生，再依照自己的內容修改；需要動態功能時，頁面和同源 API 仍然各自保持清楚的邊界。
+Pageskill 把 Markdown 內容和少量 YAML 網站資料編譯成多語言網站。可重用主題負責版面和外掛，動態 API 則保持在清楚的同源邊界之後。
 
-[十分鐘開始](/zh-tw/posts/start/) [查看全部教學](/zh-tw/posts/)
+[開始使用](/zh-tw/posts/start/) [GitHub](https://github.com/jsw-teams/pageskill)
 :::
+
+普通作者只需要撰寫 Markdown，需要時修改 `config.yml` 和 `site/theme.yml`，再產生網站。只有網站需要真正新增能力時，才修改主題或 backend 程式碼。
+
+## Pageskill 組合了什麼
+
+| 內容 | 主題 | 多語言 | 發現能力 | 部署 |
+| --- | --- | --- | --- | --- |
+| Markdown 頁面和文章 | Pattern、Block、Plugin | `zh-sg`、`zh-tw`、`en` | 搜尋、Feed、Agent 中繼資料 | 靜態輸出和同源 API |
+
+下面的教學會展示這個預覽站實際使用的原始檔案。
 
 :::learning-path
 ### [開始](/zh-tw/posts/start/)
@@ -27,8 +37,8 @@ Pageskill 把 Markdown post、網站設定和樣式組合成一個網站。你�
 ### [第一篇教學](/zh-tw/posts/first-post/)
 在 `content/posts/` 新增帶日期的 post，選擇 Frontmatter 分類，產生後從 post 列表開啟它。
 
-### [我們如何構建外掛](/zh-tw/posts/cookies/)
-以 Cookie 選擇器為參考，學習模組資源、安全渲染、部分翻譯和同意後載入腳本。
+### [我們如何構建外掛](/zh-tw/posts/plugins/)
+學習一個可重用外掛如何擁有自己的資源、安全渲染和本地化文案；Cookie 選擇器是更進階的參考實作。
 
 ### [更換樣式](/zh-tw/posts/customize/)
 先重用主題已有能力；需要新結構時實作一次，讓之後的頁面繼續使用。

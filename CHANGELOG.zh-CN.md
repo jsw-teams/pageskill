@@ -4,6 +4,31 @@
 
 版本标签与 `package.json`、本更新日志以及带日期的本地化版本更新保持一致。本文件记录仓库变化；日志条目不代表已经发布到 npm 或已经部署。
 
+## 3.1.0 — 2026-09-13
+
+Pageskill 3.1.0 完成可移植配置重构。本条明确包含配置 API breaking change：现有编译器、主题、插件、发现、后端和部署能力仍然保留，但历史配置别名不再加载。
+
+### 变更
+
+- 增加项目内分层配置 `extends`。加载器递归合并对象、整体替换数组和标量，检查项目根目录及 symlink 边界，检测循环引用、限制深度、去重文件，并把所有有效文件纳入配置 hash 和预览依赖图。
+- 用 `theme.config` 分离主题包代码与站点实例数据。站点覆盖项放在 `site/theme.yml`；`themes/<name>/` 只保存可复用实现和参考文件，插件代码仍是默认值和 schema 的唯一来源。
+- 导航、页脚和原有 chrome 插槽共用一套校验后的 Link Schema。它支持本地化内部链接和 HTTP(S) 外链，自动展开 `:locale`，只有当前内部路由获得当前页标记，`target: _blank` 自动附加 `noopener noreferrer`。
+- 增加由代码提供默认值和本地化文案的 `postMeta`。文章现在自动计算基于 Markdown 的字数/字符指标和阅读时间，接受严格的 `update` 时间戳，渲染更新提示与元数据；RSS 仍使用发布日期，sitemap `lastmod` 使用更新时间，搜索索引和增量缓存也保存更新时间。
+- 重新设计 Privacy Consent：根配置使用 `integrations`，由代码登记的 Provider Adapter 统一拥有 schema、公开标识校验、purpose、同意要求、加载策略和受信任资源；用途从实际启用的 Provider 自动推导，无关分类不会出现，没有需要同意的 Integration 就没有横幅。
+- 将文档加载、Frontmatter/日期/metrics 校验和 Pattern 选择移入 compiler 文档模块，同时保持 `createContext`、`refreshContext`、`build`、`check`、`inspect`、`getCatalog`、`siteDiscoveryOptions` 公共 facade 不变。compiler、CLI 和 deploy 现在消费同一个标准化 deployment 配置。
+- 将默认主题剩余的 locale 条件分支改为 message 和 locale metadata fallback，并更新生成的 Agent 指引，使其指向 config extends 文件和实际主题实例文件。
+- 增加 Node 22 内置测试，覆盖配置层、路径安全、链接、metrics、严格日期、缓存/输出元数据、sitemap、搜索和 RSS 行为。
+
+### Breaking change 与迁移
+
+- 单个 `config.yml` 仍然有效，`extends` 仍然可选。把站点主题设置从 `themes/<name>/theme.yml` 移到 `site/theme.yml`，再设置 `theme.config: ./site/theme.yml`；省略 `theme.config` 现在表示没有实例覆盖项。
+- 删除了 `branding`、根级 plugin/search 配置、历史 deployment target 别名、`deployment.dynamicRoutes` 和 OpenAI Sites static-directory fallback。请使用普通 `footer.links`、canonical `deployment.targets` 数组、`deployment.staticDirectory` 和 backend Router 注册。
+- 历史 `.pagekiln`/`_pagekiln` 内部名称以及旧 Cookie 同意浏览器命名空间统一为 `.pageskill`/`_pageskill` 和 `pageskill-consent`。
+- Navigation 和 Footer 现在只使用同一套 `links` schema。可复用主题仍可使用高级 `plugins.chrome.navigation.before/after` 与 `plugins.chrome.footer.before/after` 插槽。
+- 删除旧 Privacy Consent 实例字段（`provider`、`storage`、分类数组、Provider 数组、`gatedScripts`、插件 `copy` 和插件级 `enabled`）。现在使用根级 `integrations`，只有确有需要时才设置 `privacy.consent.decisionRetentionDays`；浏览器同意状态只保存选择。
+- 旧文章不需要新增字段。`update` 可选，没有更新时间时不会生成更新时间或更新提示；RSS 的 `pubDate` 仍使用原始 `date`。
+- 日常命令仍是 `npm run g`、`npm run s` 和 `npm run d`。正式发布前运行 `npm test`、`npm run g -- --profile` 和 `npm run d -- --dry-run`；dry-run 仍要求配置 target。
+
 ## 3.0.2 — 2026-09-10
 
 Pageskill 3.0.2 把版本历史和教程内容分开，并收紧响应式阅读布局。

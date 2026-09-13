@@ -1,12 +1,13 @@
+extends:
+  - ./config/content.yml
+  - ./config/discovery.yml
+
 siteUrl: https://pageskill.openjsu.com
 defaultLocale: en
 activeLocales:
   - zh-sg
   - zh-tw
   - en
-i18n:
-  fallbackLocale: en
-  contentFallback: true
 siteName:
   zh-sg: Pageskill
   zh-tw: Pageskill
@@ -21,6 +22,7 @@ author:
   en: toewpq
 theme:
   name: default
+  config: ./site/theme.yml
 
 navigation:
   links:
@@ -34,9 +36,21 @@ navigation:
       href: /:locale/posts/
     - key: customize
       href: /:locale/posts/customize/
+    - key: configuration
+      href: /:locale/posts/site-settings/
     - key: updates
       href: /:locale/updates/
-  utilityLinks: []
+    - label: GitHub
+      href: https://github.com/jsw-teams/pageskill
+      target: _blank
+
+footer:
+  links:
+    - key: privacy
+      href: /:locale/privacy/
+    - label: GitHub
+      href: https://github.com/jsw-teams/pageskill
+      target: _blank
 
 icons:
   favicon: /favicon.ico
@@ -47,180 +61,12 @@ icons:
   source: /assets/icon-source.png
   manifest: /site.webmanifest
 
-branding:
-  showAttribution: false
-  attributionUrl: https://github.com/jsw-teams/pageskill
-  attribution:
-    zh-sg: Pageskill by JSW Teams
-    zh-tw: Pageskill by JSW Teams
-    en: Pageskill by JSW Teams
-
 pwa:
   backgroundColor: "#faf8f3"
   themeColor: "#244b3d"
-
-images:
-  social: assets/og-default-product.webp
-  variants:
-    - source: og-default-bear-source.png
-      output: assets/og-default-product.webp
-      width: 1200
-      height: 630
-      fit: cover
-      format: webp
-      quality: 82
-    - source: product-note-cover-bear-source.png
-      output: assets/product-note-cover.webp
-      width: 1200
-      height: 800
-      fit: cover
-      format: webp
-      quality: 82
-
-robots:
-  rules:
-    - userAgent: "*"
-      allow:
-        - /
-  # The renderer copies this policy to robots.txt and response headers.
-  contentSignals:
-    ai-train: "no"
-    search: "yes"
-    ai-input: "yes"
-
-# Public agent metadata is generated from these switches and the outputs that
-# the renderer actually produced. See content/posts/agent-discovery/ for the
-# implementation steps. These four capabilities remain disabled until their
-# real service, browser module, or external DNS records are deployed.
-agentDiscovery:
-  # The renderer creates Markdown mirrors and the runtime negotiates them.
-  markdown:
-    enabled: true
-  apiCatalog:
-    enabled: true
-    # Only list endpoints that the backend really serves.
-    entries:
-      - endpoint: /api/health
-        title: Pageskill health API
-        description: Read-only runtime health information for this site.
-        status: /api/health
-  ard:
-    enabled: true
-    # Optional query lists are read by the ARD renderer when supplied.
-  skills:
-    enabled: true
-    name: pageskill-authoring
-    title: Pageskill authoring
-    # Skill description and sections are derived from the registered capability map.
-  auth:
-    # Set true only after a protected resource and OAuth/OIDC issuer are live.
-    # resource, authorizationServer, and optional endpoint URLs must be real.
-    enabled: false
-  mcp:
-    # Set true only after endpoint answers the MCP protocol and tools are live.
-    # endpoint and tools are public metadata; execution stays in the service.
-    enabled: false
-  webmcp:
-    # Set true only after a theme browser module registers document.modelContext
-    # tools. This flag does not load a script or create a browser tool.
-    enabled: false
-  dnsAid:
-    # Set true only after the authoritative DNS provider publishes the records
-    # and DNSSEC verification succeeds. Pageskill never writes DNS records.
-    enabled: false
-
-llms:
-  title: Pageskill
-  description: A friendly static website compiler that helps beginners turn Markdown and a few clear steps into a localized site; reusable Patterns and Blocks are available when you need them.
-  full:
-    enabled: true
-    shardSize: 250
-
-outputs:
-  markdownMirrors: true
-
-archive:
-  pageSize: 50
-  collections:
-    - posts
-    - updates
-
-feed:
-  title: Pageskill
-  limit: 20
-  collections:
-    - posts
-    - updates
 
 privacy:
   controller:
     name: toewpq
     contactUrl: https://github.com/jsw-teams/pageskill
     supervisoryAuthorityUrl: https://edpb.europa.eu/about-edpb/about-edpb_en
-  cookieConsent:
-    policyRoute: /:locale/privacy/
-    agentRoute: /.well-known/agent.json
-content:
-  collections:
-    pages:
-      contentType: page
-      pattern: document
-      route: /:locale/:id/
-      schema:
-        title:
-          type: string
-          required: true
-        description: string
-        pattern: string
-    posts:
-      contentType: post
-      pattern: blog
-      route: /:locale/posts/:id/
-      feed: true
-      archive: true
-      archiveRoute: /:locale/posts/
-      orderBy: date:desc
-      schema:
-        title:
-          type: string
-          required: true
-        description: string
-        date:
-          type: string
-          required: true
-        category: string
-        author: string
-        cover: string
-        ogImage: string
-        pattern: string
-  views:
-    updates:
-      collection: posts
-      category: update
-      route: /:locale/updates/:id/
-      archiveRoute: /:locale/updates/
-      feedRoute: /:locale/updates/feed.xml
-
-deployment:
-  targets: []
-  cloudflare:
-    accountId: null
-    apiTokenEnv: CLOUDFLARE_API_TOKEN
-    pages:
-      project: null
-      branch: null
-    workers:
-      name: null
-      compatibilityDate: '2026-08-10'
-  github:
-    remote: null
-    branch: null
-    tokenEnv: GITHUB_TOKEN
-  vps:
-    host: null
-    user: null
-    port: 22
-    remotePath: null
-    identityFile: null
-    publicKeyFile: null
-  backend: true

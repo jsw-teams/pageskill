@@ -11,7 +11,7 @@ Pageskill 搜索会从页面和带日期的 post 生成。浏览器读取当前�
 
 ## 1. 打开搜索设置
 
-在 `themes/default/theme.yml` 中设置插件选项：
+在 `theme.config` 指向的站点实例文件（通常是 `site/theme.yml`）中设置插件选项：
 
 ```yaml
 plugins:
@@ -46,7 +46,7 @@ npm run s
 
 ## 常见坑
 
-修改 Markdown 后，已有预览不会在没有生成或重建时更新。不要直接改 `dist/` 下生成的搜索 JSON；应修改源内容或 `themes/default/theme.yml` 中的搜索选项。
+修改 Markdown 后，已有预览不会在没有生成或重建时更新。不要直接改 `dist/` 下生成的搜索 JSON；应修改源内容或 `site/theme.yml` 中的搜索选项。
 
 ## 下一步
 

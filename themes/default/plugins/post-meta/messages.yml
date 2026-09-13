@@ -1,0 +1,37 @@
+messages:
+  zh-sg:
+    post:
+      published: 发布于
+      updated: 更新于
+      wordCount: 约 {count} 字
+      readingTime: 阅读时间
+      readingMinute: 1 分钟阅读
+      readingMinutes: '{count} 分钟阅读'
+      author: 作者
+    updateNotice:
+      title: 本文已更新
+      description: 最后修改于 {date}
+  zh-tw:
+    post:
+      published: 發布於
+      updated: 更新於
+      wordCount: 約 {count} 字
+      readingTime: 閱讀時間
+      readingMinute: 1 分鐘閱讀
+      readingMinutes: '{count} 分鐘閱讀'
+      author: 作者
+    updateNotice:
+      title: 本文已更新
+      description: 最後修改於 {date}
+  en:
+    post:
+      published: Published
+      updated: Updated
+      wordCount: '{count} words'
+      readingTime: Reading time
+      readingMinute: 1 min read
+      readingMinutes: '{count} min read'
+      author: Author
+    updateNotice:
+      title: Updated
+      description: This article was revised on {date}.

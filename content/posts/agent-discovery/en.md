@@ -7,7 +7,7 @@ category: tutorial
 
 # Configure conditional Agent capabilities
 
-Pageskill generates the baseline site discovery files, but it does not implement an authorization server, MCP service, browser tool, or DNS provider integration for you. `agentDiscovery` in `config.yml` is the public declaration layer: set a switch to `true` only after the corresponding capability is deployed and verified.
+Pageskill generates the baseline site discovery files, but it does not implement an authorization server, MCP service, browser tool, or DNS provider integration for you. `agentDiscovery` in `config.yml` or one of its project-local extends files is the public declaration layer: set a switch to `true` only after the corresponding capability is deployed and verified.
 
 This tutorial covers four conditional capabilities: authentication metadata, an MCP server card, WebMCP browser-tool registration, and DNS-AID. Values must come from a real service or DNS provider. Do not add a fictional endpoint, account ID, or DNS record just to make generation succeed.
 
@@ -17,7 +17,7 @@ This tutorial covers four conditional capabilities: authentication metadata, an 
 | --- | --- | --- | --- |
 | Authentication metadata | A protected route in `backend/handler.ts` plus a real OAuth/OIDC issuer, or an external resource server | `config.yml` `agentDiscovery.auth` | Conditional `/.well-known/oauth-protected-resource` and `auth.md`; authorization-server metadata is generated only when both real endpoints are supplied |
 | MCP card | An MCP transport under `backend/`, or an already deployed external MCP service | `config.yml` `agentDiscovery.mcp` | Conditional `/.well-known/mcp/server-card.json`; the card does not execute tools |
-| WebMCP | A browser script under `themes/<name>/plugins/<id>/` registered through the theme entry | The plugin instance in `themes/<name>/theme.yml`, plus `config.yml` `agentDiscovery.webmcp` | The browser script registers tools; the static renderer does not create a browser endpoint |
+| WebMCP | A browser script under `themes/<name>/plugins/<id>/` registered through the theme entry | The site instance selected by `theme.config`, normally `site/theme.yml`, plus `config.yml` `agentDiscovery.webmcp` | The browser script registers tools; the static renderer does not create a browser endpoint |
 | DNS-AID | A real agent endpoint, authoritative DNS zone, and DNSSEC | `config.yml` `agentDiscovery.dnsAid` | Only a configured state in Agent metadata; Pageskill never writes SVCB, TXT, TLSA, or DNSSEC records |
 
 Implement the first column, configure the middle column, and then run generation and live checks. Changing `agentDiscovery` alone cannot create a service.
@@ -189,7 +189,7 @@ export const plugin: ThemePluginDefinition = {
 };
 ```
 
-Export this plugin from `themes/default/plugins/index.ts`, then enable its instance in `themes/default/theme.yml`:
+Export this plugin from `themes/default/plugins/index.ts`, then enable its instance in `site/theme.yml`:
 
 ```yaml
 plugins:
@@ -286,7 +286,7 @@ git diff --check
 npm run d -- --dry-run
 ```
 
-With the defaults off, the conditional endpoint files should not exist. After enabling one capability, only that capability's actual files or configured state should appear. Check the deployment type last: static Git/Pages publishes only `dist/public` and cannot host `backend/handler.ts` by itself. Authentication and MCP need the backend deployed in the same runtime or an already live external service. Never edit `dist/`, `.pagekiln/`, or generated `.well-known` files by hand.
+With the defaults off, the conditional endpoint files should not exist. After enabling one capability, only that capability's actual files or configured state should appear. Check the deployment type last: static Git/Pages publishes only `dist/public` and cannot host `backend/handler.ts` by itself. Authentication and MCP need the backend deployed in the same runtime or an already live external service. Never edit `dist/`, `.pageskill/`, or generated `.well-known` files by hand.
 
 ## Common failures
 

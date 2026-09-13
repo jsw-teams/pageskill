@@ -7,7 +7,7 @@ category: tutorial
 
 # 配置条件 Agent 能力
 
-Pageskill 会生成基础的站点发现文件，但不会替你实现鉴权服务器、MCP 服务、浏览器工具或 DNS。`config.yml` 中的 `agentDiscovery` 是公开声明入口：只有对应能力已经真实部署并验证，才把相应开关改为 `true`。
+Pageskill 会生成基础的站点发现文件，但不会替你实现鉴权服务器、MCP 服务、浏览器工具或 DNS。`config.yml` 或它的项目内 extends 文件中的 `agentDiscovery` 是公开声明入口：只有对应能力已经真实部署并验证，才把相应开关改为 `true`。
 
 这篇教程处理四种条件能力：鉴权元数据、MCP server card、WebMCP 浏览器工具登记和 DNS-AID。配置值必须来自实际服务或 DNS 提供商，不要为了让生成通过而填写虚构的 endpoint、账户 ID 或记录。
 
@@ -17,7 +17,7 @@ Pageskill 会生成基础的站点发现文件，但不会替你实现鉴权服�
 | --- | --- | --- | --- |
 | 鉴权元数据 | `backend/handler.ts` 的受保护路由和真实 OAuth/OIDC issuer，或外部资源服务器 | `config.yml` 的 `agentDiscovery.auth` | 条件生成 `/.well-known/oauth-protected-resource`、`auth.md`；同时提供两个真实端点时再生成 authorization-server metadata |
 | MCP card | `backend/` 中的 MCP transport，或已经上线的外部 MCP 服务 | `config.yml` 的 `agentDiscovery.mcp` | 条件生成 `/.well-known/mcp/server-card.json`；card 不执行工具 |
-| WebMCP | `themes/<name>/plugins/<id>/` 的浏览器脚本，并在主题入口登记 | `themes/<name>/theme.yml` 的插件实例，加上 `config.yml` 的 `agentDiscovery.webmcp` | 浏览器脚本在页面中登记工具；静态生成器不会创建浏览器 endpoint |
+| WebMCP | `themes/<name>/plugins/<id>/` 的浏览器脚本，并在主题入口登记 | `theme.config` 选择的站点实例文件（通常是 `site/theme.yml`），加上 `config.yml` 的 `agentDiscovery.webmcp` | 浏览器脚本在页面中登记工具；静态生成器不会创建浏览器 endpoint |
 | DNS-AID | 真实 agent endpoint、权威 DNS 区域和 DNSSEC | `config.yml` 的 `agentDiscovery.dnsAid` | 只在 Agent 元数据中记录已配置状态；Pageskill 不写入 SVCB、TXT、TLSA 或 DNSSEC |
 
 先实现左侧，再配置中间一列，最后运行生成和线上验证。仅修改 `agentDiscovery` 不会凭空产生服务。
@@ -189,7 +189,7 @@ export const plugin: ThemePluginDefinition = {
 };
 ```
 
-在 `themes/default/plugins/index.ts` 导出这个插件，在 `themes/default/theme.yml` 配置实例：
+在 `themes/default/plugins/index.ts` 导出这个插件，在 `site/theme.yml` 配置实例：
 
 ```yaml
 plugins:
@@ -286,7 +286,7 @@ git diff --check
 npm run d -- --dry-run
 ```
 
-默认关闭时，两个条件 endpoint 文件应不存在；打开某项后，只能看到该项实际生成的文件或 configured 状态。最后检查部署类型：静态 Git/Pages 只发布 `dist/public`，无法单独承载 `backend/handler.ts`；鉴权和 MCP 必须同时部署同源 backend，或改用已经上线的外部服务。不要手动修改 `dist/`、`.pagekiln/` 或生成的 `.well-known` 文件。
+默认关闭时，两个条件 endpoint 文件应不存在；打开某项后，只能看到该项实际生成的文件或 configured 状态。最后检查部署类型：静态 Git/Pages 只发布 `dist/public`，无法单独承载 `backend/handler.ts`；鉴权和 MCP 必须同时部署同源 backend，或改用已经上线的外部服务。不要手动修改 `dist/`、`.pageskill/` 或生成的 `.well-known` 文件。
 
 ## 常见失败
 
