@@ -47,11 +47,12 @@ Pageskill 把 Markdown 内容和少量 YAML 站点数据编译成多语言网站
 
 需要接入真实的鉴权、MCP、WebMCP 或 DNS-AID 时，阅读[配置条件 Agent 能力](/zh-sg/posts/agent-discovery/)，按 backend、主题组件和外部 DNS 的实际边界逐项实现。
 
-## 只记住两个命令
+## 只记住三个命令
 
 | 命令 | 作用 |
 | --- | --- |
 | `page g` | 自动校验并生成公开静态文件到 `dist/public`。 |
+| `page c` | 启动真实浏览器执行完整的 axe 无障碍审查，并写入私有报告。 |
 | `page s` | 启动持续预览；按 `Ctrl+C` 停止，也可以在另一个终端继续编辑。 |
 
 :::post-list{limit="6"}

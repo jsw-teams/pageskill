@@ -55,8 +55,9 @@
   },
   "scripts": {
     "g": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/page.mjs g",
+    "c": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/page.mjs c",
     "s": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/page.mjs s",
-    "test": "npm run g && node --test",
+    "test": "npm run g && node src/bin/page.mjs c && node --test",
     "compile-runtime": "tsc -p tsconfig.emit.json",
     "compile-backend": "tsc -p tsconfig.backend.json",
     "compile-theme": "tsc -p tsconfig.theme.json"

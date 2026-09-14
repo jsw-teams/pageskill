@@ -12,7 +12,7 @@ Pageskill Core
     optional Server Components
 ```
 
-Ordinary authors work with Markdown, configuration, Components, `page g`, and `page s`. Server Functions, storage, cache, AI, and provider integrations are developer-facing capabilities.
+Ordinary authors work with Markdown, configuration, Components, `page g`, `page c`, and `page s`. Server Functions, storage, cache, AI, and provider integrations are developer-facing capabilities.
 
 ## Boundaries
 
@@ -29,12 +29,13 @@ Ordinary authors work with Markdown, configuration, Components, `page g`, and `p
 
 The only public CLI commands are:
 
-- `page g [--profile]`: validate, generate `dist/public`, run the four-layer accessibility audit, generate Agent readiness output, and write private reports.
+- `page g [--profile]`: quickly validate and generate `dist/public` plus Agent readiness output. It must not start a browser or run the page-level accessibility audit.
+- `page c`: run the complete four-layer accessibility audit in a real browser, including axe, keyboard/dynamic checks, responsive viewports, and private reports/screenshots.
 - `page s [port]` or `page s --port <port>`: watch source dependencies, rebuild, serve the generated site, and provide development feedback. With no runtime adapter it uses the Core static preview; a configured adapter may add its own local runtime.
 
-`runtime.adapter` is optional. A site with no backend, database, cache provider, AI provider, or runtime adapter must still complete `page g` and `page s`. Cloudflare Pages is the bundled reference Runtime Adapter, not a Core dependency. `env.ASSETS`, D1, Workers AI, and other host bindings belong to that adapter and missing bindings must only disable the affected optional feature.
+`runtime.adapter` is optional. A site with no backend, database, cache provider, AI provider, or runtime adapter must still complete `page g` and `page s`; `page c` additionally requires a browser binary. Cloudflare Pages is the bundled reference Runtime Adapter, not a Core dependency. `env.ASSETS`, D1, Workers AI, and other host bindings belong to that adapter and missing bindings must only disable the affected optional feature.
 
-Package scripts `npm run g` and `npm run s` are repository conveniences that compile source before invoking the same `page` CLI; they are not additional public command names.
+Package scripts `npm run g`, `npm run c`, and `npm run s` are repository conveniences that compile source before invoking the same `page` CLI; they are not additional public command names.
 
 ## Content model
 
@@ -81,7 +82,7 @@ Cloudflare Pages + Functions + D1 + Workers AI + Cache API is documented as one 
 
 ## Accessibility and secure rendering
 
-Accessibility is a four-layer development audit: source contracts, final HTML, a real browser/axe run, and keyboard/dynamic/viewport checks. Reports stay private at `.pageskill/reports/accessibility/` with `index.html`, `report.json`, `summary.json`, and screenshots; never copy reports or a disclaimer into `dist/public`.
+Accessibility is a four-layer development audit invoked by `page c`: source contracts, final HTML, a real browser/axe run, and keyboard/dynamic/viewport checks. Reports stay private at `.pageskill/reports/accessibility/` with an annotated `report.pdf`, `index.html`, `report.json`, `summary.json`, and screenshots; never copy reports or a disclaimer into `dist/public`. `page g` intentionally does not invoke this browser audit.
 
 The screenshot matrix includes 320×800, 375×812, 768×1024, 1280×800, and 1440×900. Every generated HTML route gets a baseline screenshot; representative, warning, and error routes get the full matrix. Completed diagnostics may receive temporary annotated crops labelled with issue number, severity, and rule ID; annotations are removed after capture and never affect the audit DOM.
 
@@ -103,6 +104,7 @@ npm run compile-theme
 npm run compile-backend
 npm test
 npx page g --profile
+npx page c
 npx page s
 git diff --check
 ```

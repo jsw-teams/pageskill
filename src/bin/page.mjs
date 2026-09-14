@@ -2,10 +2,11 @@
 
 import { promises as fs, watch } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createContext, refreshContext, build, check } from '../runtime/compiler.js';
-import { auditGeneratedSite, formatAccessibilitySummary, hasAccessibilityErrors } from '../runtime/accessibility/index.js';
+import { auditGeneratedSite, formatAccessibilitySummary, hasAccessibilityErrors, writeBrowserPdf } from '../runtime/accessibility/index.js';
 import { loadRuntimeAdapter } from '../runtime/runtime-adapters/index.js';
 
 const args = process.argv.slice(2);
@@ -22,9 +23,10 @@ async function packageVersion() {
 async function printHelp() {
   console.log(`Pageskill ${await packageVersion()}
 
-Usage: page <g|s> [options]
+Usage: page <g|c|s> [options]
 
-  g [--profile]     Generate and validate the site.
+  g [--profile]     Generate and validate the site without browser startup.
+  c                 Run the complete browser and axe accessibility audit.
   s [port]           Start the local static or configured runtime preview.
   s --port <port>   Start the preview on an explicit port.
   --help, -h        Show this help.
@@ -64,6 +66,10 @@ function parseServeArgs(values) {
   return { port };
 }
 
+function parseCArgs(values) {
+  rejectUnexpected('c', values, new Set());
+}
+
 function reportHtml(report) {
   const escape = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
   const rows = report.diagnostics.map(item => `<tr><td>${escape(item.level)}</td><td>${escape(item.rule)}</td><td>${escape(item.component || '')}</td><td>${escape(item.route || '')}</td><td>${escape(item.selector || '')}</td><td>${escape(item.message)}</td></tr>`).join('');
@@ -72,9 +78,10 @@ function reportHtml(report) {
   const screenshots = (report.screenshots || []).map(item => {
     const relative = String(item.path || '').replace(/^\.pageskill\/reports\/accessibility\//, '');
     const annotated = item.annotatedPath ? String(item.annotatedPath).replace(/^\.pageskill\/reports\/accessibility\//, '') : '';
-    return `<figure><a href="${escape(relative)}"><img src="${escape(relative)}" alt="${escape(`${item.route} at ${item.viewport}`)}" loading="lazy" width="480"></a>${annotated ? `<figcaption><a href="${escape(annotated)}">Annotated issue crop</a> · ${escape(item.route)} · ${escape(item.viewport)}</figcaption>` : `<figcaption>${escape(item.route)} · ${escape(item.viewport)}</figcaption>`}</figure>`;
+    const annotation = annotated ? `<div class="annotation"><img src="${escape(annotated)}" alt="${escape(`Annotated issue crop for ${item.route} at ${item.viewport}`)}" loading="lazy" width="480"><small>Annotated issue crop</small></div>` : '';
+    return `<figure><a href="${escape(relative)}"><img src="${escape(relative)}" alt="${escape(`${item.route} at ${item.viewport}`)}" loading="lazy" width="480"></a>${annotation}<figcaption>${escape(item.route)} - ${escape(item.viewport)}</figcaption></figure>`;
   }).join('');
-  return `<!doctype html><meta charset="utf-8"><title>Pageskill accessibility report</title><style>body{font:16px system-ui,sans-serif;max-width:1200px;margin:2rem auto;padding:0 1rem;color:#1d2924}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccd7d1;padding:.5rem;text-align:left;vertical-align:top}th{background:#edf3ef}.error{color:#9d1c1c}.warning{color:#805b00}.screenshots{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem}.screenshots figure{margin:0}.screenshots img{display:block;max-width:100%;height:auto;border:1px solid #ccd7d1}</style><h1>Accessibility report</h1><p>${report.pages} pages checked · <span class="error">${errors} errors</span> · <span class="warning">${warnings} warnings</span></p><p>Browser: ${escape(report.browser || 'source checks only')} · Viewports: ${escape((report.viewports || []).join(', '))}</p><h2>Checks</h2><ul>${(report.checks || []).map(check => `<li>${escape(check)}</li>`).join('')}</ul><h2>Diagnostics</h2>${rows ? `<table><thead><tr><th>Level</th><th>Rule</th><th>Component</th><th>Route</th><th>Selector</th><th>Message</th></tr></thead><tbody>${rows}</tbody></table>` : '<p>No diagnostics.</p>'}<h2>Baseline and issue screenshots</h2><div class="screenshots">${screenshots || '<p>No screenshots.</p>'}</div>`;
+  return `<!doctype html><meta charset="utf-8"><title>Pageskill accessibility report</title><style>@page{size:A4;margin:12mm 12mm 14mm}body{font:16px system-ui,sans-serif;max-width:1200px;margin:2rem auto;padding:0 1rem;color:#1d2924}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccd7d1;padding:.5rem;text-align:left;vertical-align:top}th{background:#edf3ef}.error{color:#9d1c1c}.warning{color:#805b00}.screenshots{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem}.screenshots figure{margin:0;break-inside:avoid;page-break-inside:avoid}.screenshots img{display:block;max-width:100%;height:auto;border:1px solid #ccd7d1}.annotation{margin-top:.5rem}.annotation img{border-color:#c21f39}.annotation small{display:block;color:#9d1c1c;font-weight:700;margin-top:.25rem}@media print{body{max-width:none;margin:0;padding:0;font-size:10pt}h1,h2{break-after:avoid}table{font-size:8pt}.screenshots{display:block}.screenshots figure{display:inline-block;vertical-align:top;width:48%;margin:0 1% 1rem 0}.screenshots img{width:100%}a{color:inherit;text-decoration:none}}</style><h1>Accessibility report</h1><p>${report.pages} pages checked - <span class="error">${errors} errors</span> - <span class="warning">${warnings} warnings</span></p><p>Browser: ${escape(report.browser || 'source checks only')} - Viewports: ${escape((report.viewports || []).join(', '))}</p><h2>Checks</h2><ul>${(report.checks || []).map(check => `<li>${escape(check)}</li>`).join('')}</ul><h2>Diagnostics</h2>${rows ? `<table><thead><tr><th>Level</th><th>Rule</th><th>Component</th><th>Route</th><th>Selector</th><th>Message</th></tr></thead><tbody>${rows}</tbody></table>` : '<p>No diagnostics.</p>'}<h2>Baseline and issue screenshots</h2><div class="screenshots">${screenshots || '<p>No screenshots.</p>'}</div>`;
 }
 
 async function writeAccessibilityReport(report) {
@@ -82,13 +89,15 @@ async function writeAccessibilityReport(report) {
   await fs.mkdir(directory, { recursive: true });
   await fs.writeFile(path.join(directory, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   await fs.writeFile(path.join(directory, 'summary.json'), `${JSON.stringify(report.summary, null, 2)}\n`, 'utf8');
-  await fs.writeFile(path.join(directory, 'index.html'), reportHtml(report), 'utf8');
+  const htmlFile = path.join(directory, 'index.html');
+  await fs.writeFile(htmlFile, reportHtml(report), 'utf8');
+  await writeBrowserPdf(htmlFile, path.join(directory, 'report.pdf'));
 }
 
 async function audit(ctx, options = {}) {
   const report = await auditGeneratedSite(ctx, options);
   await writeAccessibilityReport(report);
-  console.log(`Accessibility\n  ${report.pages} pages\n  ${report.diagnostics.filter(item => item.level === 'error').length} errors\n  ${report.diagnostics.filter(item => item.level === 'warning').length} warnings\n\nReport:\n  .pageskill/reports/accessibility/index.html\n  .pageskill/reports/accessibility/report.json\n  .pageskill/reports/accessibility/summary.json\n  .pageskill/reports/accessibility/screenshots/`);
+  console.log(`Accessibility\n  ${report.pages} pages\n  ${report.diagnostics.filter(item => item.level === 'error').length} errors\n  ${report.diagnostics.filter(item => item.level === 'warning').length} warnings\n\nReport:\n  .pageskill/reports/accessibility/report.pdf\n  .pageskill/reports/accessibility/index.html\n  .pageskill/reports/accessibility/report.json\n  .pageskill/reports/accessibility/summary.json\n  .pageskill/reports/accessibility/screenshots/`);
   if (hasAccessibilityErrors(report)) throw new Error(formatAccessibilitySummary(report));
   return report;
 }
@@ -172,8 +181,13 @@ async function generate(profile = false) {
   const ctx = await createContext(root);
   await build(ctx);
   await check(ctx);
-  await audit(ctx);
   if (profile) console.log(`Profile: ${JSON.stringify(ctx.profile)}`);
+  return ctx;
+}
+
+async function checkSite() {
+  const ctx = await generate(false);
+  await audit(ctx);
   return ctx;
 }
 
@@ -191,7 +205,6 @@ async function serve(port) {
   await build(ctx);
   await check(ctx);
   await applyLocalMigrations(ctx);
-  await audit(ctx);
   let child = await startPreview(ctx, port);
   let timer;
   let building = false;
@@ -218,7 +231,6 @@ async function serve(port) {
           await build(ctx);
           await check(ctx);
           if (files.some(file => file.startsWith('migrations/'))) await applyLocalMigrations(ctx);
-          await audit(ctx);
           await restartPreview();
           console.log(`Rebuilt ${ctx.docs.length} documents (${files.length} changed files) in ${Math.round(ctx.profile.total)}ms`);
         } catch (error) {
@@ -254,7 +266,8 @@ async function main() {
   if (command === '--help' || command === '-h' || !command) { await printHelp(); return; }
   if (command === 'g') { await generate(parseGenerateArgs(commandArgs).profile); return; }
   if (command === 's') { await serve(parseServeArgs(commandArgs).port); return; }
-  throw new Error(`Unknown command: ${command}. Use "page g" or "page s".`);
+  if (command === 'c') { parseCArgs(commandArgs); await checkSite(); return; }
+  throw new Error(`Unknown command: ${command}. Use "page g", "page c", or "page s".`);
 }
 
 main().catch(error => {

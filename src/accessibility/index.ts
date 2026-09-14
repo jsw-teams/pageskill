@@ -8,6 +8,7 @@ import type { AccessibilityReport } from './types.ts';
 export * from './types.ts';
 export * from './contrast.ts';
 export * from './diagnostics.ts';
+export { writeBrowserPdf } from './browser.ts';
 
 export type AccessibilityAuditOptions = {
   routes?: string[];

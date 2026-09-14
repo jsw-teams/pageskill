@@ -12,11 +12,12 @@ function run(...args) {
   return { ...result, output: `${result.stdout || ''}${result.stderr || ''}` };
 }
 
-test('CLI exposes only the supported generate and preview commands', () => {
+test('CLI exposes only the supported generate, accessibility, and preview commands', () => {
   const help = run('--help');
   assert.equal(help.status, 0);
-  assert.match(help.output, /Usage: page <g\|s>/);
-  assert.doesNotMatch(help.output, /page d|deploy|check|build|dev|a11y/);
+  assert.match(help.output, /Usage: page <g\|c\|s>/);
+  assert.match(help.output, /\n  c\s+Run the complete browser and axe accessibility audit/);
+  assert.doesNotMatch(help.output, /page check|Alias for check/);
   for (const command of ['d', 'deploy', 'check', 'build', 'dev', 'a11y']) {
     const result = run(command);
     assert.notEqual(result.status, 0);

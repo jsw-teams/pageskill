@@ -19,7 +19,7 @@ Pageskill 4.0.0 是一次 breaking architecture release。現在 Theme 只有一
 - 普通文章使用 `kind: post`；release note 是真正的 `content/updates/` 集合並使用 `kind: release`。`updated` 只表示最後一次實質修改，`category` 仍然只是普通文章分類，歸檔類型明確分層。
 - Comments 是可選 External Component；Comment Translation 是獨立的可選能力，使用平台無關 Server Function contract、L1 與持久化 Cache、source hash 和 single-flight 推理。
 - Core 在沒有 Server 環境時仍可工作。Cloudflare Pages、D1、Workers AI 和 Cache API 只是一个 Reference Runtime Adapter，不是 Core 依賴。
-- `page g` 和 `page s` 仍是僅有的公開指令。`page g` 產生帶多解析度截圖的私有無障礙報告，絕不把報告或 disclaimer 發佈到 `dist/public`。
+- `page g`、`page c` 和 `page s` 是僅有的公開指令。`page g` 不啟動瀏覽器；`page c` 產生帶標註和多解析度截圖的私有 PDF 無障礙報告，絕不把報告或 disclaimer 發佈到 `dist/public`。
 
 ## 遷移邊界
 

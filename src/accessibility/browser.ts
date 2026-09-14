@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
-import { chromium, type Browser, type Page } from 'playwright';
+import { pathToFileURL } from 'node:url';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { browserHtmlAuditScript } from './html.ts';
 import { diagnosticsForRule } from './diagnostics.ts';
 import type { AccessibilityDiagnostic } from './types.ts';
@@ -633,24 +634,47 @@ export async function auditBrowserSite(ctx: BuildContext, requestedRoutes?: stri
   const routes = requested ? allRoutes.filter(route => requested.has(route)) : allRoutes;
   if (!routes.length) throw new Error('browser accessibility audit was given no generated routes to inspect');
   const server = await startStaticServer(outputRoot);
-  const { browser, name } = await launchBrowser();
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: server.url }).catch(() => {});
-  const page = await context.newPage();
-  const diagnostics: AccessibilityDiagnostic[] = [];
-  const checks = new Set<string>();
-  const responsiveRoutes = new Set(representativeRoutes(routes, ctx));
+  let browser: Browser | undefined;
+  let browserContext: BrowserContext | undefined;
   try {
+    const launched = await launchBrowser();
+    browser = launched.browser;
+    browserContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+    await browserContext.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: server.url }).catch(() => {});
+    const page = await browserContext.newPage();
+    const diagnostics: AccessibilityDiagnostic[] = [];
+    const checks = new Set<string>();
+    const responsiveRoutes = new Set(representativeRoutes(routes, ctx));
     for (const route of routes) {
       const result = await auditRoute(page, server.url, route, responsiveRoutes.has(route));
       diagnostics.push(...result.diagnostics);
       result.checks.forEach(check => checks.add(check));
     }
     const screenshots = await captureScreenshots(page, server.url, ctx.root, routes, diagnostics, ctx);
-    return { diagnostics, routes, checks: [...checks], browser: name, viewports: SCREENSHOT_VIEWPORTS.map(viewport => `${viewport.width}x${viewport.height}`), screenshots };
+    return { diagnostics, routes, checks: [...checks], browser: launched.name, viewports: SCREENSHOT_VIEWPORTS.map(viewport => `${viewport.width}x${viewport.height}`), screenshots };
   } finally {
-    await context.close().catch(() => {});
-    await browser.close().catch(() => {});
+    await browserContext?.close().catch(() => {});
+    await browser?.close().catch(() => {});
     await server.close();
+  }
+}
+
+export async function writeBrowserPdf(htmlFile: string, pdfFile: string): Promise<void> {
+  const { browser } = await launchBrowser();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await page.goto(pathToFileURL(path.resolve(htmlFile)).href, { waitUntil: 'load' });
+    await page.waitForFunction(() => [...document.images].every(image => image.complete), undefined, { timeout: 10000 }).catch(() => {});
+    await page.pdf({
+      path: pdfFile,
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '12mm', right: '12mm', bottom: '14mm', left: '12mm' },
+      displayHeaderFooter: true,
+      headerTemplate: '<span></span>',
+      footerTemplate: '<div style="width:100%;font:9px system-ui,sans-serif;color:#66736d;text-align:center">Pageskill accessibility report - <span class="pageNumber"></span>/<span class="totalPages"></span></div>'
+    });
+  } finally {
+    await browser.close().catch(() => {});
   }
 }

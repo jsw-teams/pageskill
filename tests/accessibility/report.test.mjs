@@ -6,7 +6,8 @@ import test from 'node:test';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
-test('g writes a complete zero-error browser accessibility report', async () => {
+test('c writes a complete zero-error browser accessibility PDF report', async () => {
+  const pdf = await readFile(path.join(root, '.pageskill', 'reports', 'accessibility', 'report.pdf'));
   const reportJson = JSON.parse(await readFile(path.join(root, '.pageskill', 'reports', 'accessibility', 'report.json'), 'utf8'));
   const summary = JSON.parse(await readFile(path.join(root, '.pageskill', 'reports', 'accessibility', 'summary.json'), 'utf8'));
   const report = reportJson;
@@ -21,6 +22,8 @@ test('g writes a complete zero-error browser accessibility report', async () => 
   assert.deepEqual(report.viewports, ['320x800', '375x812', '768x1024', '1280x800', '1440x900']);
   assert.ok(reportJson.screenshots.length >= report.pages);
   assert.equal(summary.screenshotCount, reportJson.screenshots.length);
+  assert.equal(pdf.subarray(0, 5).toString('ascii'), '%PDF-');
+  assert.ok(pdf.byteLength > 1000);
   assert.ok(reportJson.screenshots.some(item => item.route === '/en/' && item.viewport === '320x800'));
   assert.equal(await exists(path.join(root, 'dist', 'public', '.pageskill', 'reports', 'accessibility')), false);
   assert.equal(await exists(path.join(root, 'dist', 'public', '.pageskill', 'build-profile.json')), false);

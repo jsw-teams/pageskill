@@ -12,14 +12,15 @@ Pageskill generates a site; your hosting provider or Git integration publishes i
 
 ## 1. Generate and preview locally
 
-Run the two public Pageskill commands:
+Run the three public Pageskill commands:
 
 ```powershell
 page g
+page c
 page s
 ```
 
-The generate step validates content and runs the accessibility audit. The preview lets you inspect the same output locally before handing it to a host.
+The generate step validates content and creates the public snapshot. Run `page c` in a browser-capable environment for the complete accessibility audit. The preview lets you inspect the same output locally before handing it to a host.
 
 ## 2. Configure the host for static output
 

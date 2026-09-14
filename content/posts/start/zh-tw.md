@@ -28,6 +28,8 @@ page g
 
 `page g` 會先編譯執行時、主題和 backend，再驗證並產生這個儲存庫。現在直接修改原始碼樹即可。
 
+發佈前需要完整無障礙審查時，請在具備瀏覽器的環境中執行 `page c`。
+
 ## 3. 直接修改網站
 
 首頁改 `content/pages/home/<locale>.md`，帶日期的教學和其他 post 改 `content/posts/<id>/<locale>.md`；教學明確寫 `category: tutorial`，省略它的 post 預設是 `uncategorized`（未分類）。版本更新放在 `content/updates/<id>/<locale>.md` 並使用 `kind: release`，進入獨立的發布彙整。網站資料和開關改 `config.yml`。先重用主題已有能力，再增加新的擴充。

@@ -1241,6 +1241,7 @@ function agentFunctionMap(ctx: BuildContext) {
     { id: 'configure-component', purpose: 'Configure a declared Component from the theme instance file without editing its renderer', paths: [themeInstance, 'themes/<name>/components/<component>/index.ts'], commands: ['page g --profile'] },
     { id: 'discover-extension', purpose: 'Read active theme Components, collections, component switches, contexts, and resource dependencies', paths: ['themes/<name>/index.ts', themeInstance, ...configSources], commands: ['import { getCatalog, inspect } from "pageskill"'] },
     { id: 'discover-site', purpose: 'Read renderer-generated agent metadata, API links, Markdown negotiation, and content signals', paths: ['dist/public/.well-known/', 'dist/public/robots.txt', 'dist/public/llms.txt'], commands: ['page g'] },
+    { id: 'accessibility-audit', purpose: 'Run the complete real-browser and axe accessibility audit with private reports and responsive screenshots', paths: ['src/accessibility/', 'src/bin/page.mjs'], commands: ['page c'] },
     // Conditional discovery entries describe the implementation boundary as
     // data. The generated Skill and catalog expose these fields without a
     // second hand-maintained instruction list.
@@ -1654,7 +1655,7 @@ function catalog(ctx: BuildContext) {
     agent: {
       optional: true,
       role: 'assistive',
-      defaultCommands: ['npm install', 'page s', 'page g'],
+      defaultCommands: ['npm install', 'page g', 'page c', 'page s'],
       ...discoveryBoundaries(ctx),
       functionMap: agentFunctionMap(ctx)
     },

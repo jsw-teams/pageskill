@@ -28,6 +28,8 @@ page g
 
 `page g` compiles the runtime, theme, and backend, then validates and generates this repository. The source tree is now the site you edit.
 
+Run `page c` in a browser-capable environment when you want the complete accessibility audit before release.
+
 ## 3. Edit the site in place
 
 Change `content/pages/home/<locale>.md` for the home page and `content/posts/<id>/<locale>.md` for dated posts. Add `category: tutorial` for a tutorial and leave it out for the default `uncategorized` category. Put version updates in `content/updates/<id>/<locale>.md` with `kind: release`; they use the separate release archive. Use `config.yml` for site data and switches. Reuse the theme capabilities before adding a new extension.

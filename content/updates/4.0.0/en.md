@@ -19,7 +19,7 @@ Pageskill 4.0.0 is a breaking architecture release. The product now has one publ
 - Posts use `kind: post`; release notes are the real `content/updates/` collection and use `kind: release`. `updated` only means last substantive modification, `category` remains ordinary post taxonomy, and archive types are explicit.
 - Comments are an optional External Component. Comment Translation is a separate optional capability with a platform-neutral Server Function contract, L1 and persistent caches, source hashes, and single-flight inference.
 - Core works without a server environment. Cloudflare Pages, D1, Workers AI, and Cache API are documented as one reference Runtime Adapter rather than Core dependencies.
-- `page g` and `page s` remain the only public commands. `page g` writes private accessibility reports with multi-resolution screenshots and never publishes a report or disclaimer into `dist/public`.
+- `page g`, `page c`, and `page s` are the only public commands. `page g` does not start a browser; `page c` writes an annotated private PDF accessibility report with multi-resolution screenshots and never publishes a report or disclaimer into `dist/public`.
 
 ## Migration boundary
 

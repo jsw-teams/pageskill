@@ -28,6 +28,8 @@ page g
 
 `page g` 会先编译运行时、主题和 backend，再校验并生成这个仓库。现在直接修改源码树即可。
 
+发布前需要完整无障碍审查时，请在具备浏览器的环境中运行 `page c`。
+
 ## 3. 直接修改站点
 
 首页改 `content/pages/home/<locale>.md`，带日期的教程和其他 post 改 `content/posts/<id>/<locale>.md`；教程明确写 `category: tutorial`，省略它的 post 默认是 `uncategorized`（未分类）。版本更新放在 `content/updates/<id>/<locale>.md` 并使用 `kind: release`，进入独立的发布归档。站点数据和开关改 `config.yml`。先复用主题已有能力，再增加新的扩展。

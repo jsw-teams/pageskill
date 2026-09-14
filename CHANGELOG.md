@@ -16,12 +16,13 @@ Pageskill 4.0.0 is a breaking architecture release. The current product model is
 - Added platform-neutral `FunctionContext`, `ServerFunction`, `StorageProvider`, `CacheProvider`, `AIProvider`, and `RuntimeAdapter` contracts. Static generation and static preview work without a backend or server environment; Cloudflare Pages is a reference adapter selected explicitly by `runtime.adapter`.
 - Made `content/updates/` an independent release collection. Posts use `kind: post`, release notes use `kind: release`, `updated` is only a last-modified timestamp, and category archives never classify releases as posts.
 - Kept Comments optional as an External Component and separated Comment Translation as an optional `client + server + storage + cache + ai` capability. Added page cache invalidation, persistent translation lookup, source-hash identity, and single-flight protection before AI inference.
-- Expanded private accessibility output to `index.html`, `report.json`, `summary.json`, baseline screenshots for every route, and five-viewport representative/error/warning screenshots with post-audit annotated issue crops.
+- Expanded private accessibility output to an annotated `report.pdf`, `index.html`, `report.json`, `summary.json`, baseline screenshots for every route, and five-viewport representative/error/warning screenshots with post-audit annotated issue crops.
 - Added Component hardcoding/content-ownership regression coverage and a differently branded fixture to verify that replacing Markdown, Config, and Runtime Data does not require Theme TypeScript changes.
 
 ### Breaking changes and migration
 
-- Set the package and lockfile version to 4.0.0. Use only `page g` and `page s`; no legacy CLI aliases or compatibility adapters are provided.
+- Set the package and lockfile version to 4.0.0. Use only `page g`, `page c`, and `page s`; no legacy CLI aliases or compatibility adapters are provided.
+- Separated the fast generation path from the browser accessibility gate: `page g` does not start a browser, while `page c` runs the complete real-browser audit and writes the private annotated PDF report. This keeps hosted builds independent of a downloaded Playwright browser.
 - Replace old Theme extension registrations with `ComponentDefinition` and `defineTheme({ components })`. Put site overrides only in the file selected by `theme.config`.
 - Move reader-facing strings and demo records out of Component TypeScript/defaults/messages and into `content/` or site configuration. Replace hard-coded document IDs and locale routes with `context.content.query()` and `context.url`.
 - Replace release classification based on post views or `category: update` with `content/updates/<id>/<locale>.md` and `kind: release`. `updated` never determines release type.

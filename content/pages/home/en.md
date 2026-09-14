@@ -47,11 +47,12 @@ Reuse the theme capabilities you have; when a new structure is needed, implement
 
 When you need real authentication, MCP, WebMCP, or DNS-AID, read [Configure conditional Agent capabilities](/en/posts/agent-discovery/) and implement each piece in its backend, theme component, or external DNS boundary.
 
-## Remember two commands
+## Remember three commands
 
 | Command | Does |
 | --- | --- |
 | `page g` | Validates and generates public static files in `dist/public`. |
+| `page c` | Runs the complete browser and axe accessibility audit and writes private reports. |
 | `page s` | Starts a persistent preview; press `Ctrl+C` to stop it, or keep editing in another terminal. |
 
 :::post-list{limit="6"}
