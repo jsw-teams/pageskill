@@ -1,5 +1,6 @@
 import { escapeHtml, safeUrl } from '../lib/safe-html.ts';
 import { parseIsoTimestamp } from '../lib/content-dates.ts';
+import type { ContentQueryOptions } from '../theme-api.ts';
 import type { BuildContext, Document } from './types.ts';
 
 export function collectionKey(collection: string, locale: string): string {
@@ -10,59 +11,83 @@ export function translationKey(collection: string, id: string): string {
   return `${collection}:${id}`;
 }
 
+/** Stable identity shared by every locale variant of one content item. */
+export const contentKey = translationKey;
+
 export function documentKey(doc: Pick<Document, 'collection' | 'id' | 'locale'>): string {
   return `${doc.collection}:${doc.id}:${doc.locale}`;
 }
 
 export function postCategory(doc: Pick<Document, 'collection' | 'data'>): string {
   if (doc.collection !== 'posts') return '';
-  const value = doc.data?.category ?? doc.data?.type ?? '';
+  const value = doc.data?.category ?? '';
   return String(value).trim().toLocaleLowerCase() || 'uncategorized';
 }
 
-export function contentViewSettings(ctx: BuildContext, name: string): Record<string, any> {
-  const value = ctx.config.content?.views?.[name];
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-export function viewForDocument(ctx: BuildContext, doc: Pick<Document, 'collection' | 'data'>): { name: string; settings: Record<string, any> } | undefined {
-  const views = ctx.config.content?.views;
-  if (!views || typeof views !== 'object' || Array.isArray(views)) return undefined;
-  for (const [name, raw] of Object.entries(views)) {
-    const settings = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, any> : {};
-    if (String(settings.collection || name) !== doc.collection) continue;
-    if (settings.category !== undefined && postCategory(doc) !== String(settings.category).trim().toLocaleLowerCase()) continue;
-    return { name, settings };
-  }
-  return undefined;
-}
-
-export function documentViewCollection(ctx: BuildContext, doc: Pick<Document, 'collection' | 'data'>): string {
-  return viewForDocument(ctx, doc)?.name || doc.collection;
-}
-
 export function sourceDocuments(ctx: BuildContext): Document[] {
-  return ctx.routes.size ? [...ctx.routes.values()] : ctx.docs;
+  return ctx.docs;
+}
+
+export function collectionContentKind(ctx: BuildContext, collection: string): string {
+  const settings = ctx.config.content?.collections?.[collection];
+  if (settings && typeof settings === 'object' && !Array.isArray(settings) && settings.contentType) return String(settings.contentType);
+  if (collection === 'updates') return 'release';
+  if (collection === 'posts') return 'post';
+  return 'page';
+}
+
+function compareDocuments(left: Document, right: Document, orderBy: string): number {
+  if (orderBy === 'title:asc') return left.title.localeCompare(right.title);
+  if (orderBy === 'title:desc') return right.title.localeCompare(left.title);
+  const publication = comparePublicationOrder(left, right);
+  return orderBy === 'date:asc' ? -publication : publication;
+}
+
+/** Stable, renderer-owned query boundary for Components. */
+export function queryDocuments(ctx: BuildContext, options: ContentQueryOptions = {}): Document[] {
+  const locale = String(options.locale || ctx.config.defaultLocale || 'en');
+  const category = options.category === undefined ? undefined : String(options.category).trim().toLocaleLowerCase() || 'uncategorized';
+  const documents = sourceDocuments(ctx).filter(doc => {
+    if (doc.locale !== locale) return false;
+    if (options.collection && doc.collection !== options.collection) return false;
+    if (options.kind && collectionContentKind(ctx, doc.collection) !== String(options.kind)) return false;
+    if (category !== undefined && postCategory(doc) !== category) return false;
+    return true;
+  });
+  const orderBy = String(options.orderBy || (options.collection ? ctx.config.content?.collections?.[options.collection]?.orderBy : '') || 'date:desc');
+  documents.sort((left, right) => compareDocuments(left, right, orderBy));
+  const offset = Number.isInteger(options.offset) && Number(options.offset) > 0 ? Number(options.offset) : 0;
+  const limit = Number.isInteger(options.limit) && Number(options.limit) >= 0 ? Number(options.limit) : undefined;
+  return limit === undefined ? documents.slice(offset) : documents.slice(offset, offset + limit);
 }
 
 export function documentsForCollection(ctx: BuildContext, collection: string, locale: string): Document[] {
-  const viewSettings = contentViewSettings(ctx, collection);
-  const sourceCollection = String(viewSettings.collection || collection);
-  const viewCategory = viewSettings.category === undefined ? undefined : String(viewSettings.category).trim().toLocaleLowerCase();
-  const documents = sourceDocuments(ctx).filter(doc => {
-    if (doc.locale !== locale || doc.collection !== sourceCollection) return false;
-    if (viewCategory !== undefined) return postCategory(doc) === viewCategory;
-    if (collection === sourceCollection && sourceCollection === 'posts') return !viewForDocument(ctx, doc);
-    return true;
-  });
-  return documents.sort(comparePublicationOrder);
+  const category = collection.startsWith('category:') ? collection.slice('category:'.length).trim().toLocaleLowerCase() : undefined;
+  return queryDocuments(ctx, category === undefined ? { collection, locale } : { collection: 'posts', category, locale });
 }
 
 export function routeFor(ctx: BuildContext, doc: Document): string {
   if (doc.data?.route) return String(doc.data.route).replace(':locale', doc.locale).replace(/\/+/g, '/').replace(/([^:])\/\//g, '$1/');
-  const view = viewForDocument(ctx, doc);
-  const routeConfig = view?.settings.route || ctx.config.content?.collections?.[doc.collection]?.route || '/:locale/:id/';
+  const routeConfig = ctx.config.content?.collections?.[doc.collection]?.route || '/:locale/:id/';
   return String(routeConfig).replace(':locale', doc.locale).replace(':id', doc.id === 'home' ? '' : doc.id).replace(/\/+/g, '/').replace(/([^:])\/\//g, '$1/');
+}
+
+export function archiveRouteFor(ctx: BuildContext, options: { collection?: string; category?: string; locale?: string; page?: number } = {}): string {
+  const collection = String(options.collection || 'posts');
+  const locale = String(options.locale || ctx.config.defaultLocale || 'en');
+  const settings = ctx.config.content?.collections?.[collection];
+  const archive = settings && typeof settings === 'object' && !Array.isArray(settings) && settings.archive && typeof settings.archive === 'object' ? settings.archive : {};
+  const rawBase = options.category
+    ? (archive.categoryRoute || `${String(archive.route || `/:locale/${collection}/`).replace(/\/+$/, '')}/category/:category/`)
+    : archive.route || `/:locale/${collection}/`;
+  const base = String(rawBase)
+    .replaceAll(':locale', locale)
+    .replaceAll(':collection', collection)
+    .replaceAll(':category', encodeURIComponent(String(options.category || '')))
+    .replace(/\/{2,}/g, '/')
+    .replace(/([^:])\/\//g, '$1/');
+  const page = Math.max(1, Number(options.page || 1));
+  return page === 1 ? `/${base.replace(/^\/+|\/+$/g, '')}/` : `/${base.replace(/^\/+|\/+$/g, '')}/page/${page}/`;
 }
 
 export function blogRelationsFor(
@@ -70,14 +95,14 @@ export function blogRelationsFor(
   doc: Document,
   translate: (locale: string, key: string, fallback: string) => string
 ): string {
-  const posts = documentsForCollection(ctx, documentViewCollection(ctx, doc), doc.locale);
+  const posts = documentsForCollection(ctx, doc.collection, doc.locale);
   const index = posts.findIndex(candidate => candidate.id === doc.id && candidate.locale === doc.locale);
   const newer = index > 0 ? posts[index - 1] : undefined;
   const older = index >= 0 && index + 1 < posts.length ? posts[index + 1] : undefined;
   const tags = Array.isArray(doc.data.tags) ? doc.data.tags.map(String) : [];
   const related: Document[] = [];
   const candidates = tags.length
-    ? tags.flatMap(tag => (ctx.tagIndex.get(`${doc.collection}:${doc.locale}:${tag}`) || []).filter(candidate => documentViewCollection(ctx, candidate) === documentViewCollection(ctx, doc)))
+    ? tags.flatMap(tag => (ctx.tagIndex.get(`${doc.collection}:${doc.locale}:${tag}`) || []).filter(candidate => candidate.collection === doc.collection))
     : [posts[index - 1], posts[index + 1], posts[0], posts[1], posts[2], posts[3]];
   for (const candidate of candidates) if (candidate && candidate.id !== doc.id && !related.some(entry => entry.id === candidate.id)) {
     related.push(candidate);

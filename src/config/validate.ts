@@ -1,5 +1,5 @@
 import { isRecord } from './merge.ts';
-import { normalizeDeploymentTarget } from './deployment.ts';
+import { validateDeploymentConfig as validateFixedDeploymentConfig } from './deployment.ts';
 import { validateSiteLink } from '../lib/site-links.ts';
 
 const LOCALE_TAG = /^[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*$/;
@@ -58,20 +58,7 @@ export function validateConfigLinks(config: Record<string, any>, source = 'confi
 }
 
 export function validateDeploymentConfig(config: Record<string, any>, source = 'config.yml'): void {
-  const deployment = isRecord(config.deployment) ? config.deployment : {};
-  if (deployment.targets !== undefined && deployment.targets !== null) {
-    if (!Array.isArray(deployment.targets)) throw new Error(`${source}: deployment.targets must be an array of canonical target names`);
-    deployment.targets.forEach((value, index) => {
-      if (value === undefined || value === null || !String(value).trim()) return;
-      normalizeDeploymentTarget(value, `${source}: deployment.targets[${index}]`);
-    });
-  }
-  if (isRecord(deployment.openaiSites) && Object.prototype.hasOwnProperty.call(deployment.openaiSites, 'staticDirectory')) {
-    throw new Error(`${source}: deployment.openaiSites.staticDirectory was removed; use deployment.staticDirectory`);
-  }
-  if (Object.prototype.hasOwnProperty.call(deployment, 'dynamicRoutes')) {
-    throw new Error(`${source}: deployment.dynamicRoutes was removed; register runtime paths with backend/handler.ts`);
-  }
+  validateFixedDeploymentConfig(config, source);
 }
 
 function validatePrivacyConfig(config: Record<string, any>, source: string): void {
@@ -99,6 +86,22 @@ function validatePrivacyConfig(config: Record<string, any>, source: string): voi
   }
 }
 
+function validateCollectionOwnedOutputs(config: Record<string, any>, source: string): void {
+  for (const key of ['archive', 'feed']) if (Object.prototype.hasOwnProperty.call(config, key)) {
+    throw new Error(`${source}: ${key} must be configured under content.collections.<name>`);
+  }
+  if (config.content?.views !== undefined && config.content?.views !== null) {
+    throw new Error(`${source}: content.views was removed; use a real collection under content.collections`);
+  }
+  const collections = config.content?.collections;
+  if (!isRecord(collections)) return;
+  for (const [name, raw] of Object.entries(collections)) {
+    if (!isRecord(raw)) continue;
+    if (Object.prototype.hasOwnProperty.call(raw, 'pattern')) throw new Error(`${source}: content.collections.${name}.pattern was removed; choose a Component with content.collections.${name}.component`);
+    if (raw.contentType === 'update') throw new Error(`${source}: content.collections.${name}.contentType "update" was removed; use "release"`);
+  }
+}
+
 function validateIntegrationSurface(config: Record<string, any>, source: string): void {
   const integrations = config.integrations;
   if (integrations === undefined || integrations === null) return;
@@ -110,8 +113,7 @@ function validateIntegrationSurface(config: Record<string, any>, source: string)
 }
 
 const REMOVED_CONFIG_KEYS: Record<string, string> = {
-  branding: 'branding was removed; use footer.links or theme content',
-  plugins: 'root plugins was removed; put plugin overrides in the file selected by theme.config',
+  components: 'root components was removed; put component overrides in the file selected by theme.config',
   search: 'root search was removed; put search overrides in the file selected by theme.config',
   privacyConsent: 'root privacyConsent was removed; configure real providers under integrations and use privacy.consent only for the optional decision policy'
 };
@@ -126,6 +128,7 @@ function validateRemovedConfig(config: Record<string, any>, source: string): voi
 export function validateConfigLayer(config: Record<string, any>, source = 'config.yml'): void {
   assertConfigSurface(config, source);
   validateRemovedConfig(config, source);
+  validateCollectionOwnedOutputs(config, source);
   validatePrivacyConfig(config, source);
   validateIntegrationSurface(config, source);
   validateConfigLinks(config, source);
@@ -139,16 +142,16 @@ export function validateConfig(config: Record<string, any>, source = 'config.yml
 
 /**
  * A theme instance file is deliberately smaller than site configuration: it
- * may only contain plugin overrides.  Rejecting other top-level sections in
+ * may only contain component overrides.  Rejecting other top-level sections in
  * the loader keeps site data, provider settings, and presentation options
  * from growing a second undocumented configuration surface.
  */
 export function validateThemeInstanceLayer(config: Record<string, any>, source = 'theme.config'): void {
   assertConfigSurface(config, source);
-  for (const key of Object.keys(config)) if (key !== 'plugins') {
-    throw new Error(`${source}: ${key} is not supported as a theme instance section; use plugin options under plugins`);
+  for (const key of Object.keys(config)) if (key !== 'components') {
+    throw new Error(`${source}: ${key} is not supported as a theme instance section; use component options under components`);
   }
-  if (config.plugins !== undefined && config.plugins !== null && !isRecord(config.plugins)) {
-    throw new Error(`${source}: plugins must be a mapping`);
+  if (config.components !== undefined && config.components !== null && !isRecord(config.components)) {
+    throw new Error(`${source}: components must be a mapping`);
   }
 }

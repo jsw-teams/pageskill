@@ -21,7 +21,7 @@ agentDiscovery:
 
 llms:
   title: Pageskill
-  description: A friendly static website compiler that helps beginners turn Markdown and a few clear steps into a localized site; reusable Patterns and Blocks are available when you need them.
+  description: A friendly Markdown-first content system with reusable Components, localized output, and optional runtime capabilities.
 
 outputs:
   markdownMirrors: true

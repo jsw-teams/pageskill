@@ -1,14 +1,12 @@
 import { cloneConfig, mergeConfig } from './merge.ts';
 
-/** Defaults that are part of the public config contract.  Theme/plugin
+/** Defaults that are part of the public config contract.  Theme component
  * defaults remain owned by their definitions and are merged separately. */
 export const BUILT_IN_CONFIG_DEFAULTS: Record<string, any> = {
   i18n: { contentFallback: true },
   privacy: { consent: { decisionRetentionDays: 365 } },
   theme: { name: 'default' },
   outputs: { markdownMirrors: false },
-  archive: { pageSize: 50 },
-  feed: { limit: 20 },
   agentDiscovery: {
     markdown: { enabled: true },
     apiCatalog: { enabled: false },
@@ -24,12 +22,7 @@ export const BUILT_IN_CONFIG_DEFAULTS: Record<string, any> = {
   // PWA output is part of the existing renderer contract.  Its colour
   // fallbacks are renderer-owned, so do not invent a second set of values
   // here; site-specific colours remain in config.yml.
-  pwa: {},
-  deployment: {
-    enabled: true,
-    backend: true,
-    targets: []
-  }
+  pwa: {}
 };
 
 export function applyConfigDefaults(config: Record<string, any>): Record<string, any> {

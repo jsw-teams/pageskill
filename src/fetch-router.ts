@@ -159,9 +159,6 @@ function assetRequests(request: Request, defaultLocale: string, staticDirectory 
     staticUrl.pathname = `/${normalizedStaticDirectory}${staticUrl.pathname}`;
     candidates.push(new Request(staticUrl, request));
   }
-  const archivedUrl = new URL(standard.url);
-  if (archivedUrl.pathname !== '/dist' && !archivedUrl.pathname.startsWith('/dist/')) archivedUrl.pathname = `/dist${archivedUrl.pathname}`;
-  candidates.push(new Request(archivedUrl, request));
   const seen = new Set<string>();
   return candidates.filter(candidate => {
     const key = candidate.url;

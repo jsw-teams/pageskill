@@ -18,12 +18,25 @@ export async function auditGeneratedSite(ctx: BuildContext, options: Accessibili
   const started = performance.now();
   const sourceDiagnostics = auditSourceDocuments(ctx, options.sourceFiles);
   const browser = await auditBrowserSite(ctx, options.routes);
+  const diagnostics = [...sourceDiagnostics, ...browser.diagnostics];
+  const errors = diagnostics.filter(diagnostic => diagnostic.level === 'error').length;
+  const warnings = diagnostics.filter(diagnostic => diagnostic.level === 'warning').length;
+  const checks = browser.checks;
   return {
+    summary: { pages: browser.routes.length, errors, warnings, screenshotCount: browser.screenshots.length, status: errors ? 'failed' : warnings ? 'passed-with-warnings' : 'passed' },
     pages: browser.routes.length,
+    pagesChecked: browser.routes,
     auditedRoutes: browser.routes,
-    diagnostics: [...sourceDiagnostics, ...browser.diagnostics],
-    checks: browser.checks,
+    rules: [...new Set(diagnostics.map(diagnostic => diagnostic.rule))].sort(),
+    diagnostics,
+    checks,
     browser: browser.browser,
+    viewports: browser.viewports,
+    screenshots: browser.screenshots,
+    keyboardChecks: checks.filter(check => /keyboard|focus/i.test(check)),
+    dynamicChecks: checks.filter(check => /dynamic|interaction|component/i.test(check)),
+    contrastChecks: checks.filter(check => /contrast/i.test(check)),
+    manualTests: ['Keyboard and screen-reader review of generated routes', 'Content language, link purpose, and alternative-text review', 'Third-party integration consent and runtime behavior review'],
     durationMs: performance.now() - started
   };
 }

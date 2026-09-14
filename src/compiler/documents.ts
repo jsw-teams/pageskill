@@ -81,17 +81,16 @@ export function documentIdentity(root: string, file: string): { collection: stri
   return { collection, id, locale };
 }
 
-export function defaultPattern(config: Record<string, any>, collection: string, id = '', patterns?: Record<string, any>): string {
+export function defaultComponent(config: Record<string, any>, collection: string, id = ''): string {
   const settings = config.content?.collections?.[collection];
-  const configured = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings.pattern : undefined;
-  if (collection === 'pages' && id === 'home' && patterns?.landing) return 'landing';
+  const configured = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings.component : undefined;
   if (configured) return String(configured);
-  if (collection === 'posts' || settings?.contentType === 'post') return 'blog';
-  return 'document';
+  if (collection === 'posts' || collection === 'updates' || ['post', 'release'].includes(String(settings?.contentType || ''))) return 'post';
+  return 'page';
 }
 
 export function contentMetricsOptions(themeConfig: Record<string, any>): { wordsPerMinute: number; cjkCharactersPerMinute: number } {
-  const setting = isRecord(themeConfig.plugins?.postMeta) ? themeConfig.plugins.postMeta : {};
+  const setting = isRecord(themeConfig.components?.postMeta) ? themeConfig.components.postMeta : {};
   const wordsPerMinute = Number(setting.wordsPerMinute);
   const cjkCharactersPerMinute = Number(setting.cjkCharactersPerMinute);
   return {
@@ -105,7 +104,6 @@ export async function loadDocument(
   file: string,
   config: Record<string, any>,
   sourceCache?: DocumentSourceCache,
-  patterns?: Record<string, any>,
   themeConfig: Record<string, any> = {}
 ): Promise<Document> {
   const [source, stat] = await Promise.all([fs.readFile(file, 'utf8'), fs.stat(file)]);
@@ -121,16 +119,17 @@ export async function loadDocument(
   }
   const data = frontmatter.data;
   const date = data.date === undefined || data.date === null || data.date === '' ? undefined : String(data.date).trim();
-  const update = data.update === undefined || data.update === null || data.update === '' ? undefined : String(data.update).trim();
+  const updated = data.updated === undefined || data.updated === null || data.updated === '' ? undefined : String(data.updated).trim();
   const metrics = calculateContentMetrics(frontmatter.body, contentMetricsOptions(themeConfig));
   return {
     ...identity,
+    contentKey: `${identity.collection}:${identity.id}`,
     source: file,
     title: String(data.title || identity.id),
     description: String(data.description || ''),
-    pattern: String(data.pattern || defaultPattern(config, identity.collection, identity.id, patterns)),
+    component: String(data.component || defaultComponent(config, identity.collection, identity.id)),
     date,
-    update,
+    updated,
     author: data.author ? String(data.author) : localizedValue(config.author, identity.locale, 'Site Owner'),
     cover: data.cover ? String(data.cover) : undefined,
     data,
@@ -141,7 +140,7 @@ export async function loadDocument(
     directives: [],
     metrics,
     dependencyKeys: [],
-    blockNames: [],
+    componentNames: [],
     hash,
     stat: { mtimeMs: stat.mtimeMs, size: stat.size }
   };
@@ -155,11 +154,17 @@ function schemaType(value: unknown): string {
 
 function isPostCollection(config: Record<string, any>, collection: string): boolean {
   const settings = config.content?.collections?.[collection];
-  return collection === 'posts' || Boolean(settings && typeof settings === 'object' && !Array.isArray(settings) && settings.contentType === 'post');
+  return collection === 'posts' || collection === 'updates' || Boolean(settings && typeof settings === 'object' && !Array.isArray(settings) && ['post', 'release'].includes(String(settings.contentType)));
 }
 
 export function documentSchemaDiagnostics(config: Record<string, any>, doc: Document): string[] {
   const diagnostics: string[] = [];
+  if (Object.prototype.hasOwnProperty.call(doc.data, 'pattern')) diagnostics.push(`${doc.source}:1:1: frontmatter field "pattern" was removed; choose a Component with "component"`);
+  if (Object.prototype.hasOwnProperty.call(doc.data, 'update')) diagnostics.push(`${doc.source}:1:1: frontmatter field "update" was removed; use "updated" for the last substantive edit`);
+  const configuredKind = doc.data.kind;
+  const expectedKind = String(config.content?.collections?.[doc.collection]?.contentType || (doc.collection === 'updates' ? 'release' : doc.collection === 'posts' ? 'post' : 'page'));
+  if (configuredKind !== undefined && String(configuredKind) !== expectedKind) diagnostics.push(`${doc.source}:1:1: frontmatter field "kind" must be "${expectedKind}" for collection "${doc.collection}"`);
+  if (expectedKind === 'release' && Object.prototype.hasOwnProperty.call(doc.data, 'category')) diagnostics.push(`${doc.source}:1:1: release documents do not use category; use kind: release and the updates collection`);
   const schema = config.content?.collections?.[doc.collection]?.schema;
   if (schema && typeof schema === 'object' && !Array.isArray(schema)) {
     for (const [key, rawRule] of Object.entries(schema as Record<string, any>)) {
@@ -177,12 +182,12 @@ export function documentSchemaDiagnostics(config: Record<string, any>, doc: Docu
   if (isPostCollection(config, doc.collection) && doc.data.date !== undefined && parseIsoTimestamp(doc.date) === undefined) {
     diagnostics.push(`${doc.source}:1:1: frontmatter field "date" must be a valid ISO publication date (YYYY-MM-DD)`);
   }
-  const hasUpdate = Object.prototype.hasOwnProperty.call(doc.data, 'update');
-  if (isPostCollection(config, doc.collection) && hasUpdate) {
-    const updateTime = parseIsoTimestamp(doc.update);
-    if (updateTime === undefined) diagnostics.push(`${doc.source}:1:1: frontmatter field "update" must be a valid ISO date or datetime`);
+  const hasUpdated = Object.prototype.hasOwnProperty.call(doc.data, 'updated');
+  if (isPostCollection(config, doc.collection) && hasUpdated) {
+    const updatedTime = parseIsoTimestamp(doc.updated);
+    if (updatedTime === undefined) diagnostics.push(`${doc.source}:1:1: frontmatter field "updated" must be a valid ISO date or datetime`);
     const dateTime = parseIsoTimestamp(doc.date);
-    if (updateTime !== undefined && dateTime !== undefined && updateTime < dateTime) diagnostics.push(`${doc.source}:1:1: frontmatter field "update" must not be earlier than "date"`);
+    if (updatedTime !== undefined && dateTime !== undefined && updatedTime < dateTime) diagnostics.push(`${doc.source}:1:1: frontmatter field "updated" must not be earlier than "date"`);
   }
   return diagnostics;
 }

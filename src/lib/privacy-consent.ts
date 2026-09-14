@@ -1,4 +1,4 @@
-import type { ThemePrivacyContext } from '../theme-api.ts';
+import type { ComponentPrivacyContext } from '../theme-api.ts';
 
 type PrivacyRenderTools = {
   escapeHtml: (value: unknown) => string;
@@ -6,9 +6,9 @@ type PrivacyRenderTools = {
   translate: (key: string, fallback: string) => string;
 };
 
-/** Render the shared fallback markup used by the default consent plugin and a
+/** Render the shared fallback markup used by the default consent component and a
  * theme without a custom shell. Provider scripts still come from adapters. */
-export function renderPrivacyConsent(privacy: ThemePrivacyContext, tools: PrivacyRenderTools): { markup: string; triggerMarkup: string } {
+export function renderPrivacyConsent(privacy: ComponentPrivacyContext, tools: PrivacyRenderTools): { markup: string; triggerMarkup: string } {
   if (!privacy.runtimeEnabled) return { markup: '', triggerMarkup: '' };
   const escape = tools.escapeHtml;
   const integrationMarkup = escape(JSON.stringify(privacy.integrations));

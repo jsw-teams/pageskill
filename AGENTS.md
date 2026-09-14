@@ -1,71 +1,110 @@
 # Pageskill Agent Guide
 
-Use the repository source and the generated discovery output as the contract. Keep this file about safe work habits, content ownership, the supported author workflow, and the quality checks that protect generated sites.
+Use the repository source and generated discovery output as the contract. The current release is 4.0.0. This release unifies the public authoring and Theme extension model around Components and makes runtime services optional.
+
+## Product model
+
+```text
+Pageskill Core
+  Content · Configuration · Theme · Components · static generation
+  accessibility quality system · Agent Discovery / Readiness
+  optional Runtime Adapters
+    optional Server Components
+```
+
+Ordinary authors work with Markdown, configuration, Components, `page g`, and `page s`. Server Functions, storage, cache, AI, and provider integrations are developer-facing capabilities.
 
 ## Boundaries
 
-- `config.yml` and its explicitly listed `config/*.yml` layers own site identity, locales, navigation, footer links, collections, routes, schemas, privacy controller data, root integrations, images, and deployment settings. `extends` is project-relative, ordered, and data-only.
-- `theme.name` selects reusable theme code. `theme.config` points to the site-owned instance file, normally `site/theme.yml`; if it is omitted, the instance override is `{}` and plugin code defaults apply. `themes/<name>/` contains implementation, resources, plugins, and reference examples, not site instance settings.
-- `site/theme.yml` contains only schema-bounded theme/plugin presentation overrides. It is not a second site configuration file and is never a CSS, HTML, browser-script, or `unsafeHtml` injection surface.
-- `integrations` contains only providers actually used by the site. A registered Provider Adapter owns its schema, public identifier validation, privacy purpose, consent/load policy, and trusted resource implementation. Site YAML must not contain provider purpose declarations, arbitrary scripts, secrets, HTML, or provider data-retention claims.
-- `content/pages/<id>/<locale>.md` owns stable pages such as Home, About, and the privacy policy. `content/posts/<id>/<locale>.md` owns tutorials, blogs, product records, and release updates; every post requires a valid `date`, and `update` is an optional last-modified timestamp. The configured updates view filters posts with `category: update` and is not a second source collection.
-- `content/assets/` owns user assets. Keep the three active locales semantically aligned, use meaningful image alt text, descriptive link text, and accessible Markdown.
-- `themes/<name>/` owns reusable Patterns, Blocks, layouts, shell markup, visual behavior, localized UI copy, icons, search, consent presentation, and browser plugins. The theme entry assembles components, layouts, and plugins; each module keeps its own implementation, resources, styles, scripts, and messages.
-- `backend/handler.ts` is the source for dynamic business logic, secrets, writes, webhooks, identity, authorization, and API failure handling.
-- `src/` owns the compiler, public two-command CLI, libraries, accessibility audit, Fetch Router, and theme contract. Never hand-edit generated `src/runtime/`, `.pageskill/`, or `dist/` output.
+- `config.yml` and its ordered `extends` layers own site identity, locales, navigation, footer links, collections, routes, schemas, privacy policy data, root `integrations`, assets, discovery policy, and optional `runtime.adapter` selection.
+- `theme.name` selects reusable Theme code. `theme.config` points to the site-owned instance file, normally `site/theme.yml`; when omitted, the instance object is `{}` and Component defaults apply. Never read or create a site instance file inside `themes/<name>/`.
+- `site/theme.yml` contains only schema-bounded `components` overrides. It is not a CSS, HTML, browser-script, `unsafeHtml`, content, or secret surface.
+- `themes/<name>/components/` contains trusted Built-in or External Component implementations, resources, schemas, defaults, messages, and Provider Adapters. `ComponentDefinition`/`defineComponent` is the only public Theme extension concept. Do not reintroduce Plugin, Pattern, Layout, Module, or a second registration model.
+- A Component owns behavior and presentation. Content owns content: reader-facing titles, descriptions, body copy, links, articles, categories, examples, and brand data come from Markdown, Frontmatter, Config, or Runtime Data. Component defaults may contain behavior and structure defaults, never site prose or demo records.
+- `backend/handler.ts` is the Cloudflare reference Runtime Adapter and example Server Component implementation. It is not a Pageskill Core dependency.
+- `migrations/` contains auditable D1 migrations. Never create production tables during a request.
+- `src/` owns the Core compiler, `page` CLI, libraries, accessibility audit, Fetch Router, runtime contracts, and Theme contract. Never hand-edit generated `src/runtime/`, `.pageskill/`, `dist/`, or `wrangler.toml`.
 
-## Supported author workflow
+## Supported workflow
 
-The public CLI has exactly two daily commands:
+The only public CLI commands are:
 
-- `pageskill g` validates source contracts, builds the site and deployment artifacts, runs the generated-HTML/browser accessibility audit, and writes the public snapshot to `dist/public`.
-- `pageskill s` rebuilds, watches source dependencies, serves a local preview, and reports accessibility findings after each rebuild without terminating the preview for an in-progress error.
+- `page g [--profile]`: validate, generate `dist/public`, run the four-layer accessibility audit, generate Agent readiness output, and write private reports.
+- `page s [port]` or `page s --port <port>`: watch source dependencies, rebuild, serve the generated site, and provide development feedback. With no runtime adapter it uses the Core static preview; a configured adapter may add its own local runtime.
 
-Pageskill does not publish to hosting-provider APIs. A host or Git integration receives `dist/public`; when backend or hosting artifacts are configured, `pageskill g` generates the corresponding private runtime and provider files while keeping them outside the public snapshot.
+`runtime.adapter` is optional. A site with no backend, database, cache provider, AI provider, or runtime adapter must still complete `page g` and `page s`. Cloudflare Pages is the bundled reference Runtime Adapter, not a Core dependency. `env.ASSETS`, D1, Workers AI, and other host bindings belong to that adapter and missing bindings must only disable the affected optional feature.
 
-For the source repository, run `npm install` and `npm run g`, then continue editing this checkout. `npm test` includes the generated-site/browser accessibility pass before the unit and integration tests. Use `npm run g -- --profile` when build timings are needed. Stop a persistent `npm run s` process with `Ctrl+C` after interactive verification.
+Package scripts `npm run g` and `npm run s` are repository conveniences that compile source before invoking the same `page` CLI; they are not additional public command names.
 
-## Configuration and discovery
+## Content model
 
-The source of truth is `config.yml`, its `extends` files, `site/theme.yml` when selected, `content/`, `themes/`, and `backend/`. After generation, advanced authors and Agent integrations may read `dist/.pageskill/catalog.json`, `dist/.well-known/agent.json`, and other renderer-produced resources. Internal integrations may call `getCatalog`, `inspect`, `createContext`, `refreshContext`, `build`, and `check`; these TypeScript APIs are not extra public CLI commands.
+- `content/pages/<id>/<locale>.md` owns stable pages such as Home, About, and Privacy. They do not participate in dated archives.
+- `content/posts/<id>/<locale>.md` owns ordinary blog posts, tutorials, and articles. Every post requires an ISO `date`; optional `updated` is the last substantive edit, never a replacement for publication date. `kind: post` is the collection kind. `category` and `tags` are post taxonomy; missing category is `uncategorized`.
+- `content/updates/<id>/<locale>.md` owns release notes and project updates as a real collection. These documents use `kind: release`; they do not use `category: update`.
+- Collection configuration owns explicit queries and archive/feed routes. The default site exposes Posts Archive, Release Archive, Category Archive, and Uncategorized Archive separately.
+- All locale variants of a document share `contentKey` such as `posts:markdown` or `updates:4.0.0`. Locale is not part of the identity used by the Comments Component.
+- Keep `zh-sg`, `zh-tw`, and `en` pages semantically synchronized. Fallback may supply a missing whole document; it must not merge paragraphs into an existing Markdown file.
 
-Discovery is renderer-owned. Do not hand-edit `.well-known/agent.json`, `.well-known/ai-catalog.json`, `.well-known/api-catalog`, Agent Skills files, `robots.txt`, Markdown mirrors, or `llms.txt`. The compiler derives these outputs from real configuration and generated capabilities. Conditional OAuth, MCP, WebMCP, and DNS-AID metadata is opt-in and describes only a separately implemented service, browser module, or DNS deployment; a configuration flag never creates one.
+Markdown is the primary authoring surface. Use short directives as content-authored Component calls, not as a second code registration system. Prefer readable Markdown over a large Frontmatter page DSL.
+
+## Component contract
+
+There are only two source concepts: Built-in Component and External Component. Capabilities describe what one Component needs: `render`, `client`, `server`, `storage`, `cache`, `ai`, and `integration`.
+
+The public developer model is:
+
+```text
+ComponentDefinition
+Render Context
+Content Context / content.query()
+Client Runtime
+Server Function
+StorageProvider · CacheProvider · AIProvider
+Runtime Adapter
+```
+
+Component APIs accept `children`, named `slots`, structured props, and runtime data. Prefer composition and data over page-specific variants. A Component must be portable to a differently branded site without editing its TypeScript implementation.
+
+Content queries come through the Core context, for example `context.content.query({ collection, kind, category, locale, limit, orderBy })`. Components must not read content directories, guess routes, hard-code document IDs, hard-code locale paths, or own site URLs. Use `context.url` and content identity resolvers.
+
+`messages.yml` contains only Component UI copy: buttons, controls, short labels, status text, ARIA labels, and Component-owned prompts. It is not a CMS for home-page prose, feature descriptions, tutorials, legal text, or demo data.
+
+## Runtime, Comments, and translation
+
+Core defines platform-neutral `FunctionContext`, `ServerFunction`, `StorageProvider`, `CacheProvider`, `AIProvider`, and `RuntimeAdapter` contracts using Web-standard `Request`, `Response`, `URL`, `Headers`, and `fetch` concepts. `CacheProvider` supports `get`, `set` with TTL, `delete`, and wildcard invalidation.
+
+Comments are an External Component reference implementation, not Core behavior. Comment records use `contentKey` and `sourceLocale`; the current reader uses `viewerLocale`. Locale pages therefore see the same comment set. Comment bodies are plain text, bounded, escaped on output, and never accompanied by stored IP, User-Agent, or fingerprint.
+
+Comment Translation is a separate optional External Component capability. Without an AI provider, comments remain usable and translation controls stay disabled. Translation must check L1 Function Cache, then persistent cache keyed by `commentId`, `sourceHash`, and `targetLocale`, then use single-flight before AI. Twenty concurrent requests for one identity must produce one AI call; a changed source hash must produce a new call.
+
+Cloudflare Pages + Functions + D1 + Workers AI + Cache API is documented as one complete reference Runtime Adapter only. Do not make Core imports depend on Cloudflare, Vercel, AWS, Supabase, or another host.
 
 ## Accessibility and secure rendering
 
-The default theme targets WCAG 2.2 AA. Accessibility checks run in four layers: Markdown/theme source contracts, final HTML structure, a real browser with computed styles and axe-core, and keyboard/dynamic/viewport interaction checks. Automated checks are evidence, not a guarantee of complete conformance; keep manual review in the release report.
+Accessibility is a four-layer development audit: source contracts, final HTML, a real browser/axe run, and keyboard/dynamic/viewport checks. Reports stay private at `.pageskill/reports/accessibility/` with `index.html`, `report.json`, `summary.json`, and screenshots; never copy reports or a disclaimer into `dist/public`.
 
-When changing content, layouts, theme CSS, browser plugins, or interactive UI:
+The screenshot matrix includes 320×800, 375×812, 768×1024, 1280×800, and 1440×900. Every generated HTML route gets a baseline screenshot; representative, warning, and error routes get the full matrix. Completed diagnostics may receive temporary annotated crops labelled with issue number, severity, and rule ID; annotations are removed after capture and never affect the audit DOM.
 
-- preserve visible focus indicators and keyboard operation;
-- use native buttons, links, labels, landmarks, dialogs, and table semantics;
-- never use color as the only state signal;
-- never add `user-select: none`, selection interception, positive `tabindex`, arbitrary HTML/script configuration, or an overlay that blocks text selection;
-- keep external `_blank` links protected by `rel="noopener noreferrer"` and use the shared safe URL resolver;
-- run `npm test`, `npm run g`, and inspect the affected route at narrow and enlarged widths.
+Escape text and attributes, use the shared safe URL resolver, and keep untrusted content out of `unsafeHtml`. External `_blank` links must carry `rel="noopener noreferrer"`. Do not add arbitrary HTML/script/style configuration, `eval`, `innerHTML` for user data, positive `tabindex`, or selection-blocking CSS.
 
-Configuration is data, not code. Escape text and attributes, use `safeUrl` for links, and keep untrusted content out of `unsafeHtml`. Static pages are generated ahead of time; backend routes stay private and are registered through the existing Fetch Router methods. Do not import backend code during generation to discover routes or read secrets.
+## Discovery and generated files
 
-## Content and localization
+Discovery is renderer-owned. Do not hand-edit `.well-known/agent.json`, API Catalog, Agent Skills, robots, RSS, sitemap, search indexes, Markdown mirrors, `llms.txt`, `_worker.js`, or generated catalog files. Discovery must describe real configured and implemented behavior; `enabled: true` alone does not create OAuth, MCP, WebMCP, DNS-AID, D1, or AI services.
 
-Keep `zh-sg`, `zh-tw`, and `en` pages and articles semantically synchronized. Use the same id for translations, the same post `date`, and `category: update` consistently for release-note translations. UI messages belong beside their owning module in `messages.yml`; locale fallback is `current locale`, language family, configured fallback locale, then English/code fallback. Content fallback may supply a missing whole document, but an existing Markdown file is shown exactly as authored.
+DNS-AID is External Readiness: derive, check, and report recommendations from `siteUrl` and real capabilities; never modify a DNS provider automatically. Accessibility and Agent reports belong under `.pageskill/`, not under `content/` or `dist/public/`.
 
-Use Markdown, Frontmatter, and short Block attributes for content. Do not put private machine paths, temporary localhost URLs, or test-only broken documents in the public `content/` tree. Put invalid frontmatter and accessibility fixtures under `tests/fixtures/`.
+## Verification and release
 
-## Changes and verification
-
-Prefer existing Patterns, Blocks, schemas, plugins, Provider Adapters, and resources. Change site data in `config.yml` or an extends layer, theme instance behavior in `site/theme.yml`, visual behavior in its owning theme module, and dynamic behavior in `backend/handler.ts`. Keep defaults and schemas code-owned and avoid duplicate mechanisms.
-
-For source or content changes, use the smallest relevant checks and report actual results:
+Run the smallest relevant checks, then report actual results:
 
 ```text
 npm run compile-runtime
 npm run compile-theme
 npm run compile-backend
 npm test
-npm run g -- --profile
-npm run s
+npx page g --profile
+npx page s
 git diff --check
 ```
 
-Generated output is disposable and should be regenerated, not patched. Before handing off, inspect `git diff`, search for stale documentation or duplicate configuration surfaces, confirm the generated report contains no source paths in public files, and state any manual or browser checks that were not possible.
+Stop the persistent preview with `Ctrl+C`. This release is 4.0.0 and intentionally removes the retired multi-platform deployment surface, old `update` release field, filtered `updates` view, Plugin/Pattern/Layout/Module terminology, and old site-instance paths. Do not add compatibility shims or legacy CLI aliases; document breaking changes once and use the current Component, Content, Config, and Runtime contracts.

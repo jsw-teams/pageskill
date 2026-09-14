@@ -1,4 +1,5 @@
 ---
+kind: post
 title: Configure integrations and privacy consent
 description: Add only the real third-party services a site uses; trusted adapters provide validation, privacy purpose, and safe loading behavior.
 date: 2026-09-07
@@ -40,7 +41,7 @@ Only public identifiers belong here. A CAPTCHA secret, signing key, or server-si
 
 ## 2. Let the adapter own the contract
 
-The default theme registers its providers in `themes/default/plugins/cookies/integrations.ts`. Each adapter owns:
+The default theme registers its providers in `themes/default/components/consent/integrations.ts`. Each adapter owns:
 
 | Adapter metadata | Meaning |
 | --- | --- |
@@ -95,7 +96,7 @@ Provider IDs, measurement IDs, site keys, and tokens are not copied into this st
 
 ## 5. Keep policy and UI copy in the right layer
 
-Write the reviewed policy as `content/pages/privacy/<locale>.md`. Generated privacy information can identify the configured providers and their adapter purposes, but it is not legal advice or a substitute for that page. The consent labels and purpose descriptions belong to the theme/plugin `messages.yml`, which supplies `zh-sg`, `zh-tw`, `en`, and the normal locale fallback chain. A site does not need a private `copy` object just to use the consent UI.
+Write the reviewed policy as `content/pages/privacy/<locale>.md`. Generated privacy information can identify the configured providers and their adapter purposes, but it is not legal advice or a substitute for that page. The consent labels and purpose descriptions belong to the theme/component `messages.yml`, which supplies `zh-sg`, `zh-tw`, `en`, and the normal locale fallback chain. A site does not need a private `copy` object just to use the consent UI.
 
 Do not add a third-party URL, inline script, `onclick`, HTML, or a secret to site configuration. Provider resources are fixed by trusted code, and browser withdrawal prevents later loads without pretending that it can undo a request already made.
 
@@ -105,8 +106,8 @@ Do not add a third-party URL, inline script, `onclick`, HTML, or a secret to sit
 npm run compile-runtime
 npm run compile-theme
 npm run compile-backend
-npm run g -- --profile
-npm run s
+page g --profile
+page s
 ```
 
 In a fresh browser session, confirm that a site without `integrations` has no banner. For a test site with a real adapter value, confirm that its resource is absent before consent, appears only for the selected purpose, and stops loading after optional purposes are withdrawn. Check the localized dialog in all active locales and inspect the generated catalog: it lists the code-owned provider registry separately from the site's configured, non-secret provider summaries.
@@ -119,4 +120,4 @@ The site author expresses an intent such as “use Google Analytics” with one 
 
 ## Next step
 
-Read [Develop a reusable plugin](/en/posts/plugins/) when the capability you need is not already registered by the theme.
+Read [Develop a reusable component](/en/posts/components/) when the capability you need is not already registered by the theme.

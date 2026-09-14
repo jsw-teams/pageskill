@@ -1,12 +1,11 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { parseYaml, YamlError } from './lib/yaml.ts';
 import { escapeHtml, safeUrl, html, unsafeHtml } from './lib/safe-html.ts';
 import { flattenDirectives, MarkdownError, parseMarkdown, renderInline } from './lib/markdown.ts';
 import { planThemeStyles } from './lib/theme-styles.ts';
-import { isPublicPath } from './lib/static-security.ts';
 import { calculateContentMetrics } from './lib/content-metrics.ts';
 import { parseIsoTimestamp } from './lib/content-dates.ts';
 import { resolveSiteLinks, renderSiteLink } from './lib/site-links.ts';
@@ -17,15 +16,16 @@ import { resolveDeploymentConfig } from './config/deployment.ts';
 import { integrationAdapters, resolveConfiguredIntegrations, validateConfiguredIntegrations, type ConfiguredIntegration } from './config/integrations.ts';
 import { containedPath, normalizePath, pathIsWithin, safeRelativePath } from './config/paths.ts';
 import { renderPrivacyConsent } from './lib/privacy-consent.ts';
-import { contentMetricsOptions, defaultPattern, documentIdentity, documentSchemaDiagnostics, loadDocument } from './compiler/documents.ts';
-import { blogRelationsFor, contentViewSettings, documentKey, documentOutputs, documentViewCollection, documentsForCollection, postCategory, rebuildDocumentIndexes, routeFor, sourceDocuments, translationKey, viewForDocument } from './compiler/routes.ts';
+import { loadRuntimeAdapter } from './runtime-adapters/index.ts';
+import { contentMetricsOptions, defaultComponent, documentIdentity, documentSchemaDiagnostics, loadDocument } from './compiler/documents.ts';
+import { archiveRouteFor, blogRelationsFor, collectionContentKind, documentKey, documentOutputs, documentsForCollection, postCategory, queryDocuments, rebuildDocumentIndexes, routeFor, sourceDocuments, translationKey } from './compiler/routes.ts';
 import type { MarkdownNode, SourcePosition, DirectiveNode } from './lib/markdown.ts';
-import type { PageskillTheme, ThemeBlockDefinition, ThemeChromeConfig, ThemeChromeLink, ThemeI18nSource, ThemeOptionSchema, ThemePluginDefinition, ThemeRenderContext, ThemeResources, ThemeShellContext } from './theme-api.ts';
+import type { PageskillTheme, ComponentDefinition, ComponentDocumentInput, ComponentInput, ComponentChromeConfig, ComponentChromeLink, I18nSource, ComponentOptionSchema, ComponentRenderContext, ComponentResources, ComponentShellContext, ContentQueryOptions } from './theme-api.ts';
 import type { BuildContext, BuildProfile, CacheManifest, CachedDocument, CachedImage, Document, ImageDimensions, Locale } from './compiler/types.ts';
 export type { BuildContext, BuildProfile, CachedDocument, CachedImage, Document, ImageDimensions, Locale } from './compiler/types.ts';
 // Increment this whenever compiler output semantics change so an existing
 // incremental cache cannot preserve a discovery file rendered by old code.
-const RENDERER_VERSION = '3.1.0';
+const RENDERER_VERSION = '4.0.0-component-contract-3';
 const MAX_MARKDOWN_CACHE = 32;
 const MAX_SOURCE_PARSE_CACHE = 64;
 const LOAD_CONCURRENCY = 32;
@@ -138,12 +138,12 @@ function interpolateMessage(template: string, values: Record<string, string | nu
 }
 
 /**
- * Read a locale-keyed copy override from a plugin instance file.
+ * Read a locale-keyed copy override from a component instance file.
  * Fallback values are merged first, so a new locale can override only the
  * labels it has translated while the remaining labels stay usable.
  */
-function themePluginCopy(ctx: BuildContext, pluginName: string, locale: string): Record<string, any> {
-  const configured = themePluginSettings(ctx, pluginName).copy;
+function themeComponentCopy(ctx: BuildContext, componentName: string, locale: string): Record<string, any> {
+  const configured = themeComponentSettings(ctx, componentName).copy;
   if (!isRecord(configured)) return {};
   let merged: Record<string, any> = {};
   for (const candidate of [...localeCandidates(locale, fallbackLocaleFor(ctx))].reverse()) {
@@ -153,8 +153,8 @@ function themePluginCopy(ctx: BuildContext, pluginName: string, locale: string):
 }
 
 /** Return one safe string override; renderers still escape the final value. */
-function themePluginText(ctx: BuildContext, pluginName: string, locale: string, key: string): string | undefined {
-  const value = nestedValue(themePluginCopy(ctx, pluginName, locale), key);
+function themeComponentText(ctx: BuildContext, componentName: string, locale: string, key: string): string | undefined {
+  const value = nestedValue(themeComponentCopy(ctx, componentName, locale), key);
   return value === undefined || value === null || value === '' || typeof value === 'object' ? undefined : String(value);
 }
 
@@ -240,7 +240,7 @@ function themeResourceList(value: unknown): string[] {
   return value.map(themeResourceValue).filter(Boolean);
 }
 
-function normalizeThemeResources(value: unknown): ThemeResources {
+function normalizeThemeResources(value: unknown): ComponentResources {
   const record = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
   return {
     styles: themeResourceList(record.styles),
@@ -248,33 +248,34 @@ function normalizeThemeResources(value: unknown): ThemeResources {
   };
 }
 
-function normalizeThemePlugin(value: unknown): ThemePluginDefinition & Record<string, any> {
+function normalizeThemeComponent(value: unknown, id: string): ComponentDefinition & Record<string, any> {
   const source = isRecord(value) ? value : {};
   return {
     ...source,
+    id: typeof source.id === 'string' && source.id ? source.id : id,
     ...(source.resources !== undefined ? { resources: normalizeThemeResources(source.resources) } : {})
   };
 }
 
 function normalizeThemeDefinition(value: PageskillTheme): PageskillTheme {
   const resources = value.resources === undefined ? undefined : normalizeThemeResources(value.resources);
-  const modulePlugins = isRecord(value.plugins) ? value.plugins : {};
-  const plugins = Object.fromEntries(Object.keys(modulePlugins).map(name => [name, normalizeThemePlugin(modulePlugins[name])]));
+  const componentDefinitions = isRecord(value.components) ? value.components : {};
+  const components = Object.fromEntries(Object.keys(componentDefinitions).map(name => [name, normalizeThemeComponent(componentDefinitions[name], name)]));
   return {
     ...value,
     ...(resources ? { resources } : {}),
-    plugins
+    components
   };
 }
 
-function themeOptionValueMatches(value: unknown, type: ThemeOptionSchema['type']): boolean {
+function themeOptionValueMatches(value: unknown, type: ComponentOptionSchema['type']): boolean {
   if (type === 'array') return Array.isArray(value);
   if (type === 'object') return isRecord(value);
   if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
   return typeof value === type;
 }
 
-function validateThemeOption(value: unknown, schema: ThemeOptionSchema, label: string): void {
+function validateThemeOption(value: unknown, schema: ComponentOptionSchema, label: string): void {
   if (!themeOptionValueMatches(value, schema.type)) throw new Error(`${label} must be ${schema.type}`);
   if (schema.enum && !schema.enum.some(candidate => JSON.stringify(candidate) === JSON.stringify(value))) {
     throw new Error(`${label} must be one of ${schema.enum.map(candidate => String(candidate)).join(', ')}`);
@@ -306,7 +307,7 @@ function validateThemeOption(value: unknown, schema: ThemeOptionSchema, label: s
   }
 }
 
-function validateThemePluginSettings(settings: Record<string, any>, schema: Record<string, ThemeOptionSchema>, label: string): void {
+function validateThemeComponentSettings(settings: Record<string, any>, schema: Record<string, ComponentOptionSchema>, label: string): void {
   for (const [key, value] of Object.entries(settings)) {
     const option = schema[key];
     if (!option) throw new Error(`${label}.${key} is not a supported option`);
@@ -318,39 +319,39 @@ function validateThemePluginSettings(settings: Record<string, any>, schema: Reco
 }
 
 function normalizeThemeConfig(theme: Record<string, any>, definition: PageskillTheme, sourceLabel = 'theme.config'): Record<string, any> {
-  for (const key of Object.keys(theme)) if (key !== 'plugins') {
-    throw new Error(`${sourceLabel}: ${key} is not supported as a theme instance section; use plugin options under plugins`);
+  for (const key of Object.keys(theme)) if (key !== 'components') {
+    throw new Error(`${sourceLabel}: ${key} is not supported as a theme instance section; use component options under components`);
   }
-  const configuredPlugins = theme.plugins === undefined ? {} : theme.plugins;
-  if (!isRecord(configuredPlugins)) throw new Error(`${sourceLabel}: plugins must be a mapping`);
-  const definitions = definition.plugins || {};
-  for (const name of Object.keys(configuredPlugins)) {
+  const configuredComponents = theme.components === undefined ? {} : theme.components;
+  if (!isRecord(configuredComponents)) throw new Error(`${sourceLabel}: components must be a mapping`);
+  const definitions = definition.components || {};
+  for (const name of Object.keys(configuredComponents)) {
     if (name === 'language') continue;
-    if (!definitions[name]) throw new Error(`${sourceLabel}: plugins.${name} is not declared by the theme entry`);
-    if (!isRecord(configuredPlugins[name])) throw new Error(`${sourceLabel}: plugins.${name} must be a mapping`);
+    if (!definitions[name]) throw new Error(`${sourceLabel}: components.${name} is not declared by the theme entry`);
+    if (!isRecord(configuredComponents[name])) throw new Error(`${sourceLabel}: components.${name} must be a mapping`);
   }
-  const plugins: Record<string, any> = {};
-  for (const [name, plugin] of Object.entries(definitions)) {
-    const schema = plugin.schema || {};
-    const defaults = isRecord(plugin.defaults) ? cloneThemeValue(plugin.defaults) : {};
-    const configured = name === 'language' ? {} : isRecord(configuredPlugins[name]) ? configuredPlugins[name] : {};
+  const components: Record<string, any> = {};
+  for (const [name, component] of Object.entries(definitions)) {
+    const schema = component.schema || {};
+    const defaults = isRecord(component.defaults) ? cloneThemeValue(component.defaults) : {};
+    const configured = name === 'language' ? {} : isRecord(configuredComponents[name]) ? configuredComponents[name] : {};
     const mergedSettings = mergeConfig(defaults, configured);
-    validateThemePluginSettings(mergedSettings, schema, `${sourceLabel}: plugins.${name}`);
-    plugins[name] = mergedSettings;
+    validateThemeComponentSettings(mergedSettings, schema, `${sourceLabel}: components.${name}`);
+    components[name] = mergedSettings;
   }
-  return { plugins };
+  return { components };
 }
 
-function themeI18nSources(definition: PageskillTheme): Array<{ owner: string; source: ThemeI18nSource }> {
-  const sources: Array<{ owner: string; source: ThemeI18nSource }> = [];
+function themeI18nSources(definition: PageskillTheme): Array<{ owner: string; source: I18nSource }> {
+  const sources: Array<{ owner: string; source: I18nSource }> = [];
   if (definition.i18n !== undefined) {
     const values = Array.isArray(definition.i18n) ? definition.i18n : [definition.i18n];
     values.forEach((source, index) => sources.push({ owner: `theme.i18n[${index}]`, source }));
   }
-  for (const [name, plugin] of Object.entries(definition.plugins || {})) {
-    if (plugin.i18n === undefined) continue;
-    const values = Array.isArray(plugin.i18n) ? plugin.i18n : [plugin.i18n];
-    values.forEach((source, index) => sources.push({ owner: `theme.plugins.${name}.i18n[${index}]`, source }));
+  for (const [name, component] of Object.entries(definition.components || {})) {
+    if (component.i18n === undefined) continue;
+    const values = Array.isArray(component.i18n) ? component.i18n : [component.i18n];
+    values.forEach((source, index) => sources.push({ owner: `theme.components.${name}.i18n[${index}]`, source }));
   }
   return sources;
 }
@@ -379,7 +380,7 @@ function mergeThemeTranslations(target: Record<string, any>, source: Record<stri
   }
 }
 
-async function readThemeI18nSource(themeRoot: string, source: ThemeI18nSource, owner: string): Promise<Record<string, any>> {
+async function readThemeI18nSource(themeRoot: string, source: I18nSource, owner: string): Promise<Record<string, any>> {
   if (typeof source === 'string') {
     const file = containedPath(themeRoot, source, `${owner} path`);
     const raw = await fs.readFile(file, 'utf8');
@@ -413,13 +414,11 @@ function validateThemeResourcePath(themeRoot: string, value: unknown, label: str
 }
 
 function validateThemeResources(themeRoot: string, definition: PageskillTheme): void {
-  const checkResources = (resources: ThemeResources | undefined, label: string) => {
+  const checkResources = (resources: ComponentResources | undefined, label: string) => {
     for (const pathValue of [...(resources?.styles || []), ...(resources?.scripts || [])]) validateThemeResourcePath(themeRoot, pathValue, label);
   };
   checkResources(definition.resources, 'theme resource path');
-  for (const [name, plugin] of Object.entries(definition.plugins || {})) checkResources(plugin.resources, `theme plugin ${name} resource path`);
-  for (const pattern of Object.values(definition.patterns)) checkResources(pattern.resources, `Pattern ${pattern.name} resource path`);
-  for (const block of Object.values(definition.blocks)) checkResources(block.resources, `Block ${block.name} resource path`);
+  for (const [name, component] of Object.entries(definition.components || {})) checkResources(component.resources, `theme component ${name} resource path`);
   for (const { owner, source } of themeI18nSources(definition)) {
     if (typeof source === 'string') validateThemeResourcePath(themeRoot, source, `${owner} path`);
     else if (isRecord(source) && typeof source.source === 'string') validateThemeResourcePath(themeRoot, source.source, `${owner} path`);
@@ -430,52 +429,48 @@ function validateThemeResources(themeRoot: string, definition: PageskillTheme): 
  * Resource access stays behind the normalized, code-owned theme definition;
  * the renderer and asset copier do not maintain a second package registry.
  */
-function themeResources(ctx: BuildContext): ThemeResources {
+function themeResources(ctx: BuildContext): ComponentResources {
   return ctx.themeDefinition.resources || {};
 }
 
-function themePlugin(ctx: BuildContext, name: string): (ThemePluginDefinition & Record<string, any>) | undefined {
-  const plugin = ctx.themeDefinition.plugins?.[name];
-  return plugin as (ThemePluginDefinition & Record<string, any>) | undefined;
+function themeComponent(ctx: BuildContext, name: string): (ComponentDefinition & Record<string, any>) | undefined {
+  const component = ctx.themeDefinition.components?.[name];
+  return component as (ComponentDefinition & Record<string, any>) | undefined;
 }
 
-function resourcePaths(resources: ThemeResources | undefined, kind: 'styles' | 'scripts'): string[] {
+function resourcePaths(resources: ComponentResources | undefined, kind: 'styles' | 'scripts'): string[] {
   return themeResourceList(resources?.[kind]);
 }
 
-function pluginResourcePaths(ctx: BuildContext, names: string[], kind: 'styles' | 'scripts'): string[] {
+function componentResourcePaths(ctx: BuildContext, names: string[], kind: 'styles' | 'scripts'): string[] {
   for (const name of names) {
-    const paths = resourcePaths(themePlugin(ctx, name)?.resources, kind);
+    const paths = resourcePaths(themeComponent(ctx, name)?.resources, kind);
     if (paths.length) return paths;
   }
   return [];
 }
 
-// Most plugins are data-driven capabilities: once their site instance is
+// Most components are data-driven capabilities: once their site instance is
 // enabled, their declared resources are available to every rendered page.
-// A few plugins own their markup and loading lifecycle (consent, search, the
-// language picker, and the table-of-contents block), so their resources are
+// A few components own their markup and loading lifecycle (consent, search, the
+// language picker, and the table-of-contents Component), so their resources are
 // emitted by those renderers instead of this generic path.
-function genericPluginResourcePaths(ctx: BuildContext, kind: 'styles' | 'scripts'): string[] {
-  const rendererOwned = new Set(['privacyConsent', 'cookies', 'search', 'language', 'languagePicker', 'toc']);
+function genericComponentResourcePaths(ctx: BuildContext, kind: 'styles' | 'scripts'): string[] {
+  const rendererOwned = new Set(['privacyConsent', 'consent', 'search', 'language', 'languagePicker', 'toc', 'comments']);
   const paths: string[] = [];
-  for (const [name, plugin] of Object.entries(ctx.themeDefinition.plugins || {})) {
-    if (rendererOwned.has(name) || !pluginEnabled(ctx, name)) continue;
-    paths.push(...resourcePaths(plugin.resources, kind));
+  for (const [name, component] of Object.entries(ctx.themeDefinition.components || {})) {
+    if (rendererOwned.has(name) || !componentEnabled(ctx, name)) continue;
+    paths.push(...resourcePaths(component.resources, kind));
   }
   return [...new Set(paths)];
 }
 
-function patternResourcePaths(ctx: BuildContext, name: string, kind: 'styles' | 'scripts'): string[] {
-  return resourcePaths(ctx.themeDefinition.patterns[name]?.resources, kind);
+function componentResourcePathsFor(ctx: BuildContext, name: string, kind: 'styles' | 'scripts'): string[] {
+  return resourcePaths(themeComponent(ctx, name)?.resources, kind);
 }
 
-function blockResourcePaths(ctx: BuildContext, name: string, kind: 'styles' | 'scripts'): string[] {
-  return resourcePaths(ctx.themeDefinition.blocks[name]?.resources, kind);
-}
-
-function themePluginSettings(ctx: BuildContext, name: string): Record<string, any> {
-  const settings = ctx.themeConfig?.plugins?.[name];
+function themeComponentSettings(ctx: BuildContext, name: string): Record<string, any> {
+  const settings = ctx.themeConfig?.components?.[name];
   return isRecord(settings) ? settings : {};
 }
 
@@ -483,16 +478,16 @@ const MAX_CHROME_LINKS = 8;
 const MAX_CHROME_LABEL_LENGTH = 160;
 const MAX_CHROME_HREF_LENGTH = 2048;
 
-function emptyChromeSlot(): ThemeChromeConfig['navigation'] {
+function emptyChromeSlot(): ComponentChromeConfig['navigation'] {
   return { enabled: false, before: [], after: [] };
 }
 
-function configuredChromeSlot(ctx: BuildContext, doc: Document, currentRoute: string, regionName: 'navigation' | 'footer'): ThemeChromeConfig['navigation'] {
-  const settings = themePluginSettings(ctx, 'chrome');
+function configuredChromeSlot(ctx: BuildContext, doc: Document, currentRoute: string, regionName: 'navigation' | 'footer'): ComponentChromeConfig['navigation'] {
+  const settings = themeComponentSettings(ctx, 'shell');
   const region = isRecord(settings[regionName]) ? settings[regionName] : {};
   const enabled = settings.enabled !== false && region.enabled !== false;
-  if (!enabled || !themePluginFor(ctx, 'chrome')) return emptyChromeSlot();
-  const links = (slot: 'before' | 'after'): ThemeChromeLink[] => {
+  if (!enabled || !themeComponentFor(ctx, 'shell')) return emptyChromeSlot();
+  const links = (slot: 'before' | 'after'): ComponentChromeLink[] => {
     const values = Array.isArray(region[slot]) ? region[slot] : [];
     return values.slice(0, MAX_CHROME_LINKS).map((item: unknown) => {
       if (!isRecord(item)) return null;
@@ -507,12 +502,12 @@ function configuredChromeSlot(ctx: BuildContext, doc: Document, currentRoute: st
       } catch {
         return null;
       }
-    }).filter(Boolean).map(link => ({ ...link, label: link!.label.slice(0, MAX_CHROME_LABEL_LENGTH), href: link!.href.slice(0, MAX_CHROME_HREF_LENGTH) })) as ThemeChromeLink[];
+    }).filter(Boolean).map(link => ({ ...link, label: link!.label.slice(0, MAX_CHROME_LABEL_LENGTH), href: link!.href.slice(0, MAX_CHROME_HREF_LENGTH) })) as ComponentChromeLink[];
   };
   return { enabled: true, before: links('before'), after: links('after') };
 }
 
-function configuredChrome(ctx: BuildContext, doc: Document, currentRoute: string, showSiteChrome: boolean): ThemeChromeConfig {
+function configuredChrome(ctx: BuildContext, doc: Document, currentRoute: string, showSiteChrome: boolean): ComponentChromeConfig {
   if (!showSiteChrome) return { navigation: emptyChromeSlot(), footer: configuredChromeSlot(ctx, doc, currentRoute, 'footer') };
   return {
     navigation: configuredChromeSlot(ctx, doc, currentRoute, 'navigation'),
@@ -594,7 +589,7 @@ async function loadThemeDefinition(root: string, themeName: string, generation: 
       await fs.access(candidate);
       const module = await importThemeModule(candidate, root, themeRoot, themeName, generation);
       const definition = module.default || module.theme;
-      if (definition?.patterns && definition?.blocks) {
+      if (definition?.components && typeof definition.components === 'object') {
         const normalized = normalizeThemeDefinition(definition as PageskillTheme);
         validateThemeResources(themeRoot, normalized);
         return normalized;
@@ -633,8 +628,11 @@ function dependenciesFor(ctx: BuildContext, doc: Document): string[] {
   const dependencies = new Set<string>([`translation:${doc.collection}:${doc.id}`]);
   const context = themeContextFor(ctx, doc);
   for (const directive of doc.directives) {
-    const definition = ctx.themeDefinition.blocks[directive.name];
-    for (const dependency of definition?.dependencies?.(directive, context) || []) dependencies.add(dependency);
+    if (directive.name === 'slot') continue;
+    const definition = ctx.themeDefinition.components[directive.name];
+    const children = directive.children.filter(child => child.kind !== 'directive' || child.name !== 'slot');
+    const input: ComponentInput = { node: directive, attrs: directive.attrs, children, slots: { default: children }, props: {}, renderedChildren: '' };
+    for (const dependency of definition?.dependencies?.(input, context) || []) dependencies.add(dependency);
   }
   return [...dependencies].sort();
 }
@@ -652,63 +650,97 @@ function addIntrinsicImageDimensions(ctx: BuildContext, markup: string): string 
   });
 }
 
-function renderMarkdownNode(ctx: BuildContext, doc: Document, node: MarkdownNode): string {
+function renderMarkdownNode(ctx: BuildContext, doc: Document, node: MarkdownNode, componentContext?: ComponentRenderContext): string {
   if (node.kind === 'directive') return '';
   if (node.kind !== 'code') return addIntrinsicImageDimensions(ctx, node.html);
-  if (!pluginEnabled(ctx, 'codeCopy')) return node.html.replace(/<div class="code-block" data-code-block><div class="code-block-toolbar">[\s\S]*?<\/div>(<pre[\s\S]*?<\/pre>)<\/div>/, '$1');
-  const copy = themeText(ctx, doc.locale, 'codeCopy.copy', 'Copy code');
-  const copied = themeText(ctx, doc.locale, 'codeCopy.copied', 'Copied');
-  const failed = themeText(ctx, doc.locale, 'codeCopy.failed', 'Copy failed');
-  const button = `<button type="button" class="code-copy" data-code-copy data-copy-label="${escapeHtml(copy)}" data-copied-label="${escapeHtml(copied)}" data-failed-label="${escapeHtml(failed)}" aria-label="${escapeHtml(copy)}">${escapeHtml(copy)}</button>`;
-  return node.html.replace('<button type="button" class="code-copy" data-code-copy aria-label="Copy code">Copy</button>', button);
+  if (!componentEnabled(ctx, 'codeCopy') || !ctx.themeDefinition.components.codeCopy?.render || !componentContext) return node.html;
+  return componentContext.renderComponent('codeCopy', { props: { value: node.value, language: node.language } });
 }
-function themeContextFor(ctx: BuildContext, doc: Document): ThemeRenderContext {
-  let context!: ThemeRenderContext;
+function themeContextFor(ctx: BuildContext, doc: Document): ComponentRenderContext {
+  let context!: ComponentRenderContext;
+  const identity = { collection: doc.collection, id: doc.id, key: doc.contentKey, contentKey: doc.contentKey, locale: doc.locale };
   context = {
     doc,
     config: ctx.config,
     theme: ctx.theme,
     themeConfig: ctx.themeConfig,
-    renderNodes: nodes => nodes.map(node => node.kind === 'directive' ? context.renderBlock(node) : renderMarkdownNode(ctx, doc, node)).join(''),
-    renderBlock: node => renderThemeBlock(ctx, node, context),
+    content: {
+      identity,
+      query: (options: ContentQueryOptions = {}) => queryDocuments(ctx, { ...options, locale: options.locale || doc.locale }),
+      translations: (collection = doc.collection, id = doc.id) => ctx.translationIndex.get(translationKey(collection, id)) || [],
+      label: value => themeText(ctx, doc.locale, `collections.${value}`, value),
+      position: candidate => ctx.documentPositions.get(documentKey(candidate as Document)) ?? -1
+    },
+    url: {
+      siteUrl: String(ctx.config.siteUrl || '').replace(/\/$/, ''),
+      forDocument: candidate => routeFor(ctx, candidate as Document),
+      forCollection: (collection, locale = doc.locale) => archiveRouteFor(ctx, { collection, locale }),
+      forArchive: options => archiveRouteFor(ctx, { ...options, locale: options.locale || doc.locale }),
+      asset: value => publicImageUrl(value),
+      sitemap: String(ctx.config.routes?.sitemap || '/sitemap.xml')
+    },
+    renderNodes: nodes => nodes.map(node => node.kind === 'directive'
+      ? node.name === 'slot' ? '' : context.renderComponent(node.name, { node, attrs: node.attrs, children: node.children })
+      : renderMarkdownNode(ctx, doc, node, context)).join(''),
+    renderComponent: (name, input = {}) => renderThemeComponent(ctx, name, input, context),
     renderInline,
     escapeHtml,
     safeUrl,
     localized: (value, fallback) => localizedValue(value, doc.locale, fallback),
     translate: (key, fallback) => themeText(ctx, doc.locale, key, fallback),
-    pluginText: (pluginName, key, fallback) => themePluginText(ctx, pluginName, doc.locale, key) || fallback,
-    routeFor: candidate => routeFor(ctx, candidate as Document),
-    collection: (name, locale = doc.locale) => documentsForCollection(ctx, name, locale),
-    translations: (collection, id) => ctx.translationIndex.get(translationKey(collection, id)) || [],
-    position: candidate => ctx.documentPositions.get(documentKey(candidate as Document)) ?? -1,
+    componentText: (componentName, key, fallback) => themeComponentText(ctx, componentName, doc.locale, key) || fallback,
     formatDate: value => formatDate(value, doc.locale, dateLocaleFor(ctx, doc.locale)),
     blogRelations: () => blogRelationsFor(ctx, doc, (locale, key, fallback) => themeText(ctx, locale, key, fallback))
   };
   return context;
 }
 
-function renderThemeBlock(ctx: BuildContext, node: DirectiveNode, context: ThemeRenderContext): string {
-  const definition = ctx.themeDefinition.blocks[node.name];
-  if (!definition) throw new MarkdownError(`unknown Block "${node.name}"; use one of ${Object.keys(ctx.themeDefinition.blocks).join(', ')}`, node.position);
-  return definition.render(node, context);
+function renderThemeComponent(ctx: BuildContext, name: string, partial: Partial<ComponentInput>, context: ComponentRenderContext): string {
+  const definition = ctx.themeDefinition.components[name];
+  if (!definition?.render) throw new MarkdownError(`unknown Component "${name}"; use one of ${Object.keys(ctx.themeDefinition.components).join(', ')}`, partial.node?.position || { file: '<component>', line: 1, column: 1 });
+  const rawChildren = partial.children || partial.node?.children || [];
+  const children = rawChildren.filter(child => child.kind !== 'directive' || child.name !== 'slot');
+  const namedSlots: Record<string, MarkdownNode[]> = {};
+  for (const child of rawChildren) {
+    if (child.kind !== 'directive' || child.name !== 'slot') continue;
+    const slotName = child.attrs.name;
+    if (!slotName || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(slotName)) {
+      throw new MarkdownError('slot requires a valid name attribute', child.position);
+    }
+    for (const key of Object.keys(child.attrs)) if (key !== 'name') {
+      throw new MarkdownError(`slot attribute "${key}" is not supported`, child.position);
+    }
+    if (namedSlots[slotName]) throw new MarkdownError(`slot "${slotName}" is declared more than once`, child.position);
+    namedSlots[slotName] = child.children;
+  }
+  const input: ComponentInput = {
+    node: partial.node,
+    attrs: partial.attrs || partial.node?.attrs || {},
+    children,
+    slots: { default: children, ...namedSlots, ...(partial.slots || {}) },
+    props: partial.props || {},
+    renderedChildren: partial.renderedChildren === undefined ? context.renderNodes(children) : partial.renderedChildren,
+    runtime: partial.runtime
+  };
+  return definition.render(input, context);
 }
 
-function validateThemeAttrs(node: DirectiveNode, definition: ThemeBlockDefinition) {
+function validateComponentAttrs(node: DirectiveNode, definition: ComponentDefinition) {
+  const schema = definition.schema || {};
   for (const key of Object.keys(node.attrs)) {
-    if (!(key in definition.schema)) throw new MarkdownError(`unknown attribute "${key}" on Block "${node.name}"; available attributes: ${Object.keys(definition.schema).join(', ') || 'none'}`, node.position);
+    if (!(key in schema)) throw new MarkdownError(`unknown attribute "${key}" on Component "${node.name}"; available attributes: ${Object.keys(schema).join(', ') || 'none'}`, node.position);
   }
 }
 
-function renderChromeLinks(context: ThemeShellContext, links: ThemeChromeLink[], className: string): string {
+function renderChromeLinks(context: ComponentShellContext, links: ComponentChromeLink[], className: string): string {
   return links.map(link => renderSiteLink(link, className, context.escapeHtml)).join('');
 }
 
-function fallbackShell(context: ThemeShellContext): string {
+function fallbackShell(context: ComponentShellContext): string {
   const chrome = context.chrome || { navigation: { enabled: true, before: [], after: [] }, footer: { enabled: true, before: [], after: [] } };
   const pageLanguages = isPostCollectionConfig(context.config, context.doc.collection) ? context.languageLinks : '';
   const languageNav = pageLanguages ? `<nav class="languages" aria-label="${context.escapeHtml(context.languageLabel)}"><span class="languages-heading" aria-hidden="true">${context.escapeHtml(context.languageLabel)}</span><div class="languages-list">${pageLanguages}</div></nav>` : '';
-  const archiveCollection = String(context.config.archive?.collection || 'posts');
-  const collectionKeyName = context.doc.collection === 'archive' ? archiveCollection : context.doc.collection;
+  const collectionKeyName = context.doc.collection === 'archive' ? String(context.doc.data?.archiveCollection || 'posts') : context.doc.collection;
   const collectionLabel = context.translate(`collections.${collectionKeyName}`, collectionKeyName);
   const pageHeader = context.doc.source.startsWith('generated:') ? '' : `<header class="page-header"><p class="eyebrow">${context.escapeHtml(collectionLabel)}</p><h1>${context.escapeHtml(context.doc.title)}</h1>${context.doc.description ? `<p>${context.escapeHtml(context.doc.description)}</p>` : ''}${languageNav}</header>`;
   const navLinks = `${renderChromeLinks(context, chrome.navigation.before, 'primary-nav-link')}${context.navigationLinks}${renderChromeLinks(context, chrome.navigation.after, 'primary-nav-link')}`;
@@ -716,26 +748,26 @@ function fallbackShell(context: ThemeShellContext): string {
   const headerActions = `${context.searchMarkup}${primaryNav}`;
   const siteMapLabel = context.translate('siteMap', 'Site map');
   const privacyPolicy = context.privacy.enabled ? `<a class="footer-tool-link" data-privacy-policy href="${context.safeUrl(context.privacy.policyHref)}">${context.escapeHtml(context.privacy.policyLabel)}</a>` : '';
-  const footerTools = `<nav class="footer-tools" aria-label="${context.escapeHtml(siteMapLabel)}">${renderChromeLinks(context, chrome.footer.before, 'footer-tool-link')}${context.footerLinks}<a class="footer-tool-link" href="/sitemap.xml" data-site-map>${context.escapeHtml(siteMapLabel)}</a>${privacyPolicy}${context.privacyTriggerMarkup || ''}${renderChromeLinks(context, chrome.footer.after, 'footer-tool-link')}</nav>`;
-  return `<!doctype html><html lang="${context.escapeHtml(context.htmlLang || context.doc.locale)}"><head>${context.head}</head><body class="${context.bodyClass}" data-pattern="${context.escapeHtml(context.doc.pattern)}">${context.privacyMarkup}<a class="skip" href="#main">${context.escapeHtml(context.skipLabel)}</a><header class="site-header"><div class="header-inner"><a class="brand" href="${context.homeHref}"><img class="brand-mark" src="${context.brandIcon}" alt="" width="32" height="32"><span class="brand-copy"><strong>${context.escapeHtml(context.siteName)}</strong><small>${context.escapeHtml(context.headerNote)}</small></span></a>${headerActions ? `<div class="header-actions">${headerActions}</div>` : ''}</div></header><main id="main" tabindex="-1" class="${context.mainClass}">${pageHeader}${context.content}</main><footer class="site-footer"><div class="footer-grid">${footerTools}</div></footer></body></html>`;
+  const footerTools = `<nav class="footer-tools" aria-label="${context.escapeHtml(siteMapLabel)}">${renderChromeLinks(context, chrome.footer.before, 'footer-tool-link')}${context.footerLinks}<a class="footer-tool-link" href="${context.safeUrl(context.url.sitemap)}" data-site-map>${context.escapeHtml(siteMapLabel)}</a>${privacyPolicy}${context.privacyTriggerMarkup || ''}${renderChromeLinks(context, chrome.footer.after, 'footer-tool-link')}</nav>`;
+  return `<!doctype html><html lang="${context.escapeHtml(context.htmlLang || context.doc.locale)}"><head>${context.head}</head><body class="${context.bodyClass}" data-component="${context.escapeHtml(context.doc.component)}">${context.privacyMarkup}<a class="skip" href="#main">${context.escapeHtml(context.skipLabel)}</a><header class="site-header"><div class="header-inner"><a class="brand" href="${context.homeHref}"><img class="brand-mark" src="${context.brandIcon}" alt="" width="32" height="32"><span class="brand-copy"><strong>${context.escapeHtml(context.siteName)}</strong><small>${context.escapeHtml(context.headerNote)}</small></span></a>${headerActions ? `<div class="header-actions">${headerActions}</div>` : ''}</div></header><main id="main" tabindex="-1" class="${context.mainClass}">${pageHeader}${context.renderedContent}</main><footer class="site-footer"><div class="footer-grid">${footerTools}</div></footer></body></html>`;
 }
 
-function pluginEnabled(ctx: BuildContext, name: string): boolean {
-  const themePlugin = themePluginFor(ctx, name);
-  const settings = themePluginSettings(ctx, name);
+function componentEnabled(ctx: BuildContext, name: string): boolean {
+  const themeComponent = themeComponentFor(ctx, name);
+  const settings = themeComponentSettings(ctx, name);
   // Theme code declares the capability and its schema; the theme instance file
   // owns the instance switch and all user-provided options.
-  return Boolean(themePlugin) && settings.enabled !== false;
+  return Boolean(themeComponent) && settings.enabled !== false;
 }
 
-function themePluginFor(ctx: BuildContext, name: string): (ThemePluginDefinition & Record<string, any>) | undefined {
-  return themePlugin(ctx, name);
+function themeComponentFor(ctx: BuildContext, name: string): (ComponentDefinition & Record<string, any>) | undefined {
+  return themeComponent(ctx, name);
 }
 
-function numericPluginSetting(ctx: BuildContext, pluginName: string, key: string, fallback: number): number {
-  const configured = Number(themePluginSettings(ctx, pluginName)[key]);
+function numericComponentSetting(ctx: BuildContext, componentName: string, key: string, fallback: number): number {
+  const configured = Number(themeComponentSettings(ctx, componentName)[key]);
   if (Number.isFinite(configured)) return configured;
-  const defaultValue = Number(themePluginFor(ctx, pluginName)?.defaults?.[key]);
+  const defaultValue = Number(themeComponentFor(ctx, componentName)?.defaults?.[key]);
   return Number.isFinite(defaultValue) ? defaultValue : fallback;
 }
 
@@ -833,9 +865,9 @@ function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
   const gated = all.filter(integration => integration.consent !== 'none');
   const settings = privacyConsentSettings(ctx);
   const runtimeEnabled = all.length > 0;
-  const enabled = gated.length > 0 && settings.enabled !== false && pluginEnabled(ctx, 'privacyConsent');
+  const enabled = gated.length > 0 && settings.enabled !== false && componentEnabled(ctx, 'privacyConsent');
   const text = (key: string, fallback: string) => themeText(ctx, doc.locale, `privacyConsent.${key}`, fallback);
-  const script = String(pluginResourcePaths(ctx, ['privacyConsent', 'cookies'], 'scripts')[0] || '').trim();
+  const script = String(componentResourcePaths(ctx, ['privacyConsent'], 'scripts')[0] || '').trim();
   const scriptHref = !script ? '' : script.startsWith('/') || /^https?:\/\//i.test(script) ? script : themeResourceHref(ctx, themeBase, script);
   const privacy = {
     runtimeEnabled,
@@ -867,12 +899,12 @@ function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
 }
 
 function localSearchData(ctx: BuildContext, doc: Document, themeBase: string) {
-  const settings = themePluginSettings(ctx, 'search');
-  const plugin = themePluginFor(ctx, 'search');
-  const hasPlugin = Boolean(plugin);
-  const enabled = !doc.source.startsWith('generated:') && hasPlugin && settings.enabled !== false && pluginEnabled(ctx, 'search');
-  const text = (key: string, fallback: string) => themePluginText(ctx, 'search', doc.locale, key) || themeText(ctx, doc.locale, `search.${key}`, fallback);
-  const script = String(pluginResourcePaths(ctx, ['search'], 'scripts')[0] || 'scripts/search.js').trim();
+  const settings = themeComponentSettings(ctx, 'search');
+  const component = themeComponentFor(ctx, 'search');
+  const hasComponent = Boolean(component);
+  const enabled = !doc.source.startsWith('generated:') && hasComponent && settings.enabled !== false && componentEnabled(ctx, 'search');
+  const text = (key: string, fallback: string) => themeComponentText(ctx, 'search', doc.locale, key) || themeText(ctx, doc.locale, `search.${key}`, fallback);
+  const script = String(componentResourcePaths(ctx, ['search'], 'scripts')[0] || 'scripts/search.js').trim();
   const scriptHref = script.startsWith('/') || /^https?:\/\//i.test(script) ? script : themeResourceHref(ctx, themeBase, script);
   const search = {
     enabled,
@@ -890,26 +922,27 @@ function localSearchData(ctx: BuildContext, doc: Document, themeBase: string) {
     hitContentLabel: text('hitContent', 'Content match'),
     hitPathLabel: text('hitPath', 'Path match'),
     queryHint: text('queryHint', 'Enter at least two letters or a meaningful word'),
-    maxResults: Math.max(1, Math.min(50, numericPluginSetting(ctx, 'search', 'maxResults', 1)))
+    maxResults: Math.max(1, Math.min(50, numericComponentSetting(ctx, 'search', 'maxResults', 1)))
   };
   const inputId = `pageskill-search-${doc.locale.replace(/[^a-z0-9]+/gi, '-')}-${shortHash(doc.id).slice(0, 6)}`;
   const searchMarkup = search.enabled ? `<form class="site-search" data-local-search data-search-index="${escapeHtml(search.indexHref)}" data-search-max-results="${search.maxResults}" data-search-no-results="${escapeHtml(search.noResultsLabel)}" data-search-error="${escapeHtml(search.errorLabel)}" data-search-query-hint="${escapeHtml(search.queryHint)}" data-search-hit-title="${escapeHtml(search.hitTitleLabel)}" data-search-hit-description="${escapeHtml(search.hitDescriptionLabel)}" data-search-hit-heading="${escapeHtml(search.hitHeadingLabel)}" data-search-hit-content="${escapeHtml(search.hitContentLabel)}" data-search-hit-path="${escapeHtml(search.hitPathLabel)}" role="search" aria-label="${escapeHtml(search.label)}"><label class="sr-only" for="${inputId}">${escapeHtml(search.label)}</label><div class="site-search-control"><input id="${inputId}" name="q" type="search" autocomplete="off" placeholder="${escapeHtml(search.placeholder)}" data-search-input><button type="submit" aria-label="${escapeHtml(search.submitLabel)}">⌕</button></div><div class="search-results" data-search-results hidden aria-live="polite" aria-label="${escapeHtml(search.resultLabel)}"></div><script type="module" src="${search.scriptSrc}"></script></form>` : '';
   return { search, searchMarkup };
 }
 
-function fallbackShellWithPrivacy(context: ThemeShellContext): string {
+function fallbackShellWithPrivacy(context: ComponentShellContext): string {
   return fallbackShell(context);
 }
 
-function generatedDocument(id: string, locale: string, title: string, description: string, route: string, pattern = 'landing'): Document {
+function generatedDocument(id: string, locale: string, title: string, description: string, route: string, component = 'page'): Document {
   return {
     id,
     collection: 'pages',
+    contentKey: `pages:${id}`,
     locale,
     source: `generated:${id}`,
     title,
     description,
-    pattern,
+    component,
     data: { route },
     markdown: '',
     excerpt: '',
@@ -920,8 +953,14 @@ function generatedDocument(id: string, locale: string, title: string, descriptio
     bodyLine: 1,
     stat: { mtimeMs: 0, size: 0 },
     dependencyKeys: [],
-    blockNames: []
+    componentNames: []
   };
+}
+
+function homeRouteFor(ctx: BuildContext, locale: string): string {
+  const home = ctx.docs.find(doc => doc.collection === 'pages' && doc.id === 'home' && doc.locale === locale);
+  if (home) return routeFor(ctx, home);
+  return routeFor(ctx, { ...generatedDocument('home', locale, '', '', ''), data: {} });
 }
 
 function languagePickerCopy(ctx: BuildContext, locale: string, themeBase: string) {
@@ -931,7 +970,7 @@ function languagePickerCopy(ctx: BuildContext, locale: string, themeBase: string
     title: themeText(ctx, locale, 'languagePicker.title', 'Choose a site language'),
     description: themeText(ctx, locale, 'languagePicker.description', 'Choose a language to open the matching site version.'),
     recommended: themeText(ctx, locale, 'languagePicker.recommended', 'Recommended'),
-    siteName: localizedValue(ctx.config.siteName, locale, 'Pageskill'),
+    siteName: localizedValue(ctx.config.siteName, locale, 'Site'),
     siteDescription: localizedValue(ctx.config.description, locale, ''),
     htmlLang: String(ctx.themeI18n.locales?.[locale]?.htmlLang || locale),
     headerNote: themeText(ctx, locale, 'shell.headerNote', 'Markdown-native · static-first'),
@@ -976,7 +1015,7 @@ function languagePickerMarkup(ctx: BuildContext, locale: string, scriptHref = ''
   const title = themeText(ctx, locale, 'languagePicker.title', 'Choose a site language');
   const description = themeText(ctx, locale, 'languagePicker.description', 'Choose a language to open the matching site version.');
   const cards = locales.map((candidate: string) => {
-    const href = safeUrl(`/${candidate}/`);
+    const href = safeUrl(homeRouteFor(ctx, candidate));
     const name = languageDisplayName(ctx, locale, candidate);
     return `<li><a class="language-card" href="${href}" lang="${escapeHtml(candidate)}" data-locale="${escapeHtml(candidate)}"><span class="language-card-index" aria-hidden="true">${escapeHtml(String(locales.indexOf(candidate) + 1).padStart(2, '0'))}</span><strong>${escapeHtml(name)}</strong><span class="language-card-recommendation" data-language-recommended aria-hidden="true"></span><span class="language-card-arrow" aria-hidden="true">↗</span></a></li>`;
   }).join('');
@@ -989,8 +1028,8 @@ function notFoundMarkup(ctx: BuildContext, locale: string): string {
   const description = themeText(ctx, locale, 'notFound.description', 'The address may have changed. Return home or continue through the guide.');
   const homeLabel = themeText(ctx, locale, 'notFound.home', 'Back to home');
   const guideLabel = themeText(ctx, locale, 'notFound.guide', 'Open the guide');
-  const homeHref = safeUrl(routeFor(ctx, generatedDocument('home', locale, 'Home', '', `/${locale}/`)));
-  const guide = ctx.docs.find(doc => doc.collection === 'posts' && doc.id === 'start' && doc.locale === locale);
+  const homeHref = safeUrl(homeRouteFor(ctx, locale));
+  const guide = queryDocuments(ctx, { kind: 'post', locale, limit: 1, orderBy: 'date:desc' })[0];
   const guideLink = guide ? `<a class="button-secondary" href="${safeUrl(routeFor(ctx, guide))}">${escapeHtml(guideLabel)}</a>` : '';
   return `<section class="error-page" aria-labelledby="not-found-title"><p class="error-code" aria-hidden="true">404</p><h1 id="not-found-title">${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p><div class="error-actions"><a class="button-primary" href="${homeHref}">${escapeHtml(homeLabel)}</a>${guideLink}</div></section>`;
 }
@@ -999,7 +1038,7 @@ async function writeGeneratedPages(ctx: BuildContext) {
   const locale = ctx.config.defaultLocale || 'en';
   const themeName = configuredThemeName(ctx.config);
   const themeBase = `/assets/theme/${themeName}`;
-  const languageScript = pluginResourcePaths(ctx, ['language', 'languagePicker'], 'scripts')[0] || '';
+  const languageScript = componentResourcePaths(ctx, ['language', 'languagePicker'], 'scripts')[0] || '';
   const languageScriptHref = languageScript ? themeResourceHref(ctx, themeBase, languageScript) : '';
   const pickerTitle = themeText(ctx, locale, 'languagePicker.title', 'Choose a site language');
   const pickerDescription = themeText(ctx, locale, 'languagePicker.description', 'Choose a language to open the matching site version.');
@@ -1007,7 +1046,7 @@ async function writeGeneratedPages(ctx: BuildContext) {
   await writeIfChanged(ctx, 'index.html', pageShell(ctx, picker, languagePickerMarkup(ctx, locale, languageScriptHref)));
   const notFoundTitle = themeText(ctx, locale, 'notFound.title', 'This page is not here');
   const notFoundDescription = themeText(ctx, locale, 'notFound.description', 'The address may have changed. Return home or continue through the guide.');
-  const notFound = generatedDocument('not-found', locale, notFoundTitle, notFoundDescription, '/404.html', 'document');
+  const notFound = generatedDocument('not-found', locale, notFoundTitle, notFoundDescription, '/404.html', 'page');
   await writeIfChanged(ctx, '404.html', pageShell(ctx, notFound, notFoundMarkup(ctx, locale)));
 }
 
@@ -1017,12 +1056,11 @@ function themeResourcePaths(values: unknown[], label: string): string[] {
   return [...new Set(values.map(value => safeRelativePath(themeResourceValue(value), label)))];
 }
 
-/** The main stylesheet is the bundle for theme resources and the selected preset. */
+/** The main stylesheet is the bundle for Theme-level resources and the shell. */
 function themeStyleBundle(ctx: BuildContext): ThemeStyleBundle {
-  const selectedPreset = ctx.theme.presets?.[ctx.theme.preset || 'aurora'];
   const rawStyles = [
     ...resourcePaths(themeResources(ctx), 'styles'),
-    ...(Array.isArray(selectedPreset?.styles) ? selectedPreset.styles : [])
+    ...resourcePaths(themeComponent(ctx, 'shell')?.resources, 'styles')
   ];
   const styleFiles = themeResourcePaths(rawStyles, 'theme stylesheet path');
   const styleFile = styleFiles[0] || 'style.css';
@@ -1031,15 +1069,15 @@ function themeStyleBundle(ctx: BuildContext): ThemeStyleBundle {
 }
 
 function pageShell(ctx: BuildContext, doc: Document, content: string): string {
-  const siteName = localizedValue(ctx.config.siteName, doc.locale, 'Pageskill');
-  const siteDescription = localizedValue(ctx.config.description, doc.locale, 'The static-first website compiler for content that scales.');
+  const siteName = localizedValue(ctx.config.siteName, doc.locale, 'Site');
+  const siteDescription = localizedValue(ctx.config.description, doc.locale, 'A content website.');
   const icons = ctx.config.icons || {};
   const headerNote = themeText(ctx, doc.locale, 'shell.headerNote', 'Markdown-native · static-first');
   const skipLabel = themeText(ctx, doc.locale, 'shell.skipToContent', 'Skip to content');
   const languageLabel = themeText(ctx, doc.locale, 'shell.languages', 'Languages');
   const navigationLabel = themeText(ctx, doc.locale, 'shell.navigation', 'Primary navigation');
-  const footerNote = themeText(ctx, doc.locale, 'shell.footerNote', 'A small compiler for durable content.');
-  const footerKicker = themeText(ctx, doc.locale, 'shell.footerKicker', 'Content compiler');
+  const footerNote = localizedValue(ctx.config.footer?.note, doc.locale, '');
+  const footerKicker = localizedValue(ctx.config.footer?.kicker, doc.locale, '');
   const generatedPage = doc.source.startsWith('generated:');
   const showSiteChrome = !generatedPage || doc.collection === 'archive';
   const navigationConfig = configuredNavigation(ctx.config);
@@ -1080,7 +1118,7 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   ].join('');
   const documentFeedCollection = doc.collection === 'archive'
     ? String(doc.data?.archiveCollection || feedCollection(ctx) || '')
-    : isPostCollection(ctx, doc.collection) ? documentViewCollection(ctx, doc) : String(feedCollection(ctx) || '');
+    : isPostCollection(ctx, doc.collection) ? doc.collection : String(feedCollection(ctx) || '');
   const documentFeedHref = documentFeedCollection && feedCollections(ctx).includes(documentFeedCollection)
     ? feedRouteFor(ctx, doc.locale, documentFeedCollection)
     : '';
@@ -1093,23 +1131,22 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const themeName = configuredThemeName(ctx.config);
   const themeBase = `/assets/theme/${themeName}`;
   const styleBundle = themeStyleBundle(ctx);
-  const patternStyles = themeResourcePaths([
-    ...patternResourcePaths(ctx, doc.pattern, 'styles')
-  ], 'Pattern stylesheet path');
-  const blockStyles = themeResourcePaths(doc.directives.flatMap(node => [
-    ...blockResourcePaths(ctx, node.name, 'styles')
-  ]), 'Block stylesheet path');
-  const pluginStyles = [
-    ...genericPluginResourcePaths(ctx, 'styles'),
-    ...(privacyConsentRequired(ctx) ? pluginResourcePaths(ctx, ['privacyConsent', 'cookies'], 'styles') : []),
-    ...(pluginEnabled(ctx, 'search') ? pluginResourcePaths(ctx, ['search'], 'styles') : []),
-    ...(pluginEnabled(ctx, 'toc') ? pluginResourcePaths(ctx, ['toc'], 'styles') : []),
-    ...(doc.source.startsWith('generated:') ? pluginResourcePaths(ctx, ['language', 'languagePicker'], 'styles') : [])
+  const componentStyles = themeResourcePaths([
+    ...componentResourcePathsFor(ctx, doc.component, 'styles'),
+    ...doc.directives.flatMap(node => componentResourcePathsFor(ctx, node.name, 'styles'))
+  ], 'Component stylesheet path');
+  const sharedComponentStyles = [
+    ...genericComponentResourcePaths(ctx, 'styles'),
+    ...(privacyConsentRequired(ctx) ? componentResourcePaths(ctx, ['privacyConsent'], 'styles') : []),
+    ...(componentEnabled(ctx, 'search') ? componentResourcePaths(ctx, ['search'], 'styles') : []),
+    ...(componentEnabled(ctx, 'toc') ? componentResourcePaths(ctx, ['toc'], 'styles') : []),
+    ...(componentEnabled(ctx, 'comments') && isPostCollection(ctx, doc.collection) ? componentResourcePaths(ctx, ['comments'], 'styles') : []),
+    ...(doc.source.startsWith('generated:') ? componentResourcePaths(ctx, ['language', 'languagePicker'], 'styles') : [])
   ];
-  // Global theme and preset styles are already part of the fingerprinted main
+  // Global Theme styles are already part of the fingerprinted main
   // bundle.  Remove them here so a page cannot inline them or link a file that
   // copyThemeAndAssets intentionally did not emit separately.
-  const pageStyles = [styleBundle.styleFile, ...pluginStyles, ...patternStyles, ...blockStyles]
+  const pageStyles = [styleBundle.styleFile, ...sharedComponentStyles, ...componentStyles]
     .filter(style => style === styleBundle.styleFile || !styleBundle.bundled.has(style));
   const styleTags = planThemeStyles(pageStyles, ctx.themeStyleSources, {
     inlineStyles: ctx.theme.inlineStyles !== false,
@@ -1121,22 +1158,26 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const searchData = localSearchData(ctx, doc, themeBase);
   const browserScripts = themeResourcePaths([
     ...resourcePaths(themeResources(ctx), 'scripts'),
-    ...genericPluginResourcePaths(ctx, 'scripts'),
-    ...(pluginEnabled(ctx, 'toc') && (doc.pattern === 'blog' || doc.directives.some(node => node.name === 'toc')) ? pluginResourcePaths(ctx, ['toc'], 'scripts') : []),
-    ...doc.directives.flatMap(node => blockResourcePaths(ctx, node.name, 'scripts'))
+    ...genericComponentResourcePaths(ctx, 'scripts'),
+    ...(componentEnabled(ctx, 'toc') && (doc.component === 'post' || doc.directives.some(node => node.name === 'toc')) ? componentResourcePaths(ctx, ['toc'], 'scripts') : []),
+    ...(componentEnabled(ctx, 'comments') && isPostCollection(ctx, doc.collection) ? componentResourcePaths(ctx, ['comments'], 'scripts') : []),
+    ...componentResourcePathsFor(ctx, doc.component, 'scripts'),
+    ...doc.directives.flatMap(node => componentResourcePathsFor(ctx, node.name, 'scripts'))
   ], 'Theme script path');
   const scriptTags = browserScripts.map(script => `<script type="module" src="${safeUrl(themeResourceHref(ctx, themeBase, String(script)))}"></script>`).join('');
   const socialImage = doc.data?.ogImage || doc.data?.cover || ctx.config.images?.social;
   const socialImageUrl = absoluteImageUrl(socialImage, String(ctx.config.siteUrl || '').replace(/\/$/, ''));
   const publishedMeta = isPostCollection(ctx, doc.collection) && doc.date && publicationTimestamp(doc.date) !== undefined ? `<meta property="article:published_time" content="${escapeHtml(new Date(publicationTimestamp(doc.date)!).toISOString())}">` : '';
-  const modifiedMeta = isPostCollection(ctx, doc.collection) && doc.update && publicationTimestamp(doc.update) !== undefined ? `<meta property="article:modified_time" content="${escapeHtml(new Date(publicationTimestamp(doc.update)!).toISOString())}">` : '';
-  const head = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(doc.title)} · ${escapeHtml(siteName)}</title><meta name="description" content="${escapeHtml(doc.description || siteDescription)}"><meta name="theme-color" content="${escapeHtml(ctx.config.pwa?.themeColor || '#d9563b')}"><meta property="og:title" content="${escapeHtml(doc.title)}"><meta property="og:description" content="${escapeHtml(doc.description || siteDescription)}"><meta property="og:type" content="${doc.date ? 'article' : 'website'}"><meta property="og:url" content="${safeUrl(absoluteUrl)}">${publishedMeta}${modifiedMeta}${socialImageUrl ? `<meta property="og:image" content="${safeUrl(socialImageUrl)}">` : ''}<link rel="canonical" href="${safeUrl(absoluteUrl)}"><link rel="sitemap" type="application/xml" href="/sitemap.xml">${headIconLinks}${alternates}${stylesheets}${scriptTags}`;
-  const headWithFeed = head.replace('<link rel="sitemap" type="application/xml" href="/sitemap.xml">', `<link rel="sitemap" type="application/xml" href="/sitemap.xml">${postsFeedLink}`);
+  const modifiedMeta = isPostCollection(ctx, doc.collection) && doc.updated && publicationTimestamp(doc.updated) !== undefined ? `<meta property="article:modified_time" content="${escapeHtml(new Date(publicationTimestamp(doc.updated)!).toISOString())}">` : '';
+  const sitemapHref = String(ctx.config.routes?.sitemap || '/sitemap.xml');
+  const head = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(doc.title)} · ${escapeHtml(siteName)}</title><meta name="description" content="${escapeHtml(doc.description || siteDescription)}"><meta name="theme-color" content="${escapeHtml(ctx.config.pwa?.themeColor || '#d9563b')}"><meta property="og:title" content="${escapeHtml(doc.title)}"><meta property="og:description" content="${escapeHtml(doc.description || siteDescription)}"><meta property="og:type" content="${doc.date ? 'article' : 'website'}"><meta property="og:url" content="${safeUrl(absoluteUrl)}">${publishedMeta}${modifiedMeta}${socialImageUrl ? `<meta property="og:image" content="${safeUrl(socialImageUrl)}">` : ''}<link rel="canonical" href="${safeUrl(absoluteUrl)}"><link rel="sitemap" type="application/xml" href="${safeUrl(sitemapHref)}">${headIconLinks}${alternates}${stylesheets}${scriptTags}`;
+  const headWithFeed = head.replace(`<link rel="sitemap" type="application/xml" href="${safeUrl(sitemapHref)}">`, `<link rel="sitemap" type="application/xml" href="${safeUrl(sitemapHref)}">${postsFeedLink}`);
   const privacyData = privacyShellData(ctx, doc, themeBase);
   const bodyClass = `theme-${escapeHtml(configuredThemeName(ctx.config))}`;
   const localeInfo = isRecord(ctx.themeI18n.locales?.[doc.locale]) ? ctx.themeI18n.locales[doc.locale] : {};
-  const shellContext = { ...themeContextFor(ctx, doc), content, head: headWithFeed, bodyClass, mainClass: `pattern-${escapeHtml(doc.pattern)}`, siteName, siteDescription, currentRoute, homeHref, brandIcon, navigationLinks, footerLinks, languageLinks, htmlLang: String(localeInfo.htmlLang || doc.locale), navigationLabel, languageLabel, skipLabel, headerNote, footerNote, footerKicker, chrome, ...searchData, searchMarkup: showSiteChrome ? searchData.searchMarkup : '', ...privacyData } as ThemeShellContext;
-  if (ctx.themeDefinition.shell) return ctx.themeDefinition.shell(shellContext);
+  const shellContext = { ...themeContextFor(ctx, doc), renderedContent: content, head: headWithFeed, bodyClass, mainClass: `component-${escapeHtml(doc.component)}`, siteName, siteDescription, currentRoute, homeHref, brandIcon, navigationLinks, footerLinks, languageLinks, htmlLang: String(localeInfo.htmlLang || doc.locale), navigationLabel, languageLabel, skipLabel, headerNote, footerNote, footerKicker, chrome, ...searchData, searchMarkup: showSiteChrome ? searchData.searchMarkup : '', ...privacyData } as ComponentShellContext;
+  const shell = themeComponent(ctx, 'shell')?.shell;
+  if (shell) return shell(shellContext);
   return fallbackShellWithPrivacy(shellContext);
 }
 
@@ -1146,13 +1187,37 @@ function contentNodes(doc: Document): MarkdownNode[] {
   return doc.nodes;
 }
 
+/** Render document content while preserving top-level named layout slots. */
+function documentComponentInput(ctx: BuildContext, doc: Document, context: ComponentRenderContext): ComponentDocumentInput {
+  const nodes = contentNodes(doc);
+  const bodyNodes: MarkdownNode[] = [];
+  const slots: Record<string, string> = {};
+  for (const node of nodes) {
+    if (node.kind !== 'directive' || node.name !== 'slot') {
+      bodyNodes.push(node);
+      continue;
+    }
+    const slotName = node.attrs.name;
+    if (!slotName || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(slotName) || slotName === 'content') {
+      throw new MarkdownError('document slot requires a valid non-content name attribute', node.position);
+    }
+    for (const key of Object.keys(node.attrs)) if (key !== 'name') {
+      throw new MarkdownError(`slot attribute "${key}" is not supported`, node.position);
+    }
+    if (slots[slotName] !== undefined) throw new MarkdownError(`slot "${slotName}" is declared more than once`, node.position);
+    slots[slotName] = context.renderNodes(node.children);
+  }
+  const renderedContent = context.renderNodes(bodyNodes);
+  return { renderedContent, slots: { content: renderedContent, ...slots }, props: { document: doc.data, contentKey: doc.contentKey }, runtime: undefined };
+}
+
 /** Describe generated discovery from the outputs this renderer plans to publish. */
 function discoveryBoundaries(ctx: BuildContext) {
   const generated = publicDiscoveryResources(ctx).map(resource => resource.href);
   if (ctx.outputs.has('robots.txt') || !ctx.stagedOutput) generated.push('/robots.txt');
   const themeInstance = ctx.themeConfigFile
     ? normalizePath(path.relative(ctx.root, ctx.themeConfigFile))
-    : 'theme.config (not configured; plugin defaults are active)';
+    : 'theme.config (not configured; component defaults are active)';
   return {
     sourceOfTruth: ['config.yml', 'config/*.yml', themeInstance, 'content/', 'themes/'],
     generatedDiscovery: [...new Set(generated)],
@@ -1164,27 +1229,27 @@ function discoveryBoundaries(ctx: BuildContext) {
 function agentFunctionMap(ctx: BuildContext) {
   const themeInstance = ctx.themeConfigFile
     ? normalizePath(path.relative(ctx.root, ctx.themeConfigFile))
-    : 'theme.config (not configured; plugin defaults are active)';
+    : 'theme.config (not configured; component defaults are active)';
   const configSources = ['config.yml', 'config/*.yml'];
   return [
-    { id: 'write-page', purpose: 'Write current site content for a page, guide, reference, or directory', paths: ['content/pages/<id>/<locale>.md'], commands: ['pageskill g'] },
-    { id: 'write-post', purpose: 'Record a dated post; use category: tutorial for a tutorial and omit it for uncategorized content', paths: ['content/posts/<id>/<locale>.md'], commands: ['pageskill g'] },
-    { id: 'write-update', purpose: 'Record a version update as a post with category: update; the updates view keeps it separate from ordinary posts', paths: ['content/posts/<version>/<locale>.md'], frontmatter: { category: 'update', date: 'YYYY-MM-DD' }, commands: ['pageskill g'] },
-    { id: 'configure-integration', purpose: 'Enable a registered third-party integration with its adapter-owned public identifier and privacy load policy', paths: [...configSources, 'config.yml:integrations.<provider-id>'], outputs: ['generated consent purposes and provider runtime metadata'], prerequisites: ['Choose a provider from the generated catalog', 'Keep secrets in environment variables; site YAML only contains public adapter fields'], commands: ['pageskill g --profile'] },
-    { id: 'change-layout', purpose: 'Add, modify, or remove an existing layout, component, pattern, or stylesheet', paths: ['themes/<name>/index.ts', 'themes/<name>/components/', 'themes/<name>/layouts/'], commands: ['pageskill g --profile'] },
-    { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, discovery policy, plugin copy/options, or deployment settings', paths: [...configSources, themeInstance], commands: ['pageskill g --profile'] },
-    { id: 'configure-plugin', purpose: 'Configure a declared foundation plugin from the theme instance file without editing its renderer', paths: [themeInstance, 'themes/<name>/plugins/<plugin>/index.ts'], commands: ['pageskill g --profile'] },
-    { id: 'discover-extension', purpose: 'Read active theme Patterns, Blocks, collections, plugin switches, contexts, and resource dependencies', paths: ['themes/<name>/index.ts', themeInstance, ...configSources], commands: ['import { getCatalog, inspect } from "pageskill"'] },
-    { id: 'discover-site', purpose: 'Read renderer-generated agent metadata, API links, Markdown negotiation, and content signals', paths: ['dist/public/.well-known/', 'dist/public/robots.txt', 'dist/public/llms.txt'], commands: ['pageskill g'] },
+    { id: 'write-page', purpose: 'Write current site content for a page, guide, reference, or directory', paths: ['content/pages/<id>/<locale>.md'], commands: ['page g'] },
+    { id: 'write-post', purpose: 'Record a dated post with kind: post; use category for ordinary taxonomy and omit it for uncategorized content', paths: ['content/posts/<id>/<locale>.md'], frontmatter: { kind: 'post', date: 'YYYY-MM-DD', updated: 'optional ISO date or datetime' }, commands: ['page g'] },
+    { id: 'write-update', purpose: 'Record a release note or project update with kind: release in the dedicated updates collection', paths: ['content/updates/<version>/<locale>.md'], frontmatter: { kind: 'release', date: 'YYYY-MM-DD', updated: 'optional ISO date or datetime' }, commands: ['page g'] },
+    { id: 'configure-integration', purpose: 'Enable a registered third-party integration with its adapter-owned public identifier and privacy load policy', paths: [...configSources, 'config.yml:integrations.<provider-id>'], outputs: ['generated consent purposes and provider runtime metadata'], prerequisites: ['Choose a provider from the generated catalog', 'Keep secrets in environment variables; site YAML only contains public adapter fields'], commands: ['page g --profile'] },
+    { id: 'change-component', purpose: 'Add, modify, or remove an existing Component or stylesheet', paths: ['themes/<name>/index.ts', 'themes/<name>/components/'], commands: ['page g --profile'] },
+    { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, discovery policy, component copy/options, or deployment settings', paths: [...configSources, themeInstance], commands: ['page g --profile'] },
+    { id: 'configure-component', purpose: 'Configure a declared Component from the theme instance file without editing its renderer', paths: [themeInstance, 'themes/<name>/components/<component>/index.ts'], commands: ['page g --profile'] },
+    { id: 'discover-extension', purpose: 'Read active theme Components, collections, component switches, contexts, and resource dependencies', paths: ['themes/<name>/index.ts', themeInstance, ...configSources], commands: ['import { getCatalog, inspect } from "pageskill"'] },
+    { id: 'discover-site', purpose: 'Read renderer-generated agent metadata, API links, Markdown negotiation, and content signals', paths: ['dist/public/.well-known/', 'dist/public/robots.txt', 'dist/public/llms.txt'], commands: ['page g'] },
     // Conditional discovery entries describe the implementation boundary as
     // data. The generated Skill and catalog expose these fields without a
     // second hand-maintained instruction list.
-    { id: 'configure-auth-discovery', purpose: 'Publish OAuth protected-resource metadata only for an implemented protected service and real authorization server', paths: [...configSources, 'config.yml:agentDiscovery.auth', 'backend/handler.ts or an external resource server', 'external OAuth/OIDC issuer'], prerequisites: ['Verify bearer tokens, issuer, audience, expiry, and scopes in the protected service', 'Use real resource and issuer URLs'], outputs: ['/.well-known/oauth-protected-resource', 'auth.md', 'optional /.well-known/oauth-authorization-server'], commands: ['pageskill g --profile'] },
-    { id: 'configure-mcp-discovery', purpose: 'Publish an MCP server card whose endpoint and tool schemas match a real MCP transport', paths: [...configSources, 'config.yml:agentDiscovery.mcp', 'backend/handler.ts or an external MCP server'], prerequisites: ['Deploy a working MCP endpoint before enabling the card', 'Keep card tool metadata aligned with the server tools/list response'], outputs: ['/.well-known/mcp/server-card.json'], commands: ['pageskill g --profile'] },
-    { id: 'register-webmcp-tools', purpose: 'Register browser tools from a theme plugin only when a real WebMCP module is loaded and tested', paths: [...configSources, 'config.yml:agentDiscovery.webmcp', themeInstance, 'themes/<name>/plugins/<id>/'], prerequisites: ['Register tools through document.modelContext with explicit JSON schemas', 'Validate inputs and confirm consequential actions in the page'], outputs: ['/.well-known/agent.json configured state; browser tools come from the theme script'], commands: ['npm run compile-theme', 'pageskill s', 'pageskill g --profile'] },
-    { id: 'publish-dns-aid', purpose: 'Advertise DNS-AID only after an external DNS provider has published real SVCB/TXT or TLSA records with DNSSEC as required', paths: [...configSources, 'config.yml:agentDiscovery.dnsAid', 'external authoritative DNS zone'], prerequisites: ['Deploy the advertised agent endpoint', 'Verify the public DNS records and DNSSEC chain before enabling the flag'], outputs: ['/.well-known/agent.json configured state; DNS records are never generated here'], commands: ['Resolve-DnsName', 'pageskill g --profile'] },
-    { id: 'preview', purpose: 'Open the local development server with a persistent incremental context', paths: ['src/bin/pageskill.mjs', 'src/compiler.ts'], commands: ['pageskill s'] },
-    { id: 'dynamic-backend', purpose: 'Add runtime business logic, secrets, writes, or webhooks', paths: ['backend/handler.ts'], commands: ['pageskill g'] }
+    { id: 'configure-auth-discovery', purpose: 'Publish OAuth protected-resource metadata only for an implemented protected service and real authorization server', paths: [...configSources, 'config.yml:agentDiscovery.auth', 'backend/handler.ts or an external resource server', 'external OAuth/OIDC issuer'], prerequisites: ['Verify bearer tokens, issuer, audience, expiry, and scopes in the protected service', 'Use real resource and issuer URLs'], outputs: ['/.well-known/oauth-protected-resource', 'auth.md', 'optional /.well-known/oauth-authorization-server'], commands: ['page g --profile'] },
+    { id: 'configure-mcp-discovery', purpose: 'Publish an MCP server card whose endpoint and tool schemas match a real MCP transport', paths: [...configSources, 'config.yml:agentDiscovery.mcp', 'backend/handler.ts or an external MCP server'], prerequisites: ['Deploy a working MCP endpoint before enabling the card', 'Keep card tool metadata aligned with the server tools/list response'], outputs: ['/.well-known/mcp/server-card.json'], commands: ['page g --profile'] },
+    { id: 'register-webmcp-tools', purpose: 'Register browser tools from a theme component only when a real WebMCP module is loaded and tested', paths: [...configSources, 'config.yml:agentDiscovery.webmcp', themeInstance, 'themes/<name>/components/<id>/'], prerequisites: ['Register tools through document.modelContext with explicit JSON schemas', 'Validate inputs and confirm consequential actions in the page'], outputs: ['/.well-known/agent.json configured state; browser tools come from the theme script'], commands: ['npm run compile-theme', 'page s', 'page g --profile'] },
+    { id: 'publish-dns-aid', purpose: 'Advertise DNS-AID only after an external DNS provider has published real SVCB/TXT or TLSA records with DNSSEC as required', paths: [...configSources, 'config.yml:agentDiscovery.dnsAid', 'external authoritative DNS zone'], prerequisites: ['Deploy the advertised agent endpoint', 'Verify the public DNS records and DNSSEC chain before enabling the flag'], outputs: ['/.well-known/agent.json configured state; DNS records are never generated here'], commands: ['Resolve-DnsName', 'page g --profile'] },
+    { id: 'preview', purpose: 'Open the local static or configured runtime preview with a persistent incremental context', paths: ['src/bin/page.mjs', 'src/compiler.ts'], commands: ['page s'] },
+    { id: 'dynamic-backend', purpose: 'Add runtime business logic, secrets, writes, or webhooks', paths: ['backend/handler.ts'], commands: ['page g'] }
   ];
 }
 
@@ -1354,7 +1419,7 @@ async function writeMcpServerCard(ctx: BuildContext, siteUrl: string): Promise<v
     };
   }).filter(Boolean);
   await writeIfChanged(ctx, '.well-known/mcp/server-card.json', JSON.stringify({
-    name: String(localizedValue(settings.name, locale, localizedValue(ctx.config.siteName, locale, 'Pageskill'))),
+    name: String(localizedValue(settings.name, locale, localizedValue(ctx.config.siteName, locale, 'Site'))),
     description: String(localizedValue(settings.description, locale, 'Model Context Protocol server')),
     version: String(settings.version || '1.0.0'),
     url: endpoint,
@@ -1397,7 +1462,7 @@ function generatedAgentCapabilitySection(entry: Record<string, unknown>): string
 
 function generatedAgentSkill(ctx: BuildContext): string {
   const settings = discoverySettings(ctx, 'skills');
-  const title = String(settings.title || localizedValue(ctx.config.siteName, String(ctx.config.defaultLocale || 'en'), 'Pageskill')).replaceAll(/[\r\n]+/g, ' ');
+  const title = String(settings.title || localizedValue(ctx.config.siteName, String(ctx.config.defaultLocale || 'en'), 'Site')).replaceAll(/[\r\n]+/g, ' ');
   const instructions = Array.isArray(settings.instructions)
     ? settings.instructions.map((value: unknown) => String(value).replaceAll(/[\r\n]+/g, ' ').trim()).filter(Boolean)
     : [];
@@ -1517,7 +1582,7 @@ async function writeArdManifest(ctx: BuildContext, siteUrl: string): Promise<voi
   if (!discoveryEnabled(ctx, 'ard')) return;
   let host = siteUrl;
   try { host = new URL(siteUrl).host; } catch { /* siteUrl validation is handled by the site deployment */ }
-  const siteName = localizedValue(ctx.config.siteName, String(ctx.config.defaultLocale || 'en'), 'Pageskill');
+  const siteName = localizedValue(ctx.config.siteName, String(ctx.config.defaultLocale || 'en'), 'Site');
   const entries: Array<Record<string, any>> = [];
   entries.push(ardEntry(host, siteUrl, '/.well-known/agent.json', 'agent', `${siteName} agent guidance`, 'application/json', ardQueries(ctx, 'agent')));
   const paths = new Set([...ctx.outputs, ...plannedDiscoveryPaths(ctx)]);
@@ -1547,61 +1612,55 @@ function catalog(ctx: BuildContext) {
   }));
   return {
     version: 2,
-    theme: {
+     theme: {
       name: String(ctx.theme.name || ctx.config.theme?.name || 'default'),
       fingerprint: String(ctx.theme.__fingerprint || ctx.themeHash).slice(0, 20),
       resources: {
         styles: resourcePaths(themeResources(ctx), 'styles'),
         scripts: resourcePaths(themeResources(ctx), 'scripts')
       },
-      plugins: Object.fromEntries(Object.entries(ctx.themeDefinition.plugins || {}).map(([name, value]: [string, any]) => [name, {
-        enabled: pluginEnabled(ctx, name),
+       components: Object.fromEntries(Object.entries(ctx.themeDefinition.components || {}).map(([name, value]: [string, any]) => [name, {
+         id: value.id || name,
+         source: value.source || 'built-in',
+         capabilities: value.capabilities || [],
+         contexts: value.contexts || [],
+         implementation: value.implementation,
+        enabled: componentEnabled(ctx, name),
         resources: value?.resources || {},
         defaults: value?.defaults || {},
         schema: value?.schema || {},
-        settings: themePluginSettings(ctx, name)
+        settings: themeComponentSettings(ctx, name)
       }]))
     },
-    compiler: { runtime: 'node22-esm', renderer: 'typescript-safe-html', markdown: 'commonmark-gfm', yaml: 'yaml-1.2', directives: 'pageskill-block-directive' },
+     compiler: { runtime: 'node22-esm', renderer: 'typescript-safe-html', markdown: 'commonmark-gfm', yaml: 'yaml-1.2', directives: 'component-directive' },
     integrations: {
       providers,
       configured: allIntegrations.map(integration => publicPrivacyIntegration(integration, integration.enabled))
     },
-    presets: Object.entries(ctx.theme.presets || {}).map(([name, value]) => ({ name, ...(value as Record<string, any>) })),
-    patterns: Object.values(ctx.themeDefinition.patterns).map(pattern => ({ name: pattern.name, contexts: pattern.contexts, resources: { styles: resourcePaths(pattern.resources, 'styles'), scripts: resourcePaths(pattern.resources, 'scripts') } })),
-    blocks: Object.values(ctx.themeDefinition.blocks).map(block => ({
-      name: block.name,
-      schema: block.schema,
-      defaults: block.defaults || {},
-      contexts: block.contexts || ['page', 'post'],
-      resources: { styles: resourcePaths(block.resources, 'styles'), scripts: resourcePaths(block.resources, 'scripts') },
-      examples: [block.example || `:::${block.name}${Object.entries(block.defaults || {}).map(([key, value]) => `${key}="${value}"`).join(' ') ? `{${Object.entries(block.defaults || {}).map(([key, value]) => `${key}="${value}"`).join(' ')}}` : ''}\n:::`]
-    })),
     collections: Object.entries(ctx.config.content?.collections || {}).map(([name, value]) => {
       const settings = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
       return {
         name,
         ...settings,
-        contentType: String(settings.contentType || 'page'),
+         contentType: String(settings.contentType || (name === 'updates' ? 'release' : name === 'posts' ? 'post' : 'page')),
         route: String(settings.route || '/:locale/:id/'),
-        pattern: String(settings.pattern || defaultPattern(ctx.config, name, '', ctx.themeDefinition.patterns)),
+        component: String(settings.component || defaultComponent(ctx.config, name)),
         schema: settings.schema && typeof settings.schema === 'object' ? settings.schema : {},
-        feed: settings.feed === true,
-        archive: settings.archive === true
+        feed: Boolean(settings.feed),
+        archive: Boolean(settings.archive)
       };
     }),
-    views: Object.entries(ctx.config.content?.views || {}).map(([name, value]) => ({ name, ...(value && typeof value === 'object' && !Array.isArray(value) ? value : {}) })),
     languages: ctx.config.activeLocales || [ctx.config.defaultLocale || 'en'],
     agent: {
       optional: true,
       role: 'assistive',
-      defaultCommands: ['npm install', 'pageskill s', 'pageskill g'],
+      defaultCommands: ['npm install', 'page s', 'page g'],
       ...discoveryBoundaries(ctx),
       functionMap: agentFunctionMap(ctx)
     },
     privacy: {
       consent: {
-        enabled: privacyConsentRequired(ctx) && privacySettings.enabled !== false && pluginEnabled(ctx, 'privacyConsent'),
+        enabled: privacyConsentRequired(ctx) && privacySettings.enabled !== false && componentEnabled(ctx, 'privacyConsent'),
         decisionRetentionDays: decisionRetentionDays(ctx),
         purposes: privacyPurposeCategories,
         choices: { optionalDefault: false, rejectAvailable: true, withdrawAvailable: true }
@@ -1651,6 +1710,16 @@ async function writeIfChanged(ctx: BuildContext, relative: string, data: string 
   ctx.profile.changedOutputs += 1;
   ctx.outputs.add(normalized);
   ctx.outputHashes[normalized] = incomingHash;
+}
+
+async function writePrivateIfChanged(ctx: BuildContext, relative: string, data: string | Uint8Array) {
+  const root = path.join(ctx.root, '.pageskill');
+  const target = containedPath(root, relative, 'private report path');
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  const incoming = typeof data === 'string' ? Buffer.from(data) : Buffer.from(data);
+  const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
+  await fs.writeFile(temporary, incoming);
+  await fs.rename(temporary, target);
 }
 
 async function parallelFor<T>(items: T[], concurrency: number, worker: (item: T) => Promise<void>) {
@@ -1765,29 +1834,31 @@ async function copyThemeAndAssets(ctx: BuildContext) {
     } catch { /* optional theme style */ }
   }
   if (styleParts.length) await writeIfChanged(ctx, `${themeOutputRoot}/${versionedThemeAsset(styleBundle.styleFile, styleBundle.fingerprint)}`, minifyCss(styleParts.join('\n')));
-  const usedPatterns = new Set(ctx.docs.map(doc => doc.pattern));
+  const usedComponents = new Set(ctx.docs.map(doc => doc.component));
   const dependencyFiles = new Set<string>();
   for (const file of [
     ...resourcePaths(themeResources(ctx), 'scripts'),
-    ...genericPluginResourcePaths(ctx, 'styles'),
-    ...genericPluginResourcePaths(ctx, 'scripts'),
-    ...(pluginEnabled(ctx, 'privacyConsent') ? pluginResourcePaths(ctx, ['privacyConsent', 'cookies'], 'styles') : []),
-    ...(pluginEnabled(ctx, 'privacyConsent') ? pluginResourcePaths(ctx, ['privacyConsent', 'cookies'], 'scripts') : []),
-    ...(pluginEnabled(ctx, 'search') ? pluginResourcePaths(ctx, ['search'], 'styles') : []),
-    ...(pluginEnabled(ctx, 'search') ? pluginResourcePaths(ctx, ['search'], 'scripts') : []),
-    ...(pluginEnabled(ctx, 'toc') ? pluginResourcePaths(ctx, ['toc'], 'styles') : []),
-    ...(pluginEnabled(ctx, 'toc') ? pluginResourcePaths(ctx, ['toc'], 'scripts') : []),
+    ...genericComponentResourcePaths(ctx, 'styles'),
+    ...genericComponentResourcePaths(ctx, 'scripts'),
+    ...(componentEnabled(ctx, 'privacyConsent') ? componentResourcePaths(ctx, ['privacyConsent'], 'styles') : []),
+    ...(componentEnabled(ctx, 'privacyConsent') ? componentResourcePaths(ctx, ['privacyConsent'], 'scripts') : []),
+    ...(componentEnabled(ctx, 'search') ? componentResourcePaths(ctx, ['search'], 'styles') : []),
+    ...(componentEnabled(ctx, 'search') ? componentResourcePaths(ctx, ['search'], 'scripts') : []),
+    ...(componentEnabled(ctx, 'toc') ? componentResourcePaths(ctx, ['toc'], 'styles') : []),
+    ...(componentEnabled(ctx, 'toc') ? componentResourcePaths(ctx, ['toc'], 'scripts') : []),
+    ...(componentEnabled(ctx, 'comments') ? componentResourcePaths(ctx, ['comments'], 'styles') : []),
+    ...(componentEnabled(ctx, 'comments') ? componentResourcePaths(ctx, ['comments'], 'scripts') : []),
     // The root language selector is generated by the compiler itself, so its
     // small enhancement script is copied whenever the theme declares it. It
     // is not an optional site integration and has no config switch.
-    ...pluginResourcePaths(ctx, ['language', 'languagePicker'], 'styles'),
-    ...pluginResourcePaths(ctx, ['language', 'languagePicker'], 'scripts')
+    ...componentResourcePaths(ctx, ['language', 'languagePicker'], 'styles'),
+    ...componentResourcePaths(ctx, ['language', 'languagePicker'], 'scripts')
   ]) dependencyFiles.add(safeRelativePath(file, 'theme resource path'));
-  for (const pattern of usedPatterns) {
-    for (const file of [...patternResourcePaths(ctx, pattern, 'styles'), ...patternResourcePaths(ctx, pattern, 'scripts')]) dependencyFiles.add(safeRelativePath(file, 'Pattern resource path'));
+  for (const component of usedComponents) {
+    for (const file of [...componentResourcePathsFor(ctx, component, 'styles'), ...componentResourcePathsFor(ctx, component, 'scripts')]) dependencyFiles.add(safeRelativePath(file, 'Component resource path'));
   }
-  for (const doc of ctx.docs) for (const block of doc.blockNames.length ? doc.blockNames : ctx.cache.documents[doc.source]?.blocks || []) {
-    for (const file of [...blockResourcePaths(ctx, block, 'styles'), ...blockResourcePaths(ctx, block, 'scripts')]) dependencyFiles.add(safeRelativePath(file, 'Block resource path'));
+  for (const doc of ctx.docs) for (const component of doc.componentNames.length ? doc.componentNames : ctx.cache.documents[doc.source]?.components || []) {
+    for (const file of [...componentResourcePathsFor(ctx, component, 'styles'), ...componentResourcePathsFor(ctx, component, 'scripts')]) dependencyFiles.add(safeRelativePath(file, 'Component resource path'));
   }
   for (const relative of dependencyFiles) {
     if (styleBundle.bundled.has(relative)) continue;
@@ -1800,7 +1871,7 @@ async function copyThemeAndAssets(ctx: BuildContext) {
   }
   await writeIfChanged(ctx, 'AGENTS.md', await fs.readFile(path.join(ctx.root, 'AGENTS.md'), 'utf8').catch(() => ''));
   const locale = ctx.config.defaultLocale || 'en';
-  const siteName = localizedValue(ctx.config.siteName, locale, 'Pageskill');
+  const siteName = localizedValue(ctx.config.siteName, locale, 'Site');
   const manifestIcons = [
     ctx.config.icons?.icon192 ? { src: String(ctx.config.icons.icon192), sizes: '192x192', type: 'image/png' } : null,
     ctx.config.icons?.icon512 ? { src: String(ctx.config.icons.icon512), sizes: '512x512', type: 'image/png' } : null
@@ -1816,7 +1887,7 @@ function collectionSettings(ctx: BuildContext, collection: string): Record<strin
 
 function isPostCollectionConfig(config: Record<string, any>, collection: string): boolean {
   const settings = config.content?.collections?.[collection];
-  return collection === 'posts' || Boolean(settings && typeof settings === 'object' && !Array.isArray(settings) && settings.contentType === 'post');
+  return collection === 'posts' || collection === 'updates' || Boolean(settings && typeof settings === 'object' && !Array.isArray(settings) && ['post', 'release'].includes(String(settings.contentType)));
 }
 
 function isPostCollection(ctx: BuildContext, collection: string): boolean {
@@ -1835,7 +1906,7 @@ async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
   const purposes = privacyCategories(ctx, activeIntegrations, locale);
   await writeIfChanged(ctx, '.well-known/agent.json', JSON.stringify({
     version: 1,
-    site: { name: localizedValue(ctx.config.siteName, locale, 'Pageskill'), defaultLocale: locale, locales: ctx.config.activeLocales || [locale] },
+    site: { name: localizedValue(ctx.config.siteName, locale, 'Site'), defaultLocale: locale, locales: ctx.config.activeLocales || [locale] },
     crawl: { robots: '/robots.txt', sitemap: '/sitemap.xml', llms: '/llms.txt', catalog: '/.well-known/ai-catalog.json' },
     discovery: {
       resources: publicDiscoveryResources(ctx),
@@ -1859,7 +1930,7 @@ async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
       format: 'application/json',
       humanSelector: 'HTML dialog on localized pages',
       consent: {
-        enabled: privacyConsentRequired(ctx) && settings.enabled !== false && pluginEnabled(ctx, 'privacyConsent'),
+        enabled: privacyConsentRequired(ctx) && settings.enabled !== false && componentEnabled(ctx, 'privacyConsent'),
         decisionRetentionDays: decisionRetentionDays(ctx),
         purposes,
         optionalDefault: false
@@ -1876,57 +1947,54 @@ async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
       ...discoveryBoundaries(ctx),
       functionMap: agentFunctionMap(ctx)
     },
-    generatedBy: { name: 'Pageskill', version: 3, static: true, siteUrl }
+    generatedBy: { name: 'Pageskill', version: '4.0.0', static: true, siteUrl }
   }, null, 2));
 }
 function feedCollections(ctx: BuildContext): string[] {
-  if (ctx.config.feed?.enabled === false) return [];
-  if (typeof ctx.config.feed?.collection === 'string' && String(ctx.config.feed.collection).trim()) return [String(ctx.config.feed.collection)];
-  if (Array.isArray(ctx.config.feed?.collections)) return ctx.config.feed.collections.map(String);
   return Object.entries(ctx.config.content?.collections || {})
-    .filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value) && (value as any).feed === true)
+    .filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value) && (value as any).feed && typeof (value as any).feed === 'object')
     .map(([name]) => name);
 }
 function feedCollection(ctx: BuildContext): string | undefined { return feedCollections(ctx)[0]; }
 function feedRouteFor(ctx: BuildContext, locale: string, collection: string): string {
-  const view = contentViewSettings(ctx, collection);
   const settings = collectionSettings(ctx, collection);
-  const firstCollection = feedCollection(ctx);
-  const configured = view.feedRoute || settings.feedRoute || (collection === firstCollection ? ctx.config.feed?.route : undefined) || (collection === 'posts' ? '/:locale/feed.xml' : `/:locale/${collection}/feed.xml`);
+  const feed = settings.feed && typeof settings.feed === 'object' && !Array.isArray(settings.feed) ? settings.feed : {};
+  const configured = feed.route || `/:locale/${collection}/feed.xml`;
   return String(configured).replace(':locale', locale).replace(':collection', collection).replace(/\/{2,}/g, '/').replace(/([^:])\/\//g, '$1/');
 }
 function archiveCollections(ctx: BuildContext): string[] {
-  if (ctx.config.archive?.enabled === false) return [];
-  if (typeof ctx.config.archive?.collection === 'string') return [String(ctx.config.archive.collection)];
-  if (Array.isArray(ctx.config.archive?.collections)) return ctx.config.archive.collections.map(String);
-  return Object.entries(ctx.config.content?.collections || {}).filter(([, value]) => (value as any)?.archive === true).map(([name]) => name);
+  return Object.entries(ctx.config.content?.collections || {})
+    .filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value) && (value as any).archive && typeof (value as any).archive === 'object')
+    .map(([name]) => name);
 }
 function feedXml(ctx: BuildContext, locale: string, collection: string) {
-  const entries = documentsForCollection(ctx, collection, locale).slice(0, Number(ctx.config.feed?.limit));
+  const settings = collectionSettings(ctx, collection);
+  const feed = settings.feed && typeof settings.feed === 'object' && !Array.isArray(settings.feed) ? settings.feed : {};
+  const entries = documentsForCollection(ctx, collection, locale).slice(0, Math.max(1, Number(feed.limit || 20)));
   const site = String(ctx.config.siteUrl || '').replace(/\/$/, '');
-  return `<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>${xml(localizedValue(ctx.config.feed?.title, locale, localizedValue(ctx.config.siteName, locale, 'Site')))}</title><link>${xml(site)}</link><description>${xml(localizedValue(ctx.config.description, locale, ''))}</description>${entries.map(entry => { const parsed = entry.date ? new Date(entry.date) : null; const published = parsed && !Number.isNaN(parsed.valueOf()) ? parsed.toUTCString() : entry.date || ''; return `<item><title>${xml(entry.title)}</title><link>${xml(`${site}${routeFor(ctx, entry)}`)}</link><guid>${xml(`${site}${routeFor(ctx, entry)}`)}</guid><pubDate>${xml(published)}</pubDate><description>${xml(entry.description)}</description></item>`; }).join('')}</channel></rss>`;
+  return `<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>${xml(localizedValue(feed.title, locale, localizedValue(ctx.config.siteName, locale, 'Site')))}</title><link>${xml(site)}</link><description>${xml(localizedValue(feed.description, locale, localizedValue(ctx.config.description, locale, '')))}</description>${entries.map(entry => { const parsed = entry.date ? new Date(entry.date) : null; const published = parsed && !Number.isNaN(parsed.valueOf()) ? parsed.toUTCString() : entry.date || ''; return `<item><title>${xml(entry.title)}</title><link>${xml(`${site}${routeFor(ctx, entry)}`)}</link><guid>${xml(`${site}${routeFor(ctx, entry)}`)}</guid><pubDate>${xml(published)}</pubDate><description>${xml(entry.description)}</description></item>`; }).join('')}</channel></rss>`;
 }
 
 function searchIndex(ctx: BuildContext, locale: string) {
   return sourceDocuments(ctx).filter(doc => doc.locale === locale).sort((left, right) => routeFor(ctx, left).localeCompare(routeFor(ctx, right))).map(doc => ({
     id: doc.id,
-    collection: documentViewCollection(ctx, doc),
+    collection: doc.collection,
     category: postCategory(doc),
     title: doc.title,
     description: doc.description,
     url: routeFor(ctx, doc),
     date: doc.date || '',
-    update: doc.update || '',
+    updated: doc.updated || '',
     headings: doc.nodes.filter(node => node.kind === 'heading').map(node => node.text).join(' '),
     text: doc.markdown.replaceAll(/[`*_>#]/g, ' ').replaceAll(/:::.*$/gm, ' ').replaceAll(/\s+/g, ' ').trim()
   }));
 }
 
 async function writeSearch(ctx: BuildContext, locale: string) {
-  const settings = themePluginSettings(ctx, 'search');
-  if (!pluginEnabled(ctx, 'search')) return;
+  const settings = themeComponentSettings(ctx, 'search');
+  if (!componentEnabled(ctx, 'search')) return;
   const entries = searchIndex(ctx, locale);
-  const shardSize = Math.max(50, numericPluginSetting(ctx, 'search', 'shardSize', 50));
+  const shardSize = Math.max(50, numericComponentSetting(ctx, 'search', 'shardSize', 50));
   if (entries.length <= shardSize) {
     await writeIfChanged(ctx, `assets/search-index.${locale}.json`, JSON.stringify(entries));
     return;
@@ -1991,200 +2059,70 @@ function robotsText(ctx: BuildContext, siteUrl: string): string {
 
 async function writeArchives(ctx: BuildContext): Promise<string[]> {
   const routes: string[] = [];
-  const pageSize = Math.max(10, Number(ctx.config.archive?.pageSize));
+  const defaultPageSize = 50;
   for (const collection of archiveCollections(ctx)) for (const locale of ctx.config.activeLocales || [ctx.config.defaultLocale || 'en']) {
-    const entries = documentsForCollection(ctx, collection, locale);
-    if (!entries.length) continue;
-    const base = String(ctx.config.archive?.route || contentViewSettings(ctx, collection).archiveRoute || collectionSettings(ctx, collection).archiveRoute || `/:locale/${collection}/`).replace(':locale', locale).replace(':collection', collection).replace(/\/+/g, '/').replace(/([^:])\/\//g, '$1/');
-    const archiveBase = `/${base.replace(/^\/+|\/+$/g, '')}/`;
-    const pages = Math.ceil(entries.length / pageSize);
-    for (let page = 1; page <= pages; page += 1) {
-      const route = page === 1 ? archiveBase : `${archiveBase}page/${page}/`;
-      const title = themeText(ctx, locale, `archive.${collection}.title`, themeText(ctx, locale, 'archive.title', collection));
-      const readLabel = themeText(ctx, locale, `archive.${collection}.continue`, themeText(ctx, locale, 'archive.continue', 'Read note'));
-      const archiveDescription = themeText(ctx, locale, `archive.${collection}.description`, themeText(ctx, locale, 'archive.description', `Published ${collection}`));
-      const publishedLabel = themeText(ctx, locale, 'post.published', 'Published');
-      const authorLabel = themeText(ctx, locale, 'post.author', 'Author');
-      const coverAltLabel = themeText(ctx, locale, 'post.coverAlt', 'Cover image');
-      const pageCount = interpolateMessage(themeText(ctx, locale, 'archive.pageCount', 'Page {page} of {pages}'), { page, pages });
-      const listing = entries.slice((page - 1) * pageSize, page * pageSize).map(entry => {
-        const coverUrl = publicImageUrl(entry.data?.cover || entry.data?.ogImage);
-        const coverMarkup = coverUrl ? `<div class="archive-entry-cover"><img src="${coverUrl}" alt="${escapeHtml(`${coverAltLabel}: ${entry.title}`)}" width="1200" height="630" sizes="144px" loading="lazy" decoding="async"></div>` : '';
-        const author = entry.author || localizedValue(ctx.config.author, locale, 'Site Owner');
-        return `<article class="archive-entry">${coverMarkup}<p class="archive-entry-index"><span class="archive-entry-label">${escapeHtml(publishedLabel)}</span><time datetime="${escapeHtml(entry.date || '')}">${formatDate(entry.date, locale, dateLocaleFor(ctx, locale))}</time></p><div class="archive-entry-main"><h2><a href="${safeUrl(routeFor(ctx, entry))}">${escapeHtml(entry.title)}</a></h2>${entry.description ? `<p class="archive-entry-summary">${escapeHtml(entry.description)}</p>` : ''}<p class="archive-entry-author"><span class="archive-entry-label">${escapeHtml(authorLabel)}</span> ${escapeHtml(author)}</p><p class="archive-entry-action"><a href="${safeUrl(routeFor(ctx, entry))}">${escapeHtml(readLabel)} <span aria-hidden="true">↗</span></a></p></div></article>`;
-      }).join('');
-      const previousHref = page === 2 ? archiveBase : `${archiveBase}page/${page - 1}/`;
-      const nextHref = `${archiveBase}page/${page + 1}/`;
-      const pagination = `<nav class="archive-pagination" aria-label="${escapeHtml(title)}">${page > 1 ? `<a href="${safeUrl(previousHref)}">${escapeHtml(themeText(ctx, locale, 'archive.previousPage', 'Previous page'))}</a>` : '<span aria-hidden="true"></span>'}<span class="archive-page-count">${escapeHtml(pageCount)}</span>${page < pages ? `<a href="${safeUrl(nextHref)}">${escapeHtml(themeText(ctx, locale, 'archive.nextPage', 'Next page'))}</a>` : '<span aria-hidden="true"></span>'}</nav>`;
-      const document: Document = { id: `archive-${collection}-${page}`, collection: 'archive', locale, source: `generated:archive:${collection}:${locale}:${page}`, title, description: archiveDescription, pattern: 'document', date: undefined, data: { route, archiveCollection: collection }, markdown: '', excerpt: '', bodyLine: 1, nodes: [], directives: [], metrics: calculateContentMetrics(''), dependencyKeys: [], blockNames: [], hash: '', stat: { mtimeMs: 0, size: 0 } };
-      const archiveHeader = `<header class="archive-header"><p class="eyebrow">${escapeHtml(themeText(ctx, locale, `collections.${collection}`, collection))}</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(archiveDescription)}</p></header>`;
-      await writeIfChanged(ctx, `${route.replace(/^\//, '')}index.html`, pageShell(ctx, document, `${archiveHeader}<section class="archive-list">${listing}</section>${pagination}`));
-      routes.push(route);
+    const archive = collectionSettings(ctx, collection).archive && typeof collectionSettings(ctx, collection).archive === 'object' ? collectionSettings(ctx, collection).archive : {};
+    const pageSize = Math.max(10, Number(archive.pageSize || defaultPageSize));
+    const definitions: Array<{ key: string; category?: string; entries: Document[] }> = [];
+    const kind = collectionContentKind(ctx, collection);
+    definitions.push({ key: collection, entries: queryDocuments(ctx, { collection, kind, locale, orderBy: 'date:desc' }) });
+    if (collection === 'posts') {
+      const categories = [...new Set(queryDocuments(ctx, { collection, kind: 'post', locale, orderBy: 'date:desc' }).map(postCategory))].sort();
+      for (const category of categories) {
+        definitions.push({ key: `category.${category}`, category, entries: queryDocuments(ctx, { collection, kind: 'post', category, locale, orderBy: 'date:desc' }) });
+      }
+    }
+    for (const definition of definitions) {
+      const entries = definition.entries;
+      if (!entries.length) continue;
+      const pages = Math.ceil(entries.length / pageSize);
+      for (let page = 1; page <= pages; page += 1) {
+        const route = archiveRouteFor(ctx, { collection, category: definition.category, locale, page });
+        const title = localizedValue(archive.title, locale, themeText(ctx, locale, `archive.${definition.key}.title`, themeText(ctx, locale, `archive.${collection}.title`, themeText(ctx, locale, 'archive.title', definition.key))));
+        const archiveDescription = localizedValue(archive.description, locale, themeText(ctx, locale, `archive.${definition.key}.description`, themeText(ctx, locale, `archive.${collection}.description`, themeText(ctx, locale, 'archive.description', `Published ${collection}`))));
+        const document: Document = { id: `archive-${definition.key}-${page}`, collection: 'archive', contentKey: `archive:${definition.key}:${locale}:${page}`, locale, source: `generated:archive:${definition.key}:${locale}:${page}`, title, description: archiveDescription, component: 'archive', date: undefined, data: { route, archiveCollection: collection, archiveKey: definition.key, ...(definition.category ? { category: definition.category } : {}) }, markdown: '', excerpt: '', bodyLine: 1, nodes: [], directives: [], metrics: calculateContentMetrics(''), dependencyKeys: [], componentNames: [], hash: '', stat: { mtimeMs: 0, size: 0 } };
+        const archiveComponent = themeComponent(ctx, 'archive');
+        if (!archiveComponent?.renderDocument) throw new Error('active theme must register the archive Component before generating collection archives');
+        const archiveContext = themeContextFor(ctx, document);
+        const renderedArchive = archiveComponent.renderDocument({
+          renderedContent: '',
+          slots: {},
+          props: { title, description: archiveDescription, archiveKey: definition.key, collection, category: definition.category, page, pages, pageSize },
+          runtime: { entries: entries.slice((page - 1) * pageSize, page * pageSize), collection, category: definition.category, page, pages }
+        }, archiveContext);
+        await writeIfChanged(ctx, `${route.replace(/^\//, '')}index.html`, pageShell(ctx, document, renderedArchive));
+        routes.push(route);
+      }
     }
   }
   return routes;
 }
 
-async function writeDeployments(ctx: BuildContext) {
-  if (!ctx.deployment.enabled) return;
-  const locale = ctx.config.defaultLocale || 'en';
-  const deployment = ctx.deployment;
-  const publicDirectory = ctx.deployment.publicDirectory;
-  const publicDirectoryLiteral = JSON.stringify(publicDirectory);
-  // Embed only renderer-derived public metadata in adapters; private config
-  // and backend implementation details never cross the deployment boundary.
-  const discoveryLiteral = JSON.stringify(siteDiscoveryOptions(ctx));
-  const cloudflare = deployment.cloudflare && typeof deployment.cloudflare === 'object' ? deployment.cloudflare : {};
-  const workers = cloudflare.workers && typeof cloudflare.workers === 'object' ? cloudflare.workers : {};
-  const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
-  const runtimeCandidates = [path.join(moduleDirectory, 'fetch-router.js'), path.join(moduleDirectory, 'runtime', 'fetch-router.js')];
-  let fetchRouterSource = '';
-  for (const candidate of runtimeCandidates) {
-    try { fetchRouterSource = await fs.readFile(candidate, 'utf8'); break; } catch { /* try source-mode runtime location */ }
-  }
-  if (!fetchRouterSource) throw new Error('compiled Fetch router is missing; run npm run compile-runtime');
-  await writeIfChanged(ctx, '_pageskill/fetch-router.js', fetchRouterSource);
-  await writeIfChanged(ctx, 'server/_pageskill/fetch-router.js', fetchRouterSource);
-  const securityRuntimeCandidates = [path.join(moduleDirectory, 'lib', 'static-security.js'), path.join(moduleDirectory, 'runtime', 'lib', 'static-security.js')];
-  let securityRuntimeSource = '';
-  for (const candidate of securityRuntimeCandidates) {
-    try { securityRuntimeSource = await fs.readFile(candidate, 'utf8'); break; } catch { /* try the other compiled runtime location */ }
-  }
-  if (!securityRuntimeSource) throw new Error('compiled static-security runtime is missing; run npm run compile-runtime');
-  await writeIfChanged(ctx, '_pageskill/lib/static-security.js', securityRuntimeSource);
-  await writeIfChanged(ctx, 'server/_pageskill/lib/static-security.js', securityRuntimeSource);
-
-  const backendSource = path.join(ctx.root, 'backend', 'handler.ts');
-  let backendEnabled = false;
-  try { await fs.access(backendSource); backendEnabled = ctx.deployment.backend; } catch { /* static-only project */ }
-  if (backendEnabled) {
-    const backendRuntime = path.join(ctx.root, '.pageskill', 'backend-runtime');
-    const backendEntry = path.join(backendRuntime, 'backend', 'handler.js');
-    try { await fs.access(backendEntry); } catch { throw new Error('backend/handler.ts exists but its JavaScript runtime is missing; run npm run compile-backend'); }
-    for (const file of await walk(backendRuntime, ['.js'])) {
-      const relative = normalizePath(path.relative(backendRuntime, file));
-      const source = await fs.readFile(file);
-      await writeIfChanged(ctx, `_pageskill/${relative}`, source);
-      await writeIfChanged(ctx, `server/_pageskill/${relative}`, source);
-    }
-  }
-
-  const backendImport = backendEnabled ? `import { router } from './_pageskill/backend/handler.js';\n` : 'const router = undefined;\n';
-  const localeLiteral = JSON.stringify(String(locale));
-  const worker = `import { createSiteFetchHandler } from './_pageskill/fetch-router.js';\n${backendImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${localeLiteral}, staticDirectory: ${publicDirectoryLiteral}, discovery: ${discoveryLiteral} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`;
-  await writeIfChanged(ctx, 'cloudflare-worker.mjs', worker);
-  if (backendEnabled) await writeIfChanged(ctx, '_worker.js', worker);
-  await writeIfChanged(ctx, '.assetsignore', `_worker.js\ncloudflare-worker.mjs\nvps-server.mjs\nwrangler.toml\n_pageskill/*\nserver/*\n.pageskill/*\n`);
-  // A backend must run first for every pathname: registered Router paths are
-  // not an asset allowlist and may live outside `/api`.
-  const workerFirst = backendEnabled ? 'true' : 'false';
-  const workerName = String(workers.name);
-  const compatibilityDate = String(workers.compatibilityDate);
-  const accountId = cloudflare.accountId ? `account_id = ${JSON.stringify(String(cloudflare.accountId))}\n` : '';
-  await writeIfChanged(ctx, 'wrangler.toml', `${accountId}name = ${JSON.stringify(workerName)}\nmain = "cloudflare-worker.mjs"\ncompatibility_date = ${JSON.stringify(compatibilityDate)}\n\n[assets]\ndirectory = ${JSON.stringify(`./${publicDirectory}`)}\nbinding = "ASSETS"\nrun_worker_first = ${workerFirst}\nhtml_handling = "auto-trailing-slash"\nnot_found_handling = "404-page"\n`);
-  const denoBackendImport = backendEnabled ? `import { router } from './_pageskill/backend/handler.js';\n` : 'const router = undefined;\n';
-  const vpsStaticSource = `import { publicPathFromUrl, isPublicPath } from './_pageskill/lib/static-security.js';\nconst staticRootPath = await Deno.realPath(new URL(${JSON.stringify(`./${publicDirectory}/`)}, import.meta.url));\nconst staticRoot = staticRootPath.replaceAll('\\\\', '/');\nconst staticRootPrefix = staticRoot.endsWith('/') ? staticRoot : staticRoot + '/';\nconst staticTypes = ${JSON.stringify({
-    '.css': 'text/css; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.eot': 'application/vnd.ms-fontobject',
-    '.gif': 'image/gif', '.html': 'text/html; charset=utf-8', '.ico': 'image/x-icon', '.jpeg': 'image/jpeg',
-    '.jpg': 'image/jpeg', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
-    '.md': 'text/markdown; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.pdf': 'application/pdf',
-    '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.webmanifest': 'application/manifest+json; charset=utf-8',
-    '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2', '.xml': 'application/xml; charset=utf-8'
-  })};
-function staticContentType(pathname) { const extension = pathname.slice(pathname.lastIndexOf('.')).toLowerCase(); return staticTypes[extension] || 'application/octet-stream'; }
-function staticCacheControl(pathname) { return /^\\/assets\\/(?:[^/]+\\/)*[^/]+\\.[a-f0-9]{12}\\.(?:css|js|mjs)$/i.test(pathname) ? 'public, max-age=31536000, immutable' : 'no-cache'; }
-async function fetchStaticAsset(request) {
-  const method = String(request.method || 'GET').toUpperCase();
-  if (method !== 'GET' && method !== 'HEAD') return new Response('Method Not Allowed', { status: 405, headers: { allow: 'GET, HEAD' } });
-  const decodedPath = publicPathFromUrl(request.url, { staticDirectory: ${publicDirectoryLiteral} });
-  if (!decodedPath) return new Response('Not found', { status: 404 });
-  const pathname = decodedPath === '/' || decodedPath.endsWith('/') ? decodedPath + 'index.html' : decodedPath;
-  const relative = pathname.replace(/^\\/+/, '');
-  let target;
-  try { target = await Deno.realPath(staticRootPath + '/' + relative); } catch { return new Response('Not found', { status: 404 }); }
-  const canonicalTarget = target.replaceAll('\\\\', '/');
-  if (canonicalTarget !== staticRoot && !canonicalTarget.startsWith(staticRootPrefix)) return new Response('Not found', { status: 404 });
-  const targetRelative = canonicalTarget.slice(staticRoot.length).replace(/^\\/+/, '');
-  if (!isPublicPath('/' + targetRelative, { staticDirectory: ${publicDirectoryLiteral} })) return new Response('Not found', { status: 404 });
-  let body;
-  try { body = await Deno.readFile(target); } catch { return new Response('Not found', { status: 404 }); }
-  const headers = new Headers({ 'content-type': staticContentType(pathname) });
-  headers.set('cache-control', staticCacheControl(pathname));
-  return new Response(method === 'HEAD' ? null : body, { status: 200, headers });
-}
-`;
-  await writeIfChanged(ctx, 'vps-server.mjs', `${vpsStaticSource}import { createSiteFetchHandler } from './_pageskill/fetch-router.js';\n${denoBackendImport}const runtimeEnv = new Proxy({}, { get: (_target, key) => Deno.env.get(String(key)) });\nconst fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${JSON.stringify(String(locale))}, staticDirectory: ${publicDirectoryLiteral}, discovery: ${discoveryLiteral}, assets: fetchStaticAsset });\nconst port = Number(Deno.env.get('PORT') || '8787');\nconst hostname = Deno.env.get('HOST') || '127.0.0.1';\nDeno.serve({ port, hostname }, (request, info) => fetchHandler(request, runtimeEnv, info));\nexport { fetchHandler };\n`);
-  const sitesBackendImport = backendEnabled ? `import { router } from './_pageskill/backend/handler.js';\n` : 'const router = undefined;\n';
-  const openAiSites = ctx.deployment.targets.includes('openai-sites');
-  const staticOption = openAiSites ? `, staticDirectory: ${publicDirectoryLiteral}` : '';
-  const staticAssetsImport = openAiSites ? `import { fetchStaticAsset } from './_pageskill/static-assets.js';\n` : '';
-  const staticAssetsOption = openAiSites ? ', assets: fetchStaticAsset' : '';
-  await writeIfChanged(ctx, 'server/index.js', `import { createSiteFetchHandler } from './_pageskill/fetch-router.js';\n${sitesBackendImport}${staticAssetsImport}const fetchHandler = createSiteFetchHandler({ router, defaultLocale: ${localeLiteral}${staticOption}, discovery: ${discoveryLiteral}${staticAssetsOption} });\nexport { fetchHandler };\nexport default { fetch: fetchHandler };\n`);
+async function runtimeAdapter(ctx: BuildContext) {
+  return loadRuntimeAdapter(ctx.deployment.adapter);
 }
 
-async function writeSiteStaticDirectory(ctx: BuildContext) {
-  const staticDirectory = ctx.deployment.publicDirectory;
-  if (!staticDirectory) return;
-  const targetPrefix = `${staticDirectory}/`;
-  // A route or asset whose URL already occupies the configured public prefix
-  // would be overwritten by the snapshot. Fail before copying any files.
-  for (const output of ctx.outputs) {
-    if (output === staticDirectory || output.startsWith(targetPrefix)) {
-      throw new Error(`config.yml: deployment.staticDirectory "${staticDirectory}" conflicts with generated output "${output}"; choose another public subdirectory`);
-    }
-  }
-  const outputs = [...ctx.outputs];
-  for (const output of outputs) {
-    if (!output || output.startsWith(targetPrefix) || !isPublicPath(`/${output}`, { staticDirectory })) continue;
-    try {
-      await writeIfChanged(ctx, `${staticDirectory}/${output}`, await fs.readFile(outputTarget(ctx, output).target));
-    } catch (error: any) {
-      if (error.code !== 'ENOENT') throw error;
-    }
-  }
+async function prepareRuntimeAdapter(ctx: BuildContext): Promise<void> {
+  const adapter = await runtimeAdapter(ctx);
+  await adapter?.prepare?.({ root: ctx.root, outputDirectory: ctx.out, backend: ctx.deployment.backend });
 }
 
-function staticContentType(file: string): string {
-  const normalized = normalizePath(file).replace(/^\/+/, '');
-  if (normalized === '.well-known/api-catalog') return 'application/linkset+json; charset=utf-8';
-  if (normalized === '.well-known/oauth-protected-resource' || normalized === '.well-known/oauth-authorization-server') return 'application/json; charset=utf-8';
-  const types: Record<string, string> = {
-    '.css': 'text/css; charset=utf-8', '.csv': 'text/csv; charset=utf-8', '.eot': 'application/vnd.ms-fontobject',
-    '.gif': 'image/gif', '.html': 'text/html; charset=utf-8', '.ico': 'image/x-icon', '.jpeg': 'image/jpeg',
-    '.jpg': 'image/jpeg', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
-    '.md': 'text/markdown; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.pdf': 'application/pdf',
-    '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.webmanifest': 'application/manifest+json; charset=utf-8',
-    '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2', '.xml': 'application/xml; charset=utf-8'
-  };
-  return types[path.extname(file).toLowerCase()] || 'application/octet-stream';
-}
-
-async function writeSiteStaticRuntime(ctx: BuildContext) {
-  // The Sites adapter is the only consumer that needs a generated base64
-  // asset table. Mixed deployments use the public directory through ASSETS
-  // (or the Deno callback in vps-server.mjs) by default.
-  const openAiSites = ctx.deployment.targets.includes('openai-sites');
-  if (!openAiSites) return;
-  const staticDirectory = ctx.deployment.publicDirectory;
-  if (!staticDirectory) return;
-  const staticPrefix = `${staticDirectory}/`;
-  const entries: string[] = [];
-  // Read only outputs recorded during this build. Walking the directory would
-  // re-embed stale files from a deleted page (or an untracked manual file)
-  // before the old-output cleanup below runs.
-  for (const output of [...ctx.outputs].sort()) {
-    if (!output.startsWith(staticPrefix)) continue;
-    const relative = output.slice(staticPrefix.length);
-    if (!relative) continue;
-    // Only files in the public root are embedded. Deployment metadata,
-    // generated runtimes, caches, and server code must never become assets.
-    if (!isPublicPath(`/${relative}`, { staticDirectory })) continue;
-    const data = (await fs.readFile(outputTarget(ctx, output).target)).toString('base64');
-    entries.push(`  ${JSON.stringify(`/${relative}`)}: [${JSON.stringify(staticContentType(relative))}, ${JSON.stringify(data)}]`);
-  }
-  const staticDirectoryLiteral = JSON.stringify(staticDirectory);
-  const source = `import { publicPathFromUrl } from './lib/static-security.js';\n\nconst assets = {\n${entries.join(',\n')}\n};\n\nfunction decode(value) {\n  const binary = atob(value);\n  const bytes = new Uint8Array(binary.length);\n  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);\n  return bytes;\n}\n\nfunction staticCacheControl(pathname) { return /^\\/assets\\/(?:[^/]+\\/)*[^/]+\\.[a-f0-9]{12}\\.(?:css|js|mjs)$/i.test(pathname) ? 'public, max-age=31536000, immutable' : 'no-cache'; }\n\nexport function fetchStaticAsset(request) {\n  const method = String(request.method || 'GET').toUpperCase();\n  if (method !== 'GET' && method !== 'HEAD') return new Response('Method Not Allowed', { status: 405, headers: { allow: 'GET, HEAD' } });\n  const decodedPath = publicPathFromUrl(request.url, { staticDirectory: ${staticDirectoryLiteral} });\n  if (!decodedPath) return new Response('Not found', { status: 404 });\n  const pathname = decodedPath === '/' || decodedPath.endsWith('/') ? decodedPath + 'index.html' : decodedPath;\n  const asset = assets[pathname];\n  if (!asset) return new Response('Not found', { status: 404 });\n  const headers = new Headers({ 'content-type': asset[0], 'cache-control': staticCacheControl(pathname) });\n  return new Response(method === 'HEAD' ? null : decode(asset[1]), { status: 200, headers });\n}\n`;
-  await writeIfChanged(ctx, 'server/_pageskill/static-assets.js', source);
+async function writeRuntimeAdapter(ctx: BuildContext): Promise<void> {
+  const adapter = await runtimeAdapter(ctx);
+  if (!adapter) return;
+  if (!adapter.build) throw new Error(`runtime adapter "${adapter.id}" does not provide a build contract`);
+  const locale = String(ctx.config.defaultLocale || 'en');
+  await adapter.build({
+    root: ctx.root,
+    outputDirectory: ctx.out,
+    backendRuntimeDirectory: path.join(ctx.root, '.pageskill', 'backend-runtime'),
+    backend: ctx.deployment.backend,
+    defaultLocale: locale,
+    activeLocales: (ctx.config.activeLocales || [locale]).map(String),
+    contentKeys: [...new Set(ctx.docs.map(doc => doc.contentKey))].sort(),
+    discovery: siteDiscoveryOptions(ctx),
+    writeOutput: (relative, data) => writeIfChanged(ctx, relative, data)
+  });
 }
 
 export async function createContext(root = process.cwd()): Promise<BuildContext> {
@@ -2234,13 +2172,13 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
   if (configuredAdapters.some(integration => integration.consent !== 'none') && config.privacy?.consent?.enabled === false) {
     throw new Error('config.yml: privacy.consent.enabled is false, but a configured integration requires consent; keep the provider gated or remove the integration');
   }
-  if (configuredAdapters.some(integration => integration.consent !== 'none') && !themeDefinition.plugins?.privacyConsent) {
-    throw new Error('active theme must register the privacyConsent UI plugin before configuring an integration that requires consent');
+  if (configuredAdapters.some(integration => integration.consent !== 'none') && !themeDefinition.components?.privacyConsent) {
+    throw new Error('active theme must register the privacyConsent UI component before configuring an integration that requires consent');
   }
   const themeConfig = normalizeThemeConfig(loadedThemeConfig.config, themeDefinition, loadedThemeConfig.file ? normalizePath(path.relative(root, loadedThemeConfig.file)) : 'theme.config');
   const themeI18n = await loadThemeI18n(themeRoot, themeDefinition, String(config.i18n?.fallbackLocale || config.defaultLocale || 'en'));
   // The theme entry is code-owned; the instance file contributes only
-  // schema-validated plugin overrides. Resource discovery is owned by the
+  // schema-validated component overrides. Resource discovery is owned by the
   // defineTheme export, not by a second package configuration registry.
   const runtimeTheme = { ...theme, ...themeDefinition, __fingerprint: themeHash } as Record<string, any>;
   const assetRoot = path.join(root, 'content', 'assets');
@@ -2297,8 +2235,9 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
       return {
         ...cached,
         ...identity,
-        pattern: String(cached.data?.pattern || defaultPattern(config, identity.collection, identity.id, themeDefinition.patterns)),
-        update: cached.update ?? (cached.data?.update ? String(cached.data.update).trim() : undefined),
+         component: String(cached.data?.component || defaultComponent(config, identity.collection, identity.id)),
+        updated: cached.updated ?? (cached.data?.updated ? String(cached.data.updated).trim() : undefined),
+        contentKey: cached.contentKey || `${identity.collection}:${identity.id}`,
         author: cached.data?.author ? String(cached.data.author) : localizedValue(config.author, identity.locale, 'Site Owner'),
         cover: cached.cover || (cached.data?.cover ? String(cached.data.cover) : undefined),
         excerpt: typeof cached.excerpt === 'string' ? cached.excerpt : cached.markdown,
@@ -2309,16 +2248,16 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
         directives: [],
         metrics,
         dependencyKeys: cached.dependencies || [],
-        blockNames: cached.blocks || []
-      } as Document;
-    }
-    return loadDocument(root, source, config, sourceParseCache, themeDefinition.patterns, themeConfig);
+         componentNames: cached.components || []
+       } as Document;
+     }
+     return loadDocument(root, source, config, sourceParseCache, themeConfig);
   });
   const docs = loadedDocs.filter((doc): doc is Document => doc !== null);
   profile.load = duration(loadStart);
   profile.documents = docs.length;
   const byKey = new Map(docs.map(doc => [`${doc.collection}:${doc.id}:${doc.locale}`, doc]));
-  return { root, out: path.join(root, 'dist'), config, configFiles: loadedConfig.configFiles, deployment: resolveDeploymentConfig(config), theme: runtimeTheme, themeConfig, themeConfigFile: loadedThemeConfig.file, themeI18n, themeDefinition, docs, byKey, routes: new Map(), cache, profile, outputs: new Set(), diagnostics: [], configHash: loadedConfig.configHash, themeHash, assetHash, backendHash, contentRoots, imageCache: {}, imageDimensions: {}, outputHashes: {}, collectionIndex: new Map(), translationIndex: new Map(), documentPositions: new Map(), tagIndex: new Map(), markdownCache: new Map(), sourceParseCache, themeStyleSources, themeAssetHashes };
+  return { root, out: path.join(root, 'dist', 'public'), config, configFiles: loadedConfig.configFiles, deployment: resolveDeploymentConfig(config), theme: runtimeTheme, themeConfig, themeConfigFile: loadedThemeConfig.file, themeI18n, themeDefinition, docs, byKey, routes: new Map(), cache, profile, outputs: new Set(), diagnostics: [], configHash: loadedConfig.configHash, themeHash, assetHash, backendHash, contentRoots, imageCache: {}, imageDimensions: {}, outputHashes: {}, collectionIndex: new Map(), translationIndex: new Map(), documentPositions: new Map(), tagIndex: new Map(), markdownCache: new Map(), sourceParseCache, themeStyleSources, themeAssetHashes, componentWarnings: [] };
 }
 
 export async function refreshContext(ctx: BuildContext, changedFiles: string[] = []): Promise<BuildContext> {
@@ -2355,7 +2294,7 @@ export async function refreshContext(ctx: BuildContext, changedFiles: string[] =
     if (file !== contentRoot && !file.startsWith(`${contentRoot}${path.sep}`)) continue;
     const existing = ctx.docs.findIndex(doc => path.resolve(doc.source) === file);
     try {
-      const loaded = await loadDocument(ctx.root, file, ctx.config, ctx.sourceParseCache, ctx.themeDefinition.patterns, ctx.themeConfig);
+      const loaded = await loadDocument(ctx.root, file, ctx.config, ctx.sourceParseCache, ctx.themeConfig);
       if (existing >= 0) ctx.docs[existing] = loaded;
       else ctx.docs.push(loaded);
     } catch (error: any) {
@@ -2391,6 +2330,9 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   ctx.profile.render = 0;
   ctx.profile.assets = 0;
   ctx.profile.write = 0;
+  // Runtime preparation is adapter-owned. Static Core builds have no host
+  // configuration or runtime files to emit.
+  await prepareRuntimeAdapter(ctx);
   if (!outputDirectoryExists) {
     const stageRoot = path.join(ctx.root, '.pageskill');
     await fs.mkdir(stageRoot, { recursive: true });
@@ -2426,7 +2368,7 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   if (fastUnchanged) {
     for (const output of ctx.cache.outputs || []) retainOutput(ctx, output);
     ctx.profile.total = duration(totalStart);
-    await writeIfChanged(ctx, '.pageskill/build-profile.json', JSON.stringify(ctx.profile, null, 2));
+    await writePrivateIfChanged(ctx, 'build-profile.json', JSON.stringify(ctx.profile, null, 2));
     return ctx;
   }
 
@@ -2443,7 +2385,8 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   const validateStart = performance.now();
   for (const doc of ctx.docs) {
     ctx.diagnostics.push(...documentSchemaDiagnostics(ctx.config, doc));
-    if (!ctx.themeDefinition.patterns[doc.pattern]) ctx.diagnostics.push(`${doc.source}:1:1: unknown Pattern "${doc.pattern}"; use one of ${Object.keys(ctx.themeDefinition.patterns).join(', ')}`);
+    const component = ctx.themeDefinition.components[doc.component];
+    if (!component?.renderDocument) ctx.diagnostics.push(`${doc.source}:1:1: Component "${doc.component}" cannot render a document; choose a Component with renderDocument`);
   }
   if (ctx.diagnostics.length) throw new Error(ctx.diagnostics.join('\n'));
   ctx.profile.validate = duration(validateStart);
@@ -2493,15 +2436,18 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
       parseWork += performance.now() - started;
     }
     for (const node of doc.directives) {
-      if (!ctx.themeDefinition.blocks[node.name]) throw new MarkdownError(`unknown Block "${node.name}"; use one of ${Object.keys(ctx.themeDefinition.blocks).join(', ')}`, node.position);
-      validateThemeAttrs(node, ctx.themeDefinition.blocks[node.name]);
+      if (node.name === 'slot') continue;
+      const component = ctx.themeDefinition.components[node.name];
+      if (!component?.render) throw new MarkdownError(`unknown Component "${node.name}"; use one of ${Object.keys(ctx.themeDefinition.components).join(', ')}`, node.position);
+      validateComponentAttrs(node, component);
     }
     doc.dependencyKeys = dependenciesFor(ctx, doc);
-    doc.blockNames = [...new Set(doc.directives.map(directive => directive.name))].sort();
+    doc.componentNames = [...new Set(doc.directives.filter(directive => directive.name !== 'slot').map(directive => directive.name))].sort();
     const context = themeContextFor(ctx, doc);
-    const rendered = context.renderNodes(contentNodes(doc));
-    const pattern = ctx.themeDefinition.patterns[doc.pattern] || ctx.themeDefinition.patterns.document;
-    await writeIfChanged(ctx, `${routeFor(ctx, doc).replace(/^\//, '')}index.html`, pageShell(ctx, doc, pattern.render(rendered, context)));
+    const component = ctx.themeDefinition.components[doc.component];
+    if (!component?.renderDocument) throw new Error(`${doc.source}: Component "${doc.component}" cannot render a document`);
+    const documentInput = documentComponentInput(ctx, doc, context);
+    await writeIfChanged(ctx, `${routeFor(ctx, doc).replace(/^\//, '')}index.html`, pageShell(ctx, doc, component.renderDocument(documentInput, context)));
     if (ctx.config.outputs?.markdownMirrors === true) await writeIfChanged(ctx, `${routeFor(ctx, doc).replace(/^\//, '').replace(/\/$/, '')}.md`, `${doc.markdown.trim()}\n`);
     doc.nodes = [];
     doc.directives = [];
@@ -2512,14 +2458,14 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   await writeGeneratedPages(ctx);
   const siteUrl = String(ctx.config.siteUrl || '').replace(/\/$/, '');
   await writeIfChanged(ctx, 'robots.txt', robotsText(ctx, siteUrl));
-  const archiveRoutes = ctx.config.archive?.enabled === false ? [] : await writeArchives(ctx);
+  const archiveRoutes = await writeArchives(ctx);
   const sitemapDocuments = [...ctx.routes.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([route, doc]) => {
     const translations = ctx.translationIndex.get(translationKey(doc.collection, doc.id)) || [];
     const lines = ['<url>', `  <loc>${xml(`${siteUrl}${route}`)}</loc>`];
     // Only dated post documents have an author-controlled last-modified date.
     // Stable pages and generated archive routes continue to use their
-    // publication/source date and never inherit a post's `update` field.
-    const lastModified = isPostCollection(ctx, doc.collection) ? doc.update || doc.date : doc.date;
+    // publication/source date and never inherit an article's `updated` field.
+    const lastModified = isPostCollection(ctx, doc.collection) ? doc.updated || doc.date : doc.date;
     if (lastModified && publicationTimestamp(lastModified) !== undefined) lines.push(`  <lastmod>${xml(lastModified.slice(0, 10))}</lastmod>`);
     const defaultTranslation = translations.find(translation => translation.locale === (ctx.config.defaultLocale || 'en'));
     if (defaultTranslation) lines.push(`  <xhtml:link rel="alternate" hreflang="x-default" href="${xml(`${siteUrl}${routeFor(ctx, defaultTranslation)}`)}"/>`);
@@ -2545,7 +2491,7 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   await writeAgentSkills(ctx);
   await writeArdManifest(ctx, siteUrl);
   await writeAgentInfo(ctx, siteUrl);
-  await writeIfChanged(ctx, '.pageskill/catalog.json', JSON.stringify(catalog(ctx), null, 2)); await writeDeployments(ctx); await copyThemeAndAssets(ctx); await writeSiteStaticDirectory(ctx); await writeSiteStaticRuntime(ctx); ctx.profile.assets = duration(assetStart);
+  await writeIfChanged(ctx, '.pageskill/catalog.json', JSON.stringify(catalog(ctx), null, 2)); await writeRuntimeAdapter(ctx); await copyThemeAndAssets(ctx); ctx.profile.assets = duration(assetStart);
   const previousOutputs = new Set(ctx.cache.outputs || []); const writeStart = performance.now();
   for (const old of previousOutputs) {
     const { normalized, target } = outputTarget(ctx, old);
@@ -2553,11 +2499,10 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
     try { await fs.rm(target); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
   }
   ctx.profile.write = duration(writeStart);
-  ctx.outputs.add('.pageskill/build-profile.json');
   const manifest: CacheManifest = { version: 4, rendererVersion: RENDERER_VERSION, configHash: ctx.configHash, themeHash: ctx.themeHash, assetHash: ctx.assetHash, backendHash: ctx.backendHash, contentRoots: ctx.contentRoots, routeCount: ctx.routes.size, documents: Object.fromEntries(ctx.docs.map(doc => {
     const dependencies = doc.dependencyKeys.length ? doc.dependencyKeys : ctx.cache.documents[doc.source]?.dependencies || [];
-    const blocks = doc.blockNames.length ? doc.blockNames : ctx.cache.documents[doc.source]?.blocks || [];
-    return [doc.source, { hash: doc.hash, outputs: documentOutputs(ctx, doc), dependencies, blocks, mtimeMs: doc.stat.mtimeMs, size: doc.stat.size, collection: doc.collection, id: doc.id, locale: doc.locale, title: doc.title, description: doc.description, pattern: doc.pattern, date: doc.date, update: doc.update, author: doc.author, cover: doc.cover, data: doc.data, markdown: doc.markdown, excerpt: doc.excerpt, bodyLine: doc.bodyLine || 1, metrics: doc.metrics }];
+    const components = doc.componentNames.length ? doc.componentNames : ctx.cache.documents[doc.source]?.components || [];
+    return [doc.source, { hash: doc.hash, outputs: documentOutputs(ctx, doc), dependencies, components, mtimeMs: doc.stat.mtimeMs, size: doc.stat.size, collection: doc.collection, id: doc.id, contentKey: doc.contentKey, locale: doc.locale, title: doc.title, description: doc.description, component: doc.component, date: doc.date, updated: doc.updated, author: doc.author, cover: doc.cover, data: doc.data, markdown: doc.markdown, excerpt: doc.excerpt, bodyLine: doc.bodyLine || 1, metrics: doc.metrics }];
   })), images: ctx.imageCache, outputs: [...ctx.outputs].sort(), outputHashes: Object.fromEntries([...ctx.outputs].map(output => [output, ctx.outputHashes[output] || ctx.cache.outputHashes?.[output] || '']).filter(([, hash]) => Boolean(hash))) };
   const cacheDirectory = path.join(ctx.root, '.pageskill');
   await fs.mkdir(cacheDirectory, { recursive: true });
@@ -2582,10 +2527,11 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   await fs.writeFile(graphTemporary, JSON.stringify(dependencyGraph, null, 2));
   await fs.rename(graphTemporary, graphTarget);
   ctx.profile.total = duration(totalStart);
-  await writeIfChanged(ctx, '.pageskill/build-profile.json', JSON.stringify(ctx.profile, null, 2));
+  await writePrivateIfChanged(ctx, 'build-profile.json', JSON.stringify(ctx.profile, null, 2));
   ctx.cache = manifest;
   if (ctx.stagedOutput) {
     const staged = ctx.stagedOutput;
+    await fs.mkdir(path.dirname(staged.final), { recursive: true });
     await fs.rename(staged.temporary, staged.final);
     ctx.out = staged.final;
     ctx.stagedOutput = undefined;
@@ -2597,7 +2543,17 @@ export async function check(ctx: BuildContext) {
   for (const doc of ctx.docs) if (!doc.nodes.length && doc.markdown) { doc.nodes = parseMarkdown(doc.markdown, doc.source, doc.bodyLine || 1); doc.directives = flattenDirectives(doc.nodes); }
   ctx.diagnostics.length = 0;
   for (const doc of ctx.docs) ctx.diagnostics.push(...documentSchemaDiagnostics(ctx.config, doc));
-  const errors = [...ctx.diagnostics]; for (const doc of ctx.docs) for (const node of doc.directives) if (!ctx.themeDefinition.blocks[node.name]) errors.push(diagnostic(node.position, `unknown Block "${node.name}"; add it to the active theme or choose a supported Block`));
+  const errors = [...ctx.diagnostics];
+  for (const doc of ctx.docs) {
+    const layout = ctx.themeDefinition.components[doc.component];
+    if (!layout?.renderDocument) errors.push(`${doc.source}:1:1: Component "${doc.component}" cannot render a document`);
+    for (const node of doc.directives) {
+      if (node.name === 'slot') continue;
+      const component = ctx.themeDefinition.components[node.name];
+      if (!component?.render) errors.push(diagnostic(node.position, `unknown Component "${node.name}"; add it to the active theme or choose a supported Component`));
+      else try { validateComponentAttrs(node, component); } catch (error) { errors.push(String((error as Error).message || error)); }
+    }
+  }
   if (errors.length) throw new Error(errors.join('\n')); return { ok: true, documents: ctx.docs.length, routes: ctx.routes.size || ctx.cache.routeCount || ctx.docs.length, outputs: ctx.outputs.size };
 }
 
@@ -2619,12 +2575,12 @@ function inspectDocument(ctx: BuildContext, doc: Document) {
     id: doc.id,
     collection: doc.collection,
     locale: doc.locale,
-    pattern: doc.pattern,
+    component: doc.component,
     route: routeFor(ctx, doc),
     source: doc.source,
     title: doc.title,
     date: doc.date,
-    update: doc.update,
+    updated: doc.updated,
     metrics: doc.metrics,
     directives: doc.directives.map(node => ({ name: node.name, attrs: node.attrs, position: node.position }))
   };
@@ -2652,52 +2608,15 @@ export async function inspect(ctx: BuildContext, query = '') {
 
   const namespace = rawQuery.slice(0, separator).trim().toLowerCase();
   const id = rawQuery.slice(separator + 1).trim();
-  const availableNamespaces = ['block', 'pattern', 'collection', 'plugin', 'page', 'post', 'update'];
+  const availableNamespaces = ['component', 'collection', 'page', 'post', 'release', 'updates'];
   if (!availableNamespaces.includes(namespace)) {
     throw new InspectError('INSPECT_INVALID_QUERY', `Unsupported inspect namespace "${namespace}".`, { query: rawQuery, allowedNamespaces: availableNamespaces });
   }
   if (!id) throw new InspectError('INSPECT_INVALID_QUERY', `Inspect namespace "${namespace}" requires an id.`, { query: rawQuery, allowedNamespaces: availableNamespaces });
 
-  if (namespace === 'page' || namespace === 'post' || namespace === 'update') {
-    const collection = namespace === 'page' ? 'pages' : 'posts';
-    return inspectContent(ctx, rawQuery, collection, id, namespace === 'update' ? 'update' : undefined);
-  }
-
-  if (namespace === 'block') {
-    const block = ctx.themeDefinition.blocks[id];
-    if (!block) inspectNotFound(rawQuery, 'Block', Object.keys(ctx.themeDefinition.blocks).sort());
-    return {
-      kind: 'block',
-      query: rawQuery,
-      item: {
-        name: block.name,
-        schema: block.schema,
-        defaults: block.defaults || {},
-        contexts: block.contexts || ['page', 'post'],
-        resources: {
-          styles: resourcePaths(block.resources, 'styles'),
-          scripts: resourcePaths(block.resources, 'scripts')
-        },
-        examples: [block.example || `:::${block.name}\n:::`]
-      }
-    };
-  }
-
-  if (namespace === 'pattern') {
-    const pattern = ctx.themeDefinition.patterns[id];
-    if (!pattern) inspectNotFound(rawQuery, 'Pattern', Object.keys(ctx.themeDefinition.patterns).sort());
-    return {
-      kind: 'pattern',
-      query: rawQuery,
-      item: {
-        name: pattern.name,
-        contexts: pattern.contexts,
-        resources: {
-          styles: resourcePaths(pattern.resources, 'styles'),
-          scripts: resourcePaths(pattern.resources, 'scripts')
-        }
-      }
-    };
+  if (namespace === 'page' || namespace === 'post' || namespace === 'release' || namespace === 'updates') {
+    const collection = namespace === 'page' ? 'pages' : namespace === 'post' ? 'posts' : 'updates';
+    return inspectContent(ctx, rawQuery, collection, id);
   }
 
   if (namespace === 'collection') {
@@ -2711,24 +2630,24 @@ export async function inspect(ctx: BuildContext, query = '') {
         ...settings,
         contentType: String(settings.contentType || 'page'),
         route: String(settings.route || '/:locale/:id/'),
-        pattern: String(settings.pattern || defaultPattern(ctx.config, id, '', ctx.themeDefinition.patterns)),
+        component: String(settings.component || defaultComponent(ctx.config, id)),
         schema: settings.schema && typeof settings.schema === 'object' ? settings.schema : {},
-        feed: settings.feed === true,
-        archive: settings.archive === true
+        feed: settings.feed && typeof settings.feed === 'object' ? settings.feed : undefined,
+        archive: settings.archive && typeof settings.archive === 'object' ? settings.archive : undefined
       }
     };
   }
 
-  const themePlugin = themePluginFor(ctx, id);
-  const settings = themePluginSettings(ctx, id);
-  if (themePlugin === undefined) inspectNotFound(rawQuery, 'plugin', Object.keys(ctx.themeDefinition.plugins || {}).sort());
+  const themeComponent = themeComponentFor(ctx, id);
+  const settings = themeComponentSettings(ctx, id);
+  if (themeComponent === undefined) inspectNotFound(rawQuery, 'component', Object.keys(ctx.themeDefinition.components || {}).sort());
   return {
-    kind: 'plugin',
+    kind: 'component',
     query: rawQuery,
     item: {
       name: id,
-      enabled: themePlugin ? settings.enabled !== false : false,
-      theme: themePlugin ? { ...themePlugin, settings } : null,
+      enabled: themeComponent ? settings.enabled !== false : false,
+      theme: themeComponent ? { ...themeComponent, settings } : null,
       config: settings
     }
   };

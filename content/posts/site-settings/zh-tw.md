@@ -1,4 +1,5 @@
 ---
+kind: post
 title: 設定結構：網站設定只有一個清楚來源
 description: 理解 config.yml、可選設定分層、site/theme.yml、content，以及網站資料和主題程式碼的邊界。
 date: 2026-09-07
@@ -17,13 +18,13 @@ config.yml
 └─ 可選 extends：./config/*.yml
 
 site/theme.yml
-└─ 少量、經過 schema 驗證的主題/外掛外觀覆寫
+└─ 少量、經過 schema 驗證的主題/元件外觀覆寫
 
 content/
 └─ Markdown 頁面、文章、資源和 Frontmatter
 
 themes/default/
-└─ 可重用實作、資源、外掛和參考範例
+└─ 可重用實作、資源、元件和參考範例
 ```
 
 普通網站工作只需要前三層。`themes/default/` 不是另一套網站設定目錄。
@@ -85,7 +86,6 @@ footer:
 extends:
   - ./config/content.yml
   - ./config/discovery.yml
-  - ./config/deployment.yml
 ```
 
 載入順序是：Pageskill 內建預設值、按順序讀取的這些檔案、最後的 `config.yml`。物件遞迴合併，陣列整體替換，純量（包括顯式 `null`）覆蓋前值。YAML 不會執行程式碼、隨意 include 路徑或自動追加陣列。每個檔案都必須留在專案根內，循環或缺失檔案會顯示來源路徑並失敗。
@@ -120,22 +120,22 @@ privacy:
 
 ```yaml
 # site/theme.yml
-plugins: {}
+components: {}
 ```
 
-省略 `theme.config` 也會得到同樣的空覆寫物件。外掛預設值和 schema 在程式碼中維護，因此不要把每個 `enabled: true` 都複製進來。只有網站與主題預設值不同才寫，例如：
+省略 `theme.config` 也會得到同樣的空覆寫物件。元件預設值和 schema 在程式碼中維護，因此不要把每個 `enabled: true` 都複製進來。只有網站與主題預設值不同才寫，例如：
 
 ```yaml
-plugins:
+components:
   search:
     maxResults: 12
 ```
 
-進階主題仍可以使用 `plugins.chrome.navigation.before/after` 和 `plugins.chrome.footer.before/after` 插槽插入可重用連結；它們共用同一套安全連結模型，但普通 Navigation 和 Footer link 屬於網站級設定。
+進階主題仍可以使用 `components.shell.navigation.before/after` 和 `components.shell.footer.before/after` 插槽插入可重用連結；它們共用同一套安全連結模型，但普通 Navigation 和 Footer link 屬於網站級設定。
 
 ## 5. 用 Markdown 管理內容
 
-穩定頁面位於 `content/pages/<id>/<locale>.md`。教學、部落格、產品記錄和版本說明位於 `content/posts/<id>/<locale>.md`。每篇 post 都需要 `date`；可選的 `update` 記錄後續修改，不改變發佈日期。`category: update` 表示版本說明 view，與 `update` 時間戳不是同一概念。[文章中繼資料範例](/zh-tw/posts/post-meta-demo/)同時展示了兩條路徑。
+穩定頁面位於 `content/pages/<id>/<locale>.md`。教學、部落格、產品記錄和普通文章位於 `content/posts/<id>/<locale>.md`，版本說明位於獨立的 `content/updates/<id>/<locale>.md`。每篇 post 都需要 `date`；可選的 `updated` 記錄後續修改，不改變發佈日期。`content/updates/` 是真正的版本說明 collection，不是篩選 view，也不是 `updated` 時間戳。[文章中繼資料範例](/zh-tw/posts/post-meta-demo/)同時展示了兩條路徑。
 
 ## 預期結果
 

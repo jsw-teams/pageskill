@@ -1,4 +1,5 @@
 ---
+kind: post
 title: 設定條件式 Agent 能力
 description: 先實作真實的服務、瀏覽器工具或 DNS 記錄，再讓 Pageskill 產生與實際能力一致的探索資訊。
 date: 2026-09-11
@@ -17,7 +18,7 @@ Pageskill 會產生基本的網站探索檔案，但不會替你實作驗證伺�
 | --- | --- | --- | --- |
 | 驗證中繼資料 | `backend/handler.ts` 的受保護路由和真實 OAuth/OIDC issuer，或外部資源伺服器 | `config.yml` 的 `agentDiscovery.auth` | 條件產生 `/.well-known/oauth-protected-resource`、`auth.md`；同時提供兩個真實端點時才產生 authorization-server metadata |
 | MCP card | `backend/` 中的 MCP transport，或已上線的外部 MCP 服務 | `config.yml` 的 `agentDiscovery.mcp` | 條件產生 `/.well-known/mcp/server-card.json`；card 不執行工具 |
-| WebMCP | `themes/<name>/plugins/<id>/` 的瀏覽器腳本，並在主題入口登記 | `theme.config` 選擇的網站實例檔案（通常是 `site/theme.yml`），加上 `config.yml` 的 `agentDiscovery.webmcp` | 瀏覽器腳本在頁面中登記工具；靜態產生器不會建立瀏覽器 endpoint |
+| WebMCP | `themes/<name>/components/<id>/` 的瀏覽器腳本，並在主題入口登記 | `theme.config` 選擇的網站實例檔案（通常是 `site/theme.yml`），加上 `config.yml` 的 `agentDiscovery.webmcp` | 瀏覽器腳本在頁面中登記工具；靜態產生器不會建立瀏覽器 endpoint |
 | DNS-AID | 真實 agent endpoint、權威 DNS 區域和 DNSSEC | `config.yml` 的 `agentDiscovery.dnsAid` | 只在 Agent 中繼資料記錄已設定狀態；Pageskill 不寫入 SVCB、TXT、TLSA 或 DNSSEC |
 
 先實作左側，再設定中間一欄，最後執行產生和線上驗證。只修改 `agentDiscovery` 不會憑空產生服務。
@@ -104,7 +105,7 @@ agentDiscovery:
 先在本機產生，再分別檢查中繼資料和受保護路由：
 
 ```powershell
-npm run g -- --profile
+page g --profile
 Invoke-WebRequest https://api.example.com/.well-known/oauth-protected-resource
 Invoke-WebRequest https://api.example.com/api/private -SkipHttpErrorCheck
 ```
@@ -154,45 +155,47 @@ agentDiscovery:
 產生器會保留工具的 `name`、`description` 和物件形 `inputSchema`，並寫入 `/.well-known/mcp/server-card.json`；它不會從 backend 猜測工具，也不會實作 MCP 呼叫。每次修改服務端工具時同步修改設定，然後執行：
 
 ```powershell
-npm run g -- --profile
+page g --profile
 Get-Content dist\public\.well-known\mcp\server-card.json
 Invoke-WebRequest https://api.example.com/mcp -Method Get -SkipHttpErrorCheck
-npm run g -- --profile
+page g --profile
 ```
 
 用實際 MCP client/Inspector 再執行一次 `tools/list` 和一個無副作用的 `tools/call`，確認 card 的 endpoint、版本和 schema 與服務返回值一致。只有這些檢查通過後才保留 `enabled: true`。
 
 ## 4. 登記 WebMCP 瀏覽器工具
 
-WebMCP 不是一個靜態 URL。它是在安全上下文中由頁面 JavaScript 呼叫 `document.modelContext.registerTool()`，把工具登記給瀏覽器 Agent。Pageskill 目前沒有內建 WebMCP 外掛；應按普通可重用主題外掛建立模組。
+WebMCP 不是一個靜態 URL。它是在安全上下文中由頁面 JavaScript 呼叫 `document.modelContext.registerTool()`，把工具登記給瀏覽器 Agent。Pageskill 目前沒有內建 WebMCP 元件；應按普通可重用主題元件建立模組。
 
-### 4.1 建立並登記主題外掛
+### 4.1 建立並登記主題元件
 
 ```text
-themes/default/plugins/web-tools/
+themes/default/components/web-tools/
   index.ts
   script.js
 ```
 
 ```ts
-// themes/default/plugins/web-tools/index.ts
-import type { ThemePluginDefinition } from '../../../../src/theme-api.ts';
+// themes/default/components/web-tools/index.ts
+import type { ComponentDefinition } from '../../../../src/theme-api.ts';
 
-export const plugin: ThemePluginDefinition = {
-  implementation: 'plugins/web-tools/index.ts',
+export const component: ComponentDefinition = {
+  id: 'web-tools',
+  capabilities: ['client'],
+  implementation: 'components/web-tools/index.ts',
   resources: {
-    // The browser module is loaded only when this theme plugin is enabled.
-    scripts: ['plugins/web-tools/script.js']
+    // The browser module is loaded only when this theme component is enabled.
+    scripts: ['components/web-tools/script.js']
   },
   defaults: { enabled: false },
   schema: { enabled: { type: 'boolean' } }
 };
 ```
 
-在 `themes/default/plugins/index.ts` 匯出這個外掛，在 `site/theme.yml` 設定實例：
+在 `themes/default/components/index.ts` 匯出這個元件，在 `site/theme.yml` 設定實例：
 
 ```yaml
-plugins:
+components:
   webTools:
     enabled: true
 ```
@@ -200,7 +203,7 @@ plugins:
 ### 4.2 在瀏覽器模組中登記真實工具
 
 ```js
-// themes/default/plugins/web-tools/script.js
+// themes/default/components/web-tools/script.js
 const modelContext = document.modelContext;
 
 if (modelContext) {
@@ -232,7 +235,7 @@ if (modelContext) {
 
 ### 4.3 再開啟探索宣告
 
-主題外掛實際載入並在目標瀏覽器中驗證後，才加：
+主題元件實際載入並在目標瀏覽器中驗證後，才加：
 
 ```yaml
 # config.yml: this advertises a real browser module; it does not load one.
@@ -241,7 +244,7 @@ agentDiscovery:
     enabled: true
 ```
 
-這只會讓產生的 Agent 中繼資料顯示 WebMCP 已設定；真正的工具來自主題腳本。執行 `npm run s` 後，在支援 WebMCP 的安全上下文檢查 `await document.modelContext.getTools()`，至少確認工具名稱、schema 和無副作用執行結果。瀏覽器不支援時應沒有登記錯誤，也不能影響普通頁面。
+這只會讓產生的 Agent 中繼資料顯示 WebMCP 已設定；真正的工具來自主題腳本。執行 `page s` 後，在支援 WebMCP 的安全上下文檢查 `await document.modelContext.getTools()`，至少確認工具名稱、schema 和無副作用執行結果。瀏覽器不支援時應沒有登記錯誤，也不能影響普通頁面。
 
 ## 5. 發佈 DNS-AID
 
@@ -276,26 +279,26 @@ agentDiscovery:
 npm run compile-runtime
 npm run compile-theme
 npm run compile-backend
-npm run g -- --profile
+page g --profile
 
 $root = 'dist\public'
 Get-Content "$root\.well-known\agent.json" | ConvertFrom-Json
 Test-Path "$root\.well-known\oauth-protected-resource"
 Test-Path "$root\.well-known\mcp\server-card.json"
 git diff --check
-npm run g -- --profile
+page g --profile
 ```
 
 預設關閉時，兩個條件 endpoint 檔案應不存在；開啟某項後，只能看到該項實際產生的檔案或 configured 狀態。最後檢查部署類型：靜態 Git/Pages 只發佈 `dist/public`，無法單獨承載 `backend/handler.ts`；驗證和 MCP 必須同時部署同源 backend，或改用已上線的外部服務。不要手動修改 `dist/`、`.pageskill/` 或產生的 `.well-known` 檔案。
 
 ## 常見失敗
 
-- 把 `enabled: true` 當作實作：先部署服務／外掛／DNS，再開宣告。
+- 把 `enabled: true` 當作實作：先部署服務／元件／DNS，再開宣告。
 - 只產生 MCP card 沒有 MCP transport：card 是索引，不是 server。
-- 只登記 WebMCP flag 沒有主題腳本：Agent metadata 會顯示設定，但瀏覽器不會出現工具；應關閉 flag 或完成外掛登記。
+- 只登記 WebMCP flag 沒有主題腳本：Agent metadata 會顯示設定，但瀏覽器不會出現工具；應關閉 flag 或完成元件登記。
 - 用示例網域、空 ID 或猜出來的 DNS record：產生前換成 provider／權威 DNS 返回的真實值。
 - 靜態發佈後仍期待 `/api/private` 或 `/api/mcp` 工作：把 backend 和靜態快照放進同一個執行時，或設定外部 endpoint。
 
 ## 下一步
 
-需要主題資源和瀏覽器程式碼時，繼續閱讀[開發一個可重用外掛](/zh-tw/posts/plugins/)；需要檢查同源 backend 和發佈邊界時，閱讀[把網站放到網路上](/zh-tw/posts/deploy/)。
+需要主題資源和瀏覽器程式碼時，繼續閱讀[開發一個可重用元件](/zh-tw/posts/components/)；需要檢查同源 backend 和發佈邊界時，閱讀[把網站放到網路上](/zh-tw/posts/deploy/)。

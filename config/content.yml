@@ -1,54 +1,83 @@
-# Content collections, views, archive, and feed policy for the demo site.
-# The `updates` view is a release-note view of posts with category: update;
-# it is separate from the post frontmatter `update` modified-date field.
-archive:
-  collections:
-    - posts
-    - updates
-
-feed:
-  collections:
-    - posts
-    - updates
-
+# Collection-owned content behavior. Pages are stable documents; posts and
+# updates are independent dated collections with their own archive/feed routes.
 content:
   collections:
     pages:
       contentType: page
-      pattern: document
+      component: page
       route: /:locale/:id/
       schema:
         title:
           type: string
           required: true
+        kind:
+          type: string
+          required: true
         description: string
-        pattern: string
     posts:
       contentType: post
-      pattern: blog
+      component: post
       route: /:locale/posts/:id/
-      feed: true
-      archive: true
-      archiveRoute: /:locale/posts/
       orderBy: date:desc
+      archive:
+        route: /:locale/posts/
+        categoryRoute: /:locale/posts/category/:category/
+        title:
+          en: Post archive
+          zh-sg: 内容归档
+          zh-tw: 內容彙整
+        description:
+          en: Dated posts selected by the site content model.
+          zh-sg: 按日期整理的文章归档。
+          zh-tw: 依日期整理的文章彙整。
+      feed:
+        route: /:locale/posts/feed.xml
       schema:
         title:
+          type: string
+          required: true
+        kind:
           type: string
           required: true
         description: string
         date:
           type: string
           required: true
-        update: string
+        updated: string
         category: string
+        tags: array
         author: string
         cover: string
         ogImage: string
-        pattern: string
-  views:
     updates:
-      collection: posts
-      category: update
+      contentType: release
+      component: post
       route: /:locale/updates/:id/
-      archiveRoute: /:locale/updates/
-      feedRoute: /:locale/updates/feed.xml
+      orderBy: date:desc
+      archive:
+        route: /:locale/updates/
+        title:
+          en: Release archive
+          zh-sg: 发布归档
+          zh-tw: 發布彙整
+        description:
+          en: Versioned release notes, separate from an article's last-modified date.
+          zh-sg: 按版本整理的发布说明，与文章最后修改日期分开。
+          zh-tw: 依版本整理的發布說明，與文章最後修改日期分開。
+      feed:
+        route: /:locale/updates/feed.xml
+      schema:
+        title:
+          type: string
+          required: true
+        kind:
+          type: string
+          required: true
+        description: string
+        date:
+          type: string
+          required: true
+        updated: string
+        author: string
+        cover: string
+        ogImage: string

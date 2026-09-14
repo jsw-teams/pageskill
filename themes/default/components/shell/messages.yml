@@ -1,0 +1,150 @@
+fallbackLocale: en
+locales:
+  zh-sg:
+    label: 简体中文
+    htmlLang: zh-CN
+    dateLocale: zh-CN
+    aliases: [zh-sg, zh, zh-cn, zh-hans]
+  zh-tw:
+    label: 繁體中文
+    htmlLang: zh-TW
+    dateLocale: zh-TW
+    aliases: [zh-tw, zh-hant, zh-hk, zh-mo]
+  en:
+    label: English
+    htmlLang: en
+    dateLocale: en-US
+    aliases: [en, en-us, en-gb]
+messages:
+  zh-sg:
+    navigation:
+      home: 首页
+      about: 关于
+      start: 开始使用
+      posts: 内容
+      customize: 自定义
+      configuration: 配置
+      updates: 更新日志
+    footer:
+      privacy: 隐私政策
+    collections:
+      pages: 页面
+      posts: 内容
+      tutorials: 教程
+      uncategorized: 未分类
+      updates: 项目更新
+    categories:
+      tutorial: 教程
+      uncategorized: 未分类
+    continue: 阅读内容
+    siteMap: 站点地图
+    notFound:
+      title: 这页没有找到
+      description: 地址可能已更新。返回首页，或从开始使用继续查找内容。
+      home: 返回首页
+      guide: 打开开始使用
+    archive:
+      title: 内容归档
+      continue: 阅读内容
+      updates:
+        title: 项目更新
+        continue: 阅读更新
+      previousPage: 上一页
+      nextPage: 下一页
+      pageCount: 第 {page} 页，共 {pages} 页
+    shell:
+      headerNote: 学习、编写、发布
+      skipToContent: 跳至内容
+      languages: 语言
+      navigation: 主导航
+      postsFeed: 文章订阅
+      updatesFeed: 更新日志订阅
+    postPagination: 文章导航
+  zh-tw:
+    navigation:
+      home: 首頁
+      about: 關於
+      start: 開始使用
+      posts: 內容
+      customize: 自訂
+      configuration: 設定
+      updates: 更新日誌
+    footer:
+      privacy: 隱私政策
+    collections:
+      pages: 頁面
+      posts: 內容
+      tutorials: 教學
+      uncategorized: 未分類
+      updates: 專案更新
+    categories:
+      tutorial: 教學
+      uncategorized: 未分類
+    continue: 閱讀內容
+    siteMap: 網站地圖
+    notFound:
+      title: 找不到這個頁面
+      description: 網址可能已更新。返回首頁，或從開始使用繼續尋找內容。
+      home: 返回首頁
+      guide: 開啟開始使用
+    archive:
+      title: 內容彙整
+      continue: 閱讀內容
+      updates:
+        title: 專案更新
+        continue: 閱讀更新
+      previousPage: 上一頁
+      nextPage: 下一頁
+      pageCount: 第 {page} 頁，共 {pages} 頁
+    shell:
+      headerNote: 學習、編寫、發布
+      skipToContent: 跳至內容
+      languages: 語言
+      navigation: 主導覽
+      postsFeed: 文章訂閱
+      updatesFeed: 更新日誌訂閱
+    postPagination: 文章導覽
+  en:
+    navigation:
+      home: Home
+      about: About
+      start: Get started
+      posts: Posts
+      customize: Customize
+      configuration: Configuration
+      updates: Updates
+    footer:
+      privacy: Privacy policy
+    collections:
+      pages: Pages
+      posts: Posts
+      tutorials: Tutorials
+      uncategorized: Uncategorized
+      updates: Project updates
+    categories:
+      tutorial: Tutorials
+      uncategorized: Uncategorized
+    continue: Read post
+    siteMap: Site map
+    notFound:
+      title: This page is not here
+      description: The address may have changed. Return home or continue through the getting-started articles.
+      home: Back to home
+      guide: Open getting started
+    archive:
+      title: Post archive
+      continue: Read post
+      updates:
+        title: Project updates
+        continue: Read update
+      previousPage: Previous page
+      nextPage: Next page
+      pageCount: Page {page} of {pages}
+    shell:
+      headerNote: Learn, write, publish
+      skipToContent: Skip to content
+      languages: Languages
+      navigation: Primary navigation
+      postsFeed: Article feed
+      updatesFeed: Release update feed
+    postPagination: Post navigation

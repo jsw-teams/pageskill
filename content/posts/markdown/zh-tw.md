@@ -1,4 +1,5 @@
 ---
+kind: post
 title: "Markdown：寫出完整的 Pageskill 文章"
 description: 實際學習 Pageskill 支援並檢查的 Markdown 寫作語法。
 date: 2026-09-07
@@ -30,7 +31,7 @@ date: 2026-09-07
 - 保留[一個有用連結](https://example.com/notes)
 
 ```text
-npm run g
+page g
 ```
 ````
 
@@ -85,9 +86,9 @@ theme:
 
 使用 `---` 插入主題分隔線。表格在窄螢幕會保留自己的橫向捲動，其他頁面內容仍會適應視窗寬度。
 
-## 5. 重用 Pageskill Block
+## 5. 組合可重用 Component
 
-Pageskill 支援可信的 Block，用來重用常見的展示模式。下面這個 Feature Grid 仍然寫在 Markdown 中，但結構和樣式屬於目前主題：
+Pageskill 支援可信的 Component，用來重用常見的展示行為。下面這個 Feature Grid 仍然寫在 Markdown 中，但結構和樣式屬於目前主題：
 
 :::feature-grid{columns="2"}
 ### 內容保持可移植
@@ -104,14 +105,14 @@ Pageskill 支援可信的 Block，用來重用常見的展示模式。下面這�
 在發佈前執行：
 
 ```text
-npm run g
-npm run s
+page g
+page s
 ```
 
 開啟 `/zh-tw/posts/hello/`，檢查標題和連結，並在窄螢幕寬度下查看頁面。Frontmatter 和路由有效時，產生的文章會進入文章歸檔、搜尋索引、Feed 和 sitemap。
 
 ## 常見錯誤與下一步
 
-沒有 `date` 的文章不能發佈。使用穩定的 `YYYY-MM-DD` 日期，讓翻譯檔案共用一個文章 id；只有文章在首次發佈後修改過，才新增 `update: YYYY-MM-DD`。
+沒有 `date` 的文章不能發佈。使用穩定的 `YYYY-MM-DD` 日期，讓翻譯檔案共用一個文章 id；只有文章在首次發佈後修改過，才新增 `updated: YYYY-MM-DD`。
 
 接著閱讀[發佈第一篇教學](/zh-tw/posts/first-post/)，了解完整發佈流程；網站設定請看[設定](/zh-tw/posts/site-settings/)，主題實例邊界請看[自訂主題](/zh-tw/posts/customize/)。

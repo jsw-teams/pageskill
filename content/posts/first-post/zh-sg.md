@@ -1,4 +1,5 @@
 ---
+kind: post
 title: 发布第一篇教程
 description: 建立一个带三种语言版本的 post 目录，并从首页打开它。
 date: 2026-09-07
@@ -7,7 +8,7 @@ category: tutorial
 
 # 发布第一篇教程
 
-教程、日志、产品内容和版本更新都放在 `content/posts/`，每篇 post 都需要日期。明确写 `category: tutorial` 才归入教程；省略 `category` 时默认是 `uncategorized`（未分类）。给版本说明加上 `category: update`，这样[更新归档](/zh-sg/updates/)会和普通 post 分开。固定的 About 或联系页面放在 `content/pages/`，不需要 `date`；三种语言共用一个目录名，post 才能互相切换。
+教程、日志和产品内容放在 `content/posts/`，每篇 post 都需要日期。明确写 `category: tutorial` 才归入教程；省略 `category` 时默认是 `uncategorized`（未分类）。版本说明放在 `content/updates/<id>/<locale>.md`，使用 `kind: release`，这样[发布归档](/zh-sg/updates/)会和普通 post 分开。固定的 About 或联系页面放在 `content/pages/`，不需要 `date`；三种语言共用一个目录名，post 才能互相切换。
 
 ## 1. 建立 post 目录
 
@@ -37,15 +38,15 @@ cover: assets/og-default-product.webp
 我会继续写下新的尝试。
 ```
 
-其他语言只需翻译标题、说明和正文，保留相同的 `date` 和目录名；post 集合会提供默认样式。
+其他语言只需翻译标题、说明和正文，保留相同的 `date`、`kind` 和目录名；post 集合会提供文档 Component。
 
 `author` 是普通文字；省略它时，会使用 `config.yml` 里对应语言的 `author`。`cover` 是可选的：把源图片放在 `content/assets/`，在 Frontmatter 写公开路径 `assets/<路径>`（或 `/assets/<路径>`）。仓库现有的 `assets/og-default-product.webp` 是当前的小熊图片；生成后位于 `dist/public/assets/`。没有 `cover` 的文章不会被强行加上统一封面，危险 URL 协议也会被拒绝。
 
 ## 2. 生成并打开
 
 ```powershell
-npm run g
-npm run s
+page g
+page s
 ```
 
 打开 `/zh-sg/posts/hello-site/`，再从文章内的语言链接查看另外两个版本。
@@ -60,4 +61,4 @@ npm run s
 
 ## 下一步
 
-先阅读[我们如何构建插件](/zh-sg/posts/plugins/)了解可复用的插件设计，再阅读[配置集成与隐私同意](/zh-sg/posts/cookies/)查看 Cookie 选择器参考实现。
+先阅读[我们如何构建组件](/zh-sg/posts/components/)了解可复用的组件设计，再阅读[配置集成与隐私同意](/zh-sg/posts/cookies/)查看 Cookie 选择器参考实现。

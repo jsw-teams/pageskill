@@ -1,4 +1,5 @@
 ---
+kind: page
 title: 隐私说明
 description: 说明本站如何处理数据，以及已配置的 Integration 如何参与同意流程。
 ---

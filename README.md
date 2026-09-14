@@ -2,15 +2,14 @@
 
 [English](README.en.md) · [更新日志](CHANGELOG.zh-CN.md) · [English changelog](CHANGELOG.md)
 
-Pageskill 3.1.0 是一个静态优先的网站生成器：它把 Markdown 内容、YAML 站点数据和可复用主题编译成网站。普通作者主要维护内容与配置，不需要为每篇文章手写 HTML。
+Pageskill 4.0.0 是一个 Markdown-first 内容系统。站点作者主要维护 Markdown、`config.yml` 和可选的 `site/theme.yml`；Theme 的可复用行为与表现由 Components 提供，Server Function、数据库、Cache 和 AI 只在需要时由 Runtime Adapter 接入。
 
 ## 最小配置
 
 ```yaml
 siteUrl: https://example.com
 defaultLocale: en
-activeLocales:
-  - en
+activeLocales: [en]
 siteName: Example
 
 theme:
@@ -31,57 +30,76 @@ footer:
       href: /:locale/privacy/
 ```
 
-当配置变大时，可以把确实相关的内容、发现或部署设置拆到 `config/*.yml`，再按顺序写入：
+配置较大时，再把确实相关的设置拆到 `config/*.yml`，用 `extends` 按顺序载入。完整参考见 [`config.example.yml`](config.example.yml)。
 
-```yaml
-extends:
-  - ./config/content.yml
-  - ./config/discovery.yml
-```
-
-对象递归合并，数组整体替换，后面的标量覆盖前面的值。完整参考见 [`config.example.yml`](config.example.yml)；主题插件的完整参考见 [`themes/default/theme.example.yml`](themes/default/theme.example.yml)。
-
-## 十分钟开始
+## 开始使用
 
 ```powershell
 git clone https://github.com/jsw-teams/pageskill.git
 Set-Location pageskill
 npm install
-npm run g
-npm run s
+npx page g
+npx page s
 ```
 
-`g` 校验并生成公开站点与部署所需产物，`s` 启动本地预览并在重建时提供无障碍反馈。Pageskill 不主动调用托管商 API；将 `dist/public` 交给你的主机或 Git 集成，backend 运行时和对应的 hosting 配置由 `g` 一起生成。
+公共 CLI 只有两个命令：
 
-`g` 和 `npm test` 会在生成后使用本机 Edge 或 Playwright Chromium 检查真实 HTML，包括键盘焦点、可见焦点、名称与 ARIA、颜色对比度、响应式重排、200% 缩放、减少动态效果、强制颜色、文本选择和组件交互。自动检查不能替代人工辅助技术审查；没有 Edge 时可运行 `npx playwright install chromium`。
+- `page g [--profile]`：校验、生成 `dist/public`，执行无障碍与 Agent readiness 检查，并把报告写入私有 `.pageskill/`。
+- `page s [port]` 或 `page s --port <port>`：监视源码并预览。没有 Runtime Adapter 时使用 Core 静态预览；配置适配器后才增加对应的本地运行时。
 
-完整步骤请看[十分钟开始你的站点](content/posts/start/zh-sg.md)或[Start your site in ten minutes](content/posts/start/en.md)。
+没有 backend、数据库、Cache、AI 或 Runtime Adapter 时，`page g` 和 `page s` 仍然完整工作。Cloudflare Pages + Functions + D1 + Workers AI 只是官方参考 Runtime Adapter，不是 Pageskill Core 依赖。
 
-## 普通站点维护哪些文件？
+## Component 的核心原则
 
-- `content/pages/<id>/<locale>.md`：首页、About、隐私政策等稳定页面。
-- `content/posts/<id>/<locale>.md`：教程、博客、产品记录和版本说明。每篇 post 需要 ISO `date`；`update` 是可选的最后修改时间，不会替代发布日期。文章会自动计算字数和阅读时间。
-- `config.yml` 与 `config/*.yml`：站点名称、语言、导航、页脚、内容、发现和部署设置。导航与页脚使用同一套安全的内部/外部链接格式；外部 `_blank` 链接自动带 `noopener noreferrer`。
-- `site/theme.yml`：当前站点对主题插件的少量覆盖，例如搜索结果数量。主题代码的默认值和 schema 仍由插件实现拥有。
+> Component owns behavior and presentation; Content owns content.
 
-`themes/<name>/` 只保存可复用的主题实现、资源、插件和参考示例，不保存站点实例配置。需要新增 Pattern、Block、Plugin、浏览器能力或动态 API 时，才修改主题代码或 `backend/handler.ts`。
+Component 负责怎么渲染、怎么排列、怎么交互和怎么响应状态；Markdown、Frontmatter、Config 与 Runtime Data 负责显示什么。组件不能把站点标题、长文案、文章 ID、分类、locale URL、品牌或 Demo 数据写进 TypeScript。
 
-第三方服务属于根配置的 `integrations`，不是主题配置。只写本站实际使用的 Provider；Provider Adapter 会自己提供 schema、purpose、同意要求和安全加载方式：
+Markdown 可以用短 directive 调用 Component：
 
-```yaml
-integrations:
-  google-analytics:
-    measurementId: G-XXXXXXXXXX
+```markdown
+:::hero{tone="brand"}
+# 这个标题属于 Markdown 内容
+
+正文和按钮文案也属于内容层。
+:::
 ```
 
-Provider 节点默认启用，公开标识会被校验；secret 只能来自部署环境或 backend。没有需要同意的 Integration 时不会显示 Consent UI。完整规则见[配置 Integration 与隐私同意](content/posts/cookies/zh-sg.md)。
+Component 接受 `children`、named slots、structured props 和 runtime data。优先通过组合与数据变化复用稳定 Component，而不是为每个页面增加一个 variant。默认 Theme 应能在不修改 Theme TypeScript 的情况下用于完全不同的站点。
 
-## 内容与发现
+Component 只有两种来源：Built-in Component 与 External Component；能力用 `render`、`client`、`server`、`storage`、`cache`、`ai`、`integration` 表达。公开开发模型是 `ComponentDefinition`、Render Context、Content Context、Client Runtime、Server Function、Provider 和 Runtime Adapter，不再有平行的 Plugin、Pattern、Layout 或 Module 扩展 API。
 
-默认主题提供多语言、文章目录、搜索、Cookie 同意、归档、RSS、sitemap、PWA、图片派生和响应式文章布局。渲染器还会根据真实配置和输出生成 Agent Discovery、Agent Skills、API Catalog、Markdown mirror、`llms.txt` 等机器可读资源；没有真实服务时，不会伪造 OAuth、MCP、WebMCP 或 DNS-AID 能力。
+`messages.yml` 只保存 Component 自有的短 UI 文案，例如按钮、状态、ARIA label 和控件提示；首页正文、Feature 描述、教程、法律文本和 Demo 数据必须留在 `content/`。
 
-在线示例的配置结构、内容模型、主题插件、发现能力和部署教程都在 `content/posts/` 中；先读[配置结构](content/posts/site-settings/zh-sg.md)，再按需要进入高级章节。README 负责快速开始，在线 Docs 负责完整配置和实现边界。
+## 内容与运行时
 
-生成的 `dist/`、`.pageskill/` 和 `src/runtime/` 不要手工修改；源码来源是 `config.yml`、`config/*.yml`、`site/theme.yml`、`content/`、`themes/` 和 `backend/`。
+```text
+config.yml / config/*.yml     站点结构化设置、导航、路由、集合、集成
+site/theme.yml                当前站点的 schema-bounded Component 覆盖
+content/pages/                稳定页面
+content/posts/                普通文章、教程和博客
+content/updates/              独立的 release note 集合
+themes/<name>/components/     可复用 Component 实现
+backend/                      参考 Runtime Adapter 的私有 Server Function
+```
 
-Pageskill 使用 MIT License，见 [LICENSE](LICENSE)。
+普通 post 使用 `kind: post` 和必需的 `date`；可选 `updated` 只表示最后一次实质修改。Release note 使用 `kind: release`，不使用 `category: update`。`category` 只表示普通文章分类；缺失分类为 `uncategorized`。Posts、Releases、Category 和 Uncategorized archive 是显式分开的查询与路由。
+
+不同 locale 的同一篇文档共享 `contentKey`，例如 `posts:markdown`。Comments 使用 `contentKey` 与 `sourceLocale` 记录来源，读者的 `viewerLocale` 只决定展示语言，因此不同语言页面看到相同评论集合。Comments 是可选 External Component；Comment Translation 是另一个可选能力，使用 L1 Function Cache、持久化翻译 Cache 和 single-flight，AI 不可用时评论仍可正常使用且翻译控件不启用。
+
+## 发现与质量报告
+
+生成器只根据真实实现生成 sitemap、RSS、搜索索引、Markdown mirror、`llms.txt`、Agent Discovery、Agent Skills 和 API Catalog。`enabled: true` 不会凭空创建 OAuth、MCP、WebMCP、DNS-AID、D1 或 AI 服务；DNS-AID 只负责 derive/check/report，不自动改 DNS。
+
+无障碍报告属于开发工具，不会发布到站点：
+
+```text
+.pageskill/reports/accessibility/index.html
+.pageskill/reports/accessibility/report.json
+.pageskill/reports/accessibility/summary.json
+.pageskill/reports/accessibility/screenshots/
+```
+
+`page g` 覆盖源码契约、最终 HTML、真实浏览器/axe，以及键盘、动态状态、响应式视口和缩放检查。截图包含 320×800、375×812、768×1024、1280×800、1440×900；自动化检查不能替代人工辅助技术审查。
+
+不要手工编辑生成的 `dist/`、`.pageskill/`、`src/runtime/` 或 `wrangler.toml`。源码来源是 `config.yml`、`config/`、`site/theme.yml`、`content/`、`themes/` 和 `backend/`。Pageskill 使用 MIT License，见 [LICENSE](LICENSE)。

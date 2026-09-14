@@ -1,4 +1,5 @@
 ---
+kind: post
 title: Publish your first tutorial
 description: Create one post with three language versions and open it from the home page.
 date: 2026-09-07
@@ -7,7 +8,7 @@ category: tutorial
 
 # Publish your first tutorial
 
-Tutorials, notes, product posts, and version updates live under `content/posts/`, and every post needs a date. Add `category: tutorial` when a post is a tutorial; omit `category` when it should remain `uncategorized`. Add `category: update` to a version note so the [update archive](/en/updates/) stays separate from ordinary posts. A fixed About or contact page belongs under `content/pages/` and does not need `date`; the three languages share one directory name so readers can switch between post versions.
+Tutorials, notes, and product posts live under `content/posts/`, and every post needs a date. Add `category: tutorial` when a post is a tutorial; omit `category` when it should remain `uncategorized`. Put a release note under `content/updates/<id>/<locale>.md` with `kind: release` so the [release archive](/en/updates/) stays separate from ordinary posts. A fixed About or contact page belongs under `content/pages/` and does not need `date`; the three languages share one directory name so readers can switch between post versions.
 
 ## 1. Create the post directory
 
@@ -37,15 +38,15 @@ This is my first post. I am starting to record what I learn here.
 I will keep writing about the next experiment.
 ```
 
-Translate the title, description, and body in the other languages while keeping the same `date` and directory name; the post collection supplies its default pattern.
+Translate the title, description, and body in the other languages while keeping the same `date`, `kind`, and directory name; the post collection supplies the document Component.
 
 `author` is plain text. Omit it when the localized `author` in `config.yml` should be used. `cover` is optional: put the source image under `content/assets/` and write its public path as `assets/<path>` (or `/assets/<path>`). The existing `assets/og-default-product.webp` is a current bear-derived image in this repository. The generator publishes it under `dist/public/assets/`; an article without `cover` simply has no cover image. Unsafe URL schemes are rejected.
 
 ## 2. Generate and open it
 
 ```powershell
-npm run g
-npm run s
+page g
+page s
 ```
 
 Open `/en/posts/hello-site/`, then use the language links in the article to view the other versions.
@@ -60,4 +61,4 @@ Do not use a different directory name for each language or put the post in a rou
 
 ## Next step
 
-Read [How we build a plugin](/en/posts/plugins/) to study reusable plugin design, then see [Configure integrations and privacy consent](/en/posts/cookies/) for the Cookie selector reference implementation.
+Read [How we build a component](/en/posts/components/) to study reusable component design, then see [Configure integrations and privacy consent](/en/posts/cookies/) for the Cookie selector reference implementation.

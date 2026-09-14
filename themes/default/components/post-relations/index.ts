@@ -1,5 +1,5 @@
-import type { ThemeRenderContext } from '../../../../src/theme-api.ts';
+import type { ComponentRenderContext } from '../../../../src/theme-api.ts';
 
-export function postRelations(context: ThemeRenderContext): string {
+export function postRelations(context: ComponentRenderContext): string {
   return context.blogRelations();
 }

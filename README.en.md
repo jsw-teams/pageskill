@@ -2,15 +2,14 @@
 
 [简体中文](README.md) · [Chinese changelog](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md)
 
-Pageskill 3.1.0 is a static-first website generator. It compiles Markdown content, YAML site data, and reusable theme code into a publishable site. Ordinary authors maintain content and configuration without hand-writing HTML for every post.
+Pageskill 4.0.0 is a Markdown-first content system. Site authors maintain Markdown, `config.yml`, and an optional `site/theme.yml`; reusable presentation and behavior come from Components. Server Functions, storage, cache, and AI are optional capabilities supplied by a Runtime Adapter.
 
 ## Minimal configuration
 
 ```yaml
 siteUrl: https://example.com
 defaultLocale: en
-activeLocales:
-  - en
+activeLocales: [en]
 siteName: Example
 
 theme:
@@ -31,57 +30,76 @@ footer:
       href: /:locale/privacy/
 ```
 
-When configuration grows, split genuinely related content, discovery, or deployment settings into `config/*.yml` and list them in order:
+When configuration grows, put genuinely site-owned settings in ordered `config/*.yml` layers with `extends`. See [`config.example.yml`](config.example.yml) for the complete reference.
 
-```yaml
-extends:
-  - ./config/content.yml
-  - ./config/discovery.yml
-```
-
-Objects merge recursively; arrays are replaced as a whole; later scalar values win. See [`config.example.yml`](config.example.yml) for a complete site example and [`themes/default/theme.example.yml`](themes/default/theme.example.yml) for the full plugin reference.
-
-## Start in ten minutes
+## Start using Pageskill
 
 ```powershell
 git clone https://github.com/jsw-teams/pageskill.git
 Set-Location pageskill
 npm install
-npm run g
-npm run s
+npx page g
+npx page s
 ```
 
-`g` validates and generates the public site and deployment artifacts, while `s` starts a local preview and reports accessibility findings after rebuilds. Pageskill does not call hosting-provider APIs; give `dist/public` to your host or Git integration, and let `g` generate the backend runtime and hosting configuration when those are configured.
+The public CLI has exactly two commands:
 
-`g` and `npm test` audit the generated HTML with the installed Edge browser or Playwright Chromium. The audit covers keyboard focus, visible focus, names and ARIA, contrast, responsive reflow, 200% zoom, reduced motion, forced colors, text selection, and component interactions. Automated checks do not replace a manual assistive-technology review; if Edge is unavailable, run `npx playwright install chromium`.
+- `page g [--profile]`: validate, generate `dist/public`, run accessibility and Agent readiness checks, and write private `.pageskill/` reports.
+- `page s [port]` or `page s --port <port>`: watch source and preview the site. Without a Runtime Adapter it uses the Core static preview; a configured adapter may add its local runtime.
 
-Read the complete [Start your site in ten minutes](content/posts/start/en.md) guide.
+`page g` and `page s` work without a backend, database, cache, AI provider, or Runtime Adapter. Cloudflare Pages + Functions + D1 + Workers AI is the official reference Runtime Adapter, not a Pageskill Core dependency.
 
-## The files an ordinary site maintains
+## The Component contract
 
-- `content/pages/<id>/<locale>.md`: stable pages such as Home, About, and the privacy policy.
-- `content/posts/<id>/<locale>.md`: tutorials, blogs, product notes, and release notes. Every post needs an ISO `date`; optional `update` is its last-modified time and never replaces publication date. Word count and reading time are calculated automatically.
-- `config.yml` and `config/*.yml`: site identity, locales, navigation, footer, content, discovery, and deployment settings. Navigation and footer use the same safe internal/external link schema; external `_blank` links receive `noopener noreferrer` automatically.
-- `site/theme.yml`: small site-specific plugin overrides, such as a search result limit. Plugin code owns defaults and schemas.
+> Component owns behavior and presentation; Content owns content.
 
-`themes/<name>/` contains reusable theme implementation, resources, plugins, and reference examples. It is not a site instance configuration directory. Edit theme code or `backend/handler.ts` only when adding a reusable Pattern, Block, Plugin, browser capability, or dynamic API.
+Components own how content renders, lays out, interacts, and responds to state. Markdown, Frontmatter, Config, and Runtime Data own what is displayed. A Component must not hard-code site titles, long prose, document IDs, categories, locale URLs, brand data, or demo records in TypeScript.
 
-Third-party services belong in root `integrations`, not in theme configuration. List only the providers this site actually uses; the Provider Adapter supplies its schema, purpose, consent requirement, and safe loading behavior:
+Markdown can call a Component with a short directive:
 
-```yaml
-integrations:
-  google-analytics:
-    measurementId: G-XXXXXXXXXX
+```markdown
+:::hero{tone="brand"}
+# This heading belongs to Markdown content
+
+The body and action copy belong to the content layer too.
+:::
 ```
 
-A provider node is enabled by default and its public identifier is validated; secrets come only from the deployment environment or backend. A site with no consent-required integration has no consent UI. See [Configure integrations and privacy consent](content/posts/cookies/en.md) for the complete contract.
+Components accept `children`, named slots, structured props, and runtime data. Prefer composition and data over page-specific variants. The default Theme must work for a completely different site without changing Theme TypeScript.
 
-## Content and discovery
+There are only two Component source concepts: Built-in Component and External Component. Capabilities are expressed as `render`, `client`, `server`, `storage`, `cache`, `ai`, and `integration`. The public developer model is `ComponentDefinition`, Render Context, Content Context, Client Runtime, Server Function, Providers, and Runtime Adapter—not parallel Plugin, Pattern, Layout, or Module extension APIs.
 
-The default theme provides multilingual content, TOC, search, Cookie consent, archives, RSS, sitemap, PWA, derived images, and responsive article layouts. The renderer also generates Agent Discovery, Agent Skills, API Catalog, Markdown mirrors, and `llms.txt` from real configuration and outputs. It does not claim OAuth, MCP, WebMCP, or DNS-AID capabilities without a real implementation.
+`messages.yml` contains only short Component UI copy such as buttons, status text, ARIA labels, and control prompts. Home-page prose, feature descriptions, tutorials, legal text, and demo data stay in `content/`.
 
-The online example explains configuration, the content model, theme plugins, discovery, and deployment under `content/posts/`; start with [Configuration](content/posts/site-settings/en.md). The README is the quick-start surface; the online docs carry the full configuration and implementation boundaries.
+## Content and runtime boundaries
 
-Do not edit generated `dist/`, `.pageskill/`, or `src/runtime/` files by hand. The source of truth is `config.yml`, `config/*.yml`, `site/theme.yml`, `content/`, `themes/`, and `backend/`.
+```text
+config.yml / config/*.yml     site-owned structured settings, links, routes, collections, integrations
+site/theme.yml                schema-bounded Component overrides for this site
+content/pages/                stable pages
+content/posts/                ordinary articles, tutorials, and blogs
+content/updates/              an independent release-note collection
+themes/<name>/components/     reusable Component implementation
+backend/                      the reference Runtime Adapter's private functions
+```
 
-Pageskill is MIT licensed; see [LICENSE](LICENSE).
+Ordinary posts use `kind: post` and a required `date`; optional `updated` means the last substantive edit. Release notes use `kind: release` and never `category: update`. `category` is ordinary post taxonomy; a missing category is `uncategorized`. Posts, Releases, Category, and Uncategorized archives are explicit queries and routes.
+
+Locale variants of one document share a stable `contentKey`, such as `posts:markdown`. Comments use `contentKey` and `sourceLocale`; the reader's `viewerLocale` only controls presentation, so every locale page sees the same comment set. Comments are an optional External Component, and Comment Translation is a separate optional capability using L1 Function Cache, persistent translation cache, and single-flight. If AI is unavailable, comments still work and translation controls stay disabled.
+
+## Discovery and quality reports
+
+The generator derives sitemap, RSS, search indexes, Markdown mirrors, `llms.txt`, Agent Discovery, Agent Skills, and API Catalog from real implementations. `enabled: true` does not create OAuth, MCP, WebMCP, DNS-AID, D1, or AI services; DNS-AID only derives, checks, and reports recommendations.
+
+Accessibility is a development tool, not site content. Reports are private:
+
+```text
+.pageskill/reports/accessibility/index.html
+.pageskill/reports/accessibility/report.json
+.pageskill/reports/accessibility/summary.json
+.pageskill/reports/accessibility/screenshots/
+```
+
+`page g` covers source contracts, final HTML, a real browser/axe run, and keyboard, dynamic-state, responsive viewport, and zoom checks. Screenshots include 320×800, 375×812, 768×1024, 1280×800, and 1440×900. Automation does not replace manual assistive-technology review.
+
+Do not edit generated `dist/`, `.pageskill/`, `src/runtime/`, or `wrangler.toml` by hand. The source of truth is `config.yml`, `config/`, `site/theme.yml`, `content/`, `themes/`, and `backend/`. Pageskill is MIT licensed; see [LICENSE](LICENSE).

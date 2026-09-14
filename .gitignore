@@ -12,6 +12,7 @@ static/favicon.ico
 static/site.webmanifest
 .npm-cache/
 .wrangler/
+wrangler.toml
 .publish-myblog/
 current
 releases/

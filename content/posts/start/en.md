@@ -1,4 +1,5 @@
 ---
+kind: post
 title: Start your site in ten minutes
 description: Clone Pageskill, generate the site in place, and start editing your own pages and posts.
 date: 2026-09-07
@@ -22,22 +23,22 @@ npm install
 ## 2. Generate the cloned site
 
 ```powershell
-npm run g
+page g
 ```
 
-`npm run g` compiles the runtime, theme, and backend, then validates and generates this repository. The source tree is now the site you edit.
+`page g` compiles the runtime, theme, and backend, then validates and generates this repository. The source tree is now the site you edit.
 
 ## 3. Edit the site in place
 
-Change `content/pages/home/<locale>.md` for the home page and `content/posts/<id>/<locale>.md` for dated posts. Add `category: tutorial` for a tutorial, leave it out for the default `uncategorized` category, and add `category: update` to version updates so they appear in the filtered update archive. Use `config.yml` for site data and switches. Reuse the theme capabilities before adding a new extension.
+Change `content/pages/home/<locale>.md` for the home page and `content/posts/<id>/<locale>.md` for dated posts. Add `category: tutorial` for a tutorial and leave it out for the default `uncategorized` category. Put version updates in `content/updates/<id>/<locale>.md` with `kind: release`; they use the separate release archive. Use `config.yml` for site data and switches. Reuse the theme capabilities before adding a new extension.
 
 ## 4. Open the preview
 
 ```powershell
-npm run s
+page s
 ```
 
-Open the local address shown in the terminal. The preview keeps running; press `Ctrl+C` to stop it, or edit in another terminal and run `npm run g` again.
+Open the local address shown in the terminal. The preview keeps running; press `Ctrl+C` to stop it, or edit in another terminal and run `page g` again.
 
 ## Expected result
 

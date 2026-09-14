@@ -1,4 +1,5 @@
 ---
+kind: page
 title: 隱私說明
 description: 說明本站如何處理資料，以及已設定的 Integration 如何參與同意流程。
 ---

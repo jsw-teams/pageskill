@@ -1,4 +1,5 @@
 ---
+kind: post
 title: 設定 Integration 與隱私同意
 description: 只加入網站真正使用的第三方服務，由受信任的適配器負責驗證、用途和安全載入。
 date: 2026-09-07
@@ -40,7 +41,7 @@ integrations:
 
 ## 2. 讓 Adapter 自己擁有契約
 
-預設主題在 `themes/default/plugins/cookies/integrations.ts` 註冊 Provider。每個適配器自己負責：
+預設主題在 `themes/default/components/consent/integrations.ts` 註冊 Provider。每個適配器自己負責：
 
 | Adapter 中繼資料 | 含義 |
 | --- | --- |
@@ -95,7 +96,7 @@ Provider ID、測量 ID、site key 和 token 不會寫入這個狀態。網站�
 
 ## 5. 把政策和 UI 文案放在正確層級
 
-請把審核過的政策寫成 `content/pages/privacy/<locale>.md`。產生的隱私資訊可以根據目前設定列出 Provider 和它們登記的用途，但這不是法律意見，也不能替代該頁面。同意按鈕和用途說明屬於主題/外掛自己的 `messages.yml`，支援 `zh-sg`、`zh-tw`、`en` 以及現有 locale fallback。普通網站不需要為了使用同意 UI 再寫一個私有 `copy` 物件。
+請把審核過的政策寫成 `content/pages/privacy/<locale>.md`。產生的隱私資訊可以根據目前設定列出 Provider 和它們登記的用途，但這不是法律意見，也不能替代該頁面。同意按鈕和用途說明屬於主題/元件自己的 `messages.yml`，支援 `zh-sg`、`zh-tw`、`en` 以及現有 locale fallback。普通網站不需要為了使用同意 UI 再寫一個私有 `copy` 物件。
 
 不要在網站設定中加入第三方 URL、inline script、`onclick`、HTML 或 secret。Provider 資源由受信任程式碼固定，撤回同意會阻止之後的載入，但不會假裝可以撤銷已經發出的請求。
 
@@ -105,8 +106,8 @@ Provider ID、測量 ID、site key 和 token 不會寫入這個狀態。網站�
 npm run compile-runtime
 npm run compile-theme
 npm run compile-backend
-npm run g -- --profile
-npm run s
+page g --profile
+page s
 ```
 
 在全新的瀏覽器工作階段中確認：沒有 `integrations` 的網站沒有橫幅；測試站設定真實適配器值後，在同意前看不到它的資源，選擇對應 purpose 後才載入，撤回可選用途後不再載入。檢查所有啟用語言的對話框，並查看產生的 Catalog：它應把程式碼登記的 Provider Registry 與本站已設定、去掉 secret 的 Provider 摘要分開列出。
@@ -119,4 +120,4 @@ npm run s
 
 ## 下一步
 
-當主題還沒有你需要的能力時，閱讀[開發可重用外掛](/zh-tw/posts/plugins/)，再新增一個受信任的註冊模組。
+當主題還沒有你需要的能力時，閱讀[開發可重用元件](/zh-tw/posts/components/)，再新增一個受信任的註冊模組。

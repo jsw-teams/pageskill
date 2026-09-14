@@ -1,4 +1,5 @@
 ---
+kind: post
 title: Add a table of contents to long posts
 description: Use real Markdown headings so the theme can build a useful post outline.
 date: 2026-09-08
@@ -28,21 +29,21 @@ Keep each heading short and make the same heading level mean the same kind of se
 ## 2. Generate the post
 
 ```powershell
-npm run g
-npm run s
+page g
+page s
 ```
 
-The active post pattern can show the outline beside the body. If the active theme exposes the `toc` Block and you need an explicit position, add this small directive where the outline should appear:
+The active post Component can show the outline beside the body. If the active theme exposes the `toc` Component and you need an explicit position, add this small directive where the outline should appear:
 
 ```markdown
 :::toc
 :::
 ```
 
-The default `toc` plugin lives in `themes/default/plugins/toc/`; its Block, style, and messages are one reusable module. Set its switch and depth in the `theme.config`-selected instance file, normally `site/theme.yml`, under `plugins.toc`.
+The default `toc` Component lives in `themes/default/components/toc/`; its renderer, style, and messages are one reusable module. Set its switch and depth in the `theme.config`-selected instance file, normally `site/theme.yml`, under `components.toc`.
 
 ```yaml
-plugins:
+components:
   toc:
     enabled: true
     maxDepth: 4
@@ -64,4 +65,4 @@ Bold text is not a heading, so it cannot become a useful entry. Do not hand-writ
 
 ## Next step
 
-Read [Develop a reusable plugin](/en/posts/plugins/) when a repeated structure needs one shared implementation.
+Read [Develop a reusable component](/en/posts/components/) when a repeated structure needs one shared implementation.

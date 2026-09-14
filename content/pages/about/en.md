@@ -1,4 +1,5 @@
 ---
+kind: page
 title: About Pageskill
 description: Pageskill is a tool for building a site from articles and settings.
 ---
@@ -9,15 +10,15 @@ Pageskill turns Markdown articles, site settings, and theme styles into a publis
 
 ## Reuse first, extend when needed
 
-Themes provide reusable article structures, styles, and Blocks. Start with the capabilities you have; when a structure is truly missing, implement one theme extension so later articles can reuse it. Individuals can edit a theme directly or ask an Agent to help with a clear target.
+Themes provide reusable Components, styles, and content contracts. Start with the capabilities you have; when a capability is truly missing, implement one Component so later content can reuse it. Individuals can edit a theme directly or ask an Agent to help with a clear target.
 
-Foundation plugin options and localized copy belong in the site instance file selected by `theme.config`, normally `site/theme.yml`; language activation and fallback belong in `config.yml` or its extends files. The `themes/<name>/` directory is reusable implementation code, not a site instance configuration directory. The renderer generates Agent discovery metadata and Markdown mirrors from those sources, so generated files are outputs to inspect rather than files to maintain.
+Foundation component options and localized copy belong in the site instance file selected by `theme.config`, normally `site/theme.yml`; language activation and fallback belong in `config.yml` or its extends files. The `themes/<name>/` directory is reusable implementation code, not a site instance configuration directory. The renderer generates Agent discovery metadata and Markdown mirrors from those sources, so generated files are outputs to inspect rather than files to maintain.
 
 ## Remember two commands
 
 | Command | Does |
 | --- | --- |
-| `npm run g` | Validates and generates public files. |
-| `npm run s` | Starts a persistent preview; press `Ctrl+C` to stop it. |
+| `page g` | Validates and generates public files. |
+| `page s` | Starts a persistent preview; press `Ctrl+C` to stop it. |
 
-The current home page is under `content/pages/home/`; tutorials, blogs, product articles, and version updates are under `content/posts/`. Add `category: update` to a version note to include it in the [update archive](/en/updates/) without mixing it into the normal post list. The privacy policy has the fixed route `/:locale/privacy/`. Start with [Start your site in ten minutes](/en/posts/start/).
+The current home page is under `content/pages/home/`; tutorials, blogs, and product articles are under `content/posts/`, while release notes live in the independent `content/updates/` collection. Updates therefore have their own archive at `/en/updates/` and never depend on a post category filter. The privacy policy has the fixed route `/:locale/privacy/`. Start with [Start your site in ten minutes](/en/posts/start/).

@@ -1,20 +1,21 @@
 import type { ContentMetrics } from '../lib/content-metrics.ts';
 import type { MarkdownNode, SourcePosition, DirectiveNode } from '../lib/markdown.ts';
 import type { ResolvedDeploymentConfig } from '../config/deployment.ts';
-import type { PageskillTheme, ThemeI18nSource, ThemeResources } from '../theme-api.ts';
+import type { PageskillTheme, I18nSource, ComponentResources } from '../theme-api.ts';
 
 export type Locale = string;
 
 export type Document = {
   id: string;
   collection: string;
+  contentKey: string;
   locale: Locale;
   source: string;
   title: string;
   description: string;
-  pattern: string;
+  component: string;
   date?: string;
-  update?: string;
+  updated?: string;
   author?: string;
   cover?: string;
   data: Record<string, any>;
@@ -27,24 +28,25 @@ export type Document = {
   bodyLine: number;
   stat: { mtimeMs: number; size: number };
   dependencyKeys: string[];
-  blockNames: string[];
+  componentNames: string[];
 };
 
 export type CachedDocument = {
   hash: string;
   outputs: string[];
   dependencies?: string[];
-  blocks?: string[];
+  components?: string[];
   mtimeMs: number;
   size: number;
   collection: string;
   id: string;
+  contentKey?: string;
   locale: string;
   title: string;
   description: string;
-  pattern: string;
+  component: string;
   date?: string;
-  update?: string;
+  updated?: string;
   author?: string;
   cover?: string;
   data: Record<string, any>;
@@ -123,6 +125,7 @@ export type BuildContext = {
   sourceParseCache: Map<string, { data: Record<string, any>; body: string; excerpt: string; bodyLine: number }>;
   themeStyleSources: Map<string, string>;
   themeAssetHashes: Record<string, string>;
+  componentWarnings: string[];
 };
 
-export type ThemeDiscoverySource = Pick<ThemeResources, 'styles' | 'scripts'> & { implementation?: string; i18n?: ThemeI18nSource };
+export type ComponentDiscoverySource = Pick<ComponentResources, 'styles' | 'scripts'> & { implementation?: string; i18n?: I18nSource };

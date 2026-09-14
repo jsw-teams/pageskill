@@ -1,0 +1,31 @@
+messages:
+  zh-sg:
+    comments:
+      title: 评论
+      name: 名称
+      body: 评论内容
+      submit: 发表评论
+      loading: 正在加载评论……
+      empty: 还没有评论。
+      error: 评论暂时无法使用。
+      anonymous: 匿名
+  zh-tw:
+    comments:
+      title: 評論
+      name: 名稱
+      body: 評論內容
+      submit: 發表評論
+      loading: 正在載入評論……
+      empty: 還沒有評論。
+      error: 評論暫時無法使用。
+      anonymous: 匿名
+  en:
+    comments:
+      title: Comments
+      name: Name
+      body: Comment
+      submit: Post comment
+      loading: Loading comments…
+      empty: No comments yet.
+      error: Comments are temporarily unavailable.
+      anonymous: Anonymous

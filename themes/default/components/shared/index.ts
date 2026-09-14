@@ -1,7 +1,7 @@
 import { MarkdownError } from '../../../../src/lib/markdown.ts';
 import type { DirectiveNode, MarkdownNode } from '../../../../src/lib/markdown.ts';
 import type { IconNode } from 'lucide';
-import type { ThemeBlockDefinition, ThemeRenderContext } from '../../../../src/theme-api.ts';
+import type { ComponentDefinition, ComponentRenderContext } from '../../../../src/theme-api.ts';
 
 export function iconAttribute(value: string | number): string {
   return String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
@@ -19,10 +19,11 @@ export function footerIcon(node: IconNode): string {
   return `<span class="footer-icon" aria-hidden="true">${iconSvg(node, 'footer-icon-svg')}</span>`;
 }
 
-export function validateAttrs(node: DirectiveNode, definition: ThemeBlockDefinition): void {
+export function validateAttrs(node: DirectiveNode, definition: ComponentDefinition): void {
+  const schema = definition.schema || {};
   for (const key of Object.keys(node.attrs)) {
-    if (!(key in definition.schema)) {
-      throw new MarkdownError(`unknown attribute "${key}" on Block "${node.name}"; available attributes: ${Object.keys(definition.schema).join(', ') || 'none'}`, node.position);
+    if (!(key in schema)) {
+      throw new MarkdownError(`unknown attribute "${key}" on Component "${node.name}"; available attributes: ${Object.keys(schema).join(', ') || 'none'}`, node.position);
     }
   }
 }
@@ -30,18 +31,18 @@ export function validateAttrs(node: DirectiveNode, definition: ThemeBlockDefinit
 export function numberAttr(node: DirectiveNode, key: string, min: number, max: number, fallback: number): number {
   const value = node.attrs[key] ?? String(fallback);
   if (!/^\d+$/.test(value) || Number(value) < min || Number(value) > max) {
-    throw new MarkdownError(`Block "${node.name}" attribute "${key}" must be an integer from ${min} to ${max}`, node.position);
+    throw new MarkdownError(`Component "${node.name}" attribute "${key}" must be an integer from ${min} to ${max}`, node.position);
   }
   return Number(value);
 }
 
 export function enumAttr(node: DirectiveNode, key: string, values: string[], fallback: string): string {
   const value = node.attrs[key] || fallback;
-  if (!values.includes(value)) throw new MarkdownError(`Block "${node.name}" attribute "${key}" must be one of ${values.join(', ')}`, node.position);
+  if (!values.includes(value)) throw new MarkdownError(`Component "${node.name}" attribute "${key}" must be one of ${values.join(', ')}`, node.position);
   return value;
 }
 
-export function groupedContent(nodes: MarkdownNode[], context: ThemeRenderContext): string[] {
+export function groupedContent(nodes: MarkdownNode[], context: ComponentRenderContext): string[] {
   const cards: string[] = [];
   let current = '';
   for (const node of nodes) {
@@ -55,7 +56,7 @@ export function groupedContent(nodes: MarkdownNode[], context: ThemeRenderContex
   return cards;
 }
 
-export function postExcerpt(post: ThemeRenderContext['doc'], context: ThemeRenderContext): string {
+export function postExcerpt(post: ComponentRenderContext['doc'], context: ComponentRenderContext): string {
   // Summaries come from frontmatter only.  Falling back to the parsed body
   // turns code samples and the first heading into misleading card copy.
   const source = String(post.description || '')
@@ -69,7 +70,7 @@ export function postExcerpt(post: ThemeRenderContext['doc'], context: ThemeRende
   return context.renderInline(source.slice(0, 320));
 }
 
-function coverUrl(value: unknown, context: ThemeRenderContext): string {
+function coverUrl(value: unknown, context: ComponentRenderContext): string {
   const raw = typeof value === 'string' ? value.trim().replaceAll('\\', '/') : '';
   if (!raw || raw.startsWith('//') || /(?:^|\/)\.\.(?:\/|$)/.test(raw)) return '';
   if (/^[a-z][a-z\d+.-]*:/i.test(raw) && !/^https?:\/\//i.test(raw)) return '';
@@ -78,12 +79,12 @@ function coverUrl(value: unknown, context: ThemeRenderContext): string {
   return safe === '#' ? '' : safe;
 }
 
-export function postAuthor(post: ThemeRenderContext['doc'], context: ThemeRenderContext): string {
+export function postAuthor(post: ComponentRenderContext['doc'], context: ComponentRenderContext): string {
   const value = post.author || post.data?.author || context.localized(context.config?.author, 'Site Owner');
   return String(value || 'Site Owner').trim() || 'Site Owner';
 }
 
-export function postCoverImage(post: ThemeRenderContext['doc'], context: ThemeRenderContext): string {
+export function postCoverImage(post: ComponentRenderContext['doc'], context: ComponentRenderContext): string {
   const cover = coverUrl(post.cover || post.data?.cover || post.data?.ogImage, context);
   if (!cover) return '';
   const coverAltLabel = context.translate('post.coverAlt', 'Cover image');
@@ -91,17 +92,15 @@ export function postCoverImage(post: ThemeRenderContext['doc'], context: ThemeRe
   return `<figure class="post-cover"><img src="${cover}" alt="${alt}" width="1200" height="630" sizes="(max-width: 760px) 100vw, 1000px" loading="eager" fetchpriority="high" decoding="async"></figure>`;
 }
 
-export function postCover(post: ThemeRenderContext['doc'], context: ThemeRenderContext, index?: number, collection = 'posts'): string {
-  const rawCategory = String(post.data?.category ?? post.data?.type ?? '').trim().toLocaleLowerCase();
+export function postCover(post: ComponentRenderContext['doc'], context: ComponentRenderContext, index?: number, collection = 'posts'): string {
+  const rawCategory = String(post.data?.category ?? '').trim().toLocaleLowerCase();
   const category = rawCategory || 'uncategorized';
-  const markerKey = collection === 'updates'
-    ? 'collections.updates'
-    : category === 'tutorial'
-      ? 'collections.tutorials'
-      : category === 'uncategorized'
-        ? 'collections.uncategorized'
-        : `categories.${category}`;
-  const fallback = collection === 'updates' ? 'Updates' : category === 'tutorial' ? 'Tutorials' : category === 'uncategorized' ? 'Uncategorized' : category;
+  const markerKey = collection === 'updates' ? 'collections.updates' : `categories.${category}`;
+  const fallback = collection === 'updates'
+    ? 'Updates'
+    : category === 'uncategorized'
+      ? 'Uncategorized'
+      : category;
   const markerLabel = context.translate(markerKey, fallback);
   const cover = coverUrl(post.cover || post.data?.cover || post.data?.ogImage, context);
   if (!cover) return `<div class="post-card-cover"><span>${context.escapeHtml(markerLabel)}</span></div>`;

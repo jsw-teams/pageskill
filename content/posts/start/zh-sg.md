@@ -1,4 +1,5 @@
 ---
+kind: post
 title: 十分钟开始你的站点
 description: 克隆 Pageskill，在原目录生成网站，然后开始修改页面和 post。
 date: 2026-09-07
@@ -22,22 +23,22 @@ npm install
 ## 2. 生成克隆的站点
 
 ```powershell
-npm run g
+page g
 ```
 
-`npm run g` 会先编译运行时、主题和 backend，再校验并生成这个仓库。现在直接修改源码树即可。
+`page g` 会先编译运行时、主题和 backend，再校验并生成这个仓库。现在直接修改源码树即可。
 
 ## 3. 直接修改站点
 
-首页改 `content/pages/home/<locale>.md`，带日期的教程和其他 post 改 `content/posts/<id>/<locale>.md`；教程明确写 `category: tutorial`，省略它的 post 默认是 `uncategorized`（未分类），版本更新则加上 `category: update` 进入更新归档。站点数据和开关改 `config.yml`。先复用主题已有能力，再增加新的扩展。
+首页改 `content/pages/home/<locale>.md`，带日期的教程和其他 post 改 `content/posts/<id>/<locale>.md`；教程明确写 `category: tutorial`，省略它的 post 默认是 `uncategorized`（未分类）。版本更新放在 `content/updates/<id>/<locale>.md` 并使用 `kind: release`，进入独立的发布归档。站点数据和开关改 `config.yml`。先复用主题已有能力，再增加新的扩展。
 
 ## 4. 打开预览
 
 ```powershell
-npm run s
+page s
 ```
 
-在浏览器打开终端显示的本地地址。预览会持续运行；按 `Ctrl+C` 停止，也可以另开终端继续修改并再次运行 `npm run g`。
+在浏览器打开终端显示的本地地址。预览会持续运行；按 `Ctrl+C` 停止，也可以另开终端继续修改并再次运行 `page g`。
 
 ## 成功结果
 

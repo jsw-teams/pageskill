@@ -4,6 +4,29 @@
 
 版本标签与 `package.json`、本更新日志以及带日期的本地化版本更新保持一致。本文件记录仓库变化；日志条目不代表已经发布到 npm 或已经部署。
 
+## 4.0.0 — 2026-09-14
+
+Pageskill 4.0.0 是一次 breaking architecture release。当前产品模型统一为：`Content + Configuration + Theme + Components + 静态生成 + 无障碍 + Agent readiness + 可选 Runtime Adapter`。
+
+### 变更
+
+- `ComponentDefinition` 成为唯一公开 Theme 扩展概念。Built-in 与 External 只是来源标签；`render`、`client`、`server`、`storage`、`cache`、`ai`、`integration` 都是同一个 Component 的能力，不再保留 Plugin、Pattern、Layout、Module 或独立 Block 注册模型。
+- 正式落实“Component 负责行为和表现；Content 负责内容”。Component 接收 children、slots、structured props、Runtime Data、Core content query 和 URL resolver；默认 Theme 不再拥有 Demo 站点的文章 ID、页面正文、分类、locale 路径或品牌数据。
+- Component 的 `messages.yml` 只保存短 UI 文案、状态和 ARIA 文案。站点正文、Feature 描述、法律文本和示例留在 Markdown 或站点配置；Hero、Feature Grid、Learning Path、CTA、Post List、文档与归档改为内容驱动。
+- 增加平台无关的 `FunctionContext`、`ServerFunction`、`StorageProvider`、`CacheProvider`、`AIProvider` 和 `RuntimeAdapter` contract。没有 backend 或 Server 环境时，静态生成与静态预览仍可用；Cloudflare Pages 只有显式选择 `runtime.adapter` 才作为参考适配器参与。
+- `content/updates/` 成为独立 release 集合。普通文章使用 `kind: post`，release note 使用 `kind: release`；`updated` 只表示最后修改时间，分类归档不再把 release 当成普通 post。
+- Comments 保持为可选 External Component，Comment Translation 拆成独立的 `client + server + storage + cache + ai` 可选能力。评论列表加入分页 Cache 与写入失效，翻译加入持久化查询、source hash 和 AI 前的 single-flight。
+- 私有无障碍输出扩展为 `index.html`、`report.json`、`summary.json`，每个路由都有 baseline 截图，代表/有问题路由有五种视口截图，并在审查完成后生成标出 issue 的临时裁剪图。
+- 增加 Component hardcoding/content-ownership 回归覆盖，用完全不同品牌的 fixture 验证只替换 Markdown、Config 和 Runtime Data 就能生成新站点，不必修改 Theme TypeScript。
+
+### Breaking change 与迁移
+
+- package 与 lockfile 版本改为 4.0.0。公开 CLI 只有 `page g` 和 `page s`，不提供旧 CLI alias 或兼容适配器。
+- 把旧 Theme 扩展注册改成 `ComponentDefinition` 与 `defineTheme({ components })`；站点覆盖项只放在 `theme.config` 指定的文件中。
+- 把 Component TypeScript、defaults、messages 中的读者文案和 Demo 数据迁回 `content/` 或站点配置；用 `context.content.query()` 与 `context.url` 取代写死的文章 ID 和 locale 路径。
+- 把 post view 或 `category: update` 的 release 分类改成 `content/updates/<id>/<locale>.md` 与 `kind: release`；`updated` 永远不决定 release 类型。
+- 静态站点省略 `runtime`；只有实际部署参考 Pages/Functions/D1/Workers AI 运行时时才选择 `runtime.adapter: cloudflare-pages`。
+
 ## 3.1.0 — 2026-09-13
 
 Pageskill 3.1.0 完成可移植配置重构。本条明确包含配置 API breaking change：现有编译器、主题、插件、发现、后端和部署能力仍然保留，但历史配置别名不再加载。

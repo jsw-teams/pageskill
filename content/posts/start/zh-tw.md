@@ -1,4 +1,5 @@
 ---
+kind: post
 title: 十分鐘開始你的網站
 description: 複製 Pageskill，在原目錄產生網站，再開始修改頁面和 post。
 date: 2026-09-07
@@ -22,22 +23,22 @@ npm install
 ## 2. 產生複製下來的網站
 
 ```powershell
-npm run g
+page g
 ```
 
-`npm run g` 會先編譯執行時、主題和 backend，再驗證並產生這個儲存庫。現在直接修改原始碼樹即可。
+`page g` 會先編譯執行時、主題和 backend，再驗證並產生這個儲存庫。現在直接修改原始碼樹即可。
 
 ## 3. 直接修改網站
 
-首頁改 `content/pages/home/<locale>.md`，帶日期的教學和其他 post 改 `content/posts/<id>/<locale>.md`；教學明確寫 `category: tutorial`，省略它的 post 預設是 `uncategorized`（未分類），版本更新則加上 `category: update` 進入更新封存。網站資料和開關改 `config.yml`。先重用主題已有能力，再增加新的擴充。
+首頁改 `content/pages/home/<locale>.md`，帶日期的教學和其他 post 改 `content/posts/<id>/<locale>.md`；教學明確寫 `category: tutorial`，省略它的 post 預設是 `uncategorized`（未分類）。版本更新放在 `content/updates/<id>/<locale>.md` 並使用 `kind: release`，進入獨立的發布彙整。網站資料和開關改 `config.yml`。先重用主題已有能力，再增加新的擴充。
 
 ## 4. 開啟預覽
 
 ```powershell
-npm run s
+page s
 ```
 
-在瀏覽器開啟終端機顯示的本機網址。預覽會持續執行；按 `Ctrl+C` 停止，也可以另開終端機繼續修改並再次執行 `npm run g`。
+在瀏覽器開啟終端機顯示的本機網址。預覽會持續執行；按 `Ctrl+C` 停止，也可以另開終端機繼續修改並再次執行 `page g`。
 
 ## 成功結果
 

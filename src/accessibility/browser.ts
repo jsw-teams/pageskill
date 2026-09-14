@@ -7,17 +7,28 @@ import { browserHtmlAuditScript } from './html.ts';
 import { diagnosticsForRule } from './diagnostics.ts';
 import type { AccessibilityDiagnostic } from './types.ts';
 import type { BuildContext } from '../compiler/types.ts';
+import { archiveRouteFor, routeFor } from '../compiler/routes.ts';
 
 type BrowserAuditResult = {
   diagnostics: AccessibilityDiagnostic[];
   routes: string[];
   checks: string[];
   browser: string;
+  viewports: string[];
+  screenshots: Array<{ route: string; viewport: string; path: string; annotatedPath?: string }>;
 };
 
 type AxeResult = {
   violations?: Array<{ id: string; help: string; tags?: string[]; nodes?: Array<{ target?: string[]; html?: string; failureSummary?: string }> }>;
 };
+
+const SCREENSHOT_VIEWPORTS = [
+  { width: 320, height: 800 },
+  { width: 375, height: 812 },
+  { width: 768, height: 1024 },
+  { width: 1280, height: 800 },
+  { width: 1440, height: 900 }
+];
 
 const require = createRequire(import.meta.url);
 const EDGE_CANDIDATES = [
@@ -71,7 +82,10 @@ function safeFile(root: string, pathname: string): string | undefined {
   let decoded: string;
   try { decoded = decodeURIComponent(pathname); } catch { return undefined; }
   const relative = decoded.replace(/^\/+/, '');
-  const candidate = path.resolve(root, relative || 'index.html');
+  // Return the directory for a trailing-slash route; the caller appends its
+  // index document. Returning root/index.html here would produce the invalid
+  // root/index.html/index.html path and audit the 404 page instead.
+  const candidate = path.resolve(root, relative || '.');
   if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) return undefined;
   return candidate;
 }
@@ -323,7 +337,8 @@ async function runInteractionChecks(page: Page, route: string, checks: Set<strin
   const search = page.locator('[data-local-search]').first();
   if (await search.count()) {
     const input = search.locator('[data-search-input]').first();
-    await input.fill('Pageskill');
+    const searchTerm = (await page.locator('main h1').first().textContent().catch(() => ''))?.trim() || 'content';
+    await input.fill(searchTerm);
     await page.waitForTimeout(180);
     const resultState = await search.getAttribute('data-search-state');
     if (resultState === 'error') add('interaction/search', 'Search entered an error state for a known query.', { selector: '[data-local-search]' });
@@ -429,7 +444,7 @@ async function runViewportChecks(page: Page, route: string): Promise<Accessibili
     await page.evaluate(styleId => document.getElementById(styleId)?.remove(), id);
     return result;
   };
-  const widths = [320, 375, 768, 1280];
+  const widths = SCREENSHOT_VIEWPORTS.map(viewport => viewport.width);
   for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -472,21 +487,145 @@ async function auditRoute(page: Page, baseUrl: string, route: string, responsive
   if (!response || response.status() >= 400) return { diagnostics: [diagnosticsForRule('error', 'browser/route', `Generated route returned HTTP ${response?.status() || 'no response'}.`, { route })], checks: ['route response'] };
   await page.waitForTimeout(80);
   const diagnostics: AccessibilityDiagnostic[] = [];
-  diagnostics.push(...await runAxe(page, route));
-  diagnostics.push(...await page.evaluate(browserHtmlAuditScript()) as AccessibilityDiagnostic[]);
+  const component = await page.locator('body[data-component]').first().getAttribute('data-component').catch(() => null);
+  const addComponent = (items: AccessibilityDiagnostic[]) => items.map(item => item.component || !component ? item : { ...item, component });
+  diagnostics.push(...addComponent(await runAxe(page, route)));
+  diagnostics.push(...addComponent(await page.evaluate(browserHtmlAuditScript()) as AccessibilityDiagnostic[]));
   const checks = ['axe-core WCAG 2.2 AA', 'final DOM and computed styles'];
   if (responsive) {
-    diagnostics.push(...await runViewportChecks(page, route));
+    diagnostics.push(...addComponent(await runViewportChecks(page, route)));
     const interactionChecks = new Set<string>();
-    diagnostics.push(...await runInteractionChecks(page, route, interactionChecks));
+    diagnostics.push(...addComponent(await runInteractionChecks(page, route, interactionChecks)));
     checks.push(...interactionChecks);
-    checks.push('keyboard and component interactions', '320/375/768/desktop reflow', '200% zoom, reduced motion, forced colors, selection', 'text spacing and resize text');
+    checks.push('keyboard and component interactions', '320/375/768/1280/1440 responsive reflow', '200% zoom, reduced motion, forced colors, selection', 'text spacing and resize text');
   }
   return { diagnostics, checks };
 }
 
+function routeSlug(route: string): string {
+  return (route.replace(/^\/+|\/+$/g, '') || 'home').replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 96);
+}
+
+function representativeRoutes(routes: string[], ctx: BuildContext): string[] {
+  const selected: string[] = [];
+  const available = new Set(routes);
+  const add = (route: string | undefined) => {
+    if (route && available.has(route) && !selected.includes(route)) selected.push(route);
+  };
+  const addDocument = (document: BuildContext['docs'][number] | undefined) => {
+    if (document) add(routeFor(ctx, document));
+  };
+  const locale = String(ctx.config.defaultLocale || 'en');
+  const localized = ctx.docs.filter(doc => doc.locale === locale);
+  const pages = localized.filter(doc => doc.collection === 'pages');
+  const postCollections = Object.entries(ctx.config.content?.collections || {})
+    .filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value) && ['post', 'release'].includes(String((value as Record<string, unknown>).contentType)))
+    .map(([name, value]) => ({ name, kind: String((value as Record<string, unknown>).contentType) }));
+  const posts = localized.filter(doc => postCollections.some(collection => collection.name === doc.collection && collection.kind === 'post'));
+  const releases = localized.filter(doc => postCollections.some(collection => collection.name === doc.collection && collection.kind === 'release'));
+  add('/');
+  addDocument(pages.find(doc => doc.id === 'home') || pages[0]);
+  addDocument(pages.find(doc => doc.id !== 'home') || pages[0]);
+  addDocument(posts[0]);
+  addDocument(releases[0]);
+  for (const collection of postCollections) {
+    add(archiveRouteFor(ctx, { collection: collection.name, locale }));
+    const documents = localized.filter(doc => doc.collection === collection.name);
+    if (collection.kind !== 'post') continue;
+    const categories = [...new Set(documents.map(doc => String(doc.data?.category || '').trim().toLocaleLowerCase() || 'uncategorized'))];
+    add(archiveRouteFor(ctx, { collection: collection.name, category: categories.find(category => category !== 'uncategorized'), locale }));
+    add(archiveRouteFor(ctx, { collection: collection.name, category: 'uncategorized', locale }));
+  }
+  addDocument(posts.find(doc => /```|:::/.test(doc.markdown)) || posts[0]);
+  addDocument(posts.find(doc => doc.component === 'post') || posts[0]);
+  return [...selected, ...routes.filter(route => !selected.includes(route)).slice(0, 2)];
+}
+
+function reportRelative(root: string, file: string): string {
+  return path.relative(root, file).replaceAll('\\', '/');
+}
+
+async function captureScreenshots(
+  page: Page,
+  baseUrl: string,
+  root: string,
+  routes: string[],
+  diagnostics: AccessibilityDiagnostic[],
+  ctx: BuildContext
+): Promise<Array<{ route: string; viewport: string; path: string; annotatedPath?: string }>> {
+  const reportRoot = path.join(root, '.pageskill', 'reports', 'accessibility');
+  const screenshotRoot = path.join(reportRoot, 'screenshots');
+  await fs.rm(screenshotRoot, { recursive: true, force: true });
+  await fs.mkdir(screenshotRoot, { recursive: true });
+  const matrix = new Map<string, typeof SCREENSHOT_VIEWPORTS>();
+  for (const route of routes) matrix.set(route, [SCREENSHOT_VIEWPORTS[3]]);
+  for (const route of representativeRoutes(routes, ctx)) matrix.set(route, SCREENSHOT_VIEWPORTS);
+  for (const route of new Set(diagnostics.map(diagnostic => diagnostic.route).filter((route): route is string => Boolean(route)))) matrix.set(route, SCREENSHOT_VIEWPORTS);
+  const artifacts: Array<{ route: string; viewport: string; path: string; annotatedPath?: string }> = [];
+  const issueNumbers = new Map<AccessibilityDiagnostic, string>();
+  diagnostics.forEach((diagnostic, index) => issueNumbers.set(diagnostic, `${diagnostic.level === 'error' ? 'E' : 'W'}${String(index + 1).padStart(2, '0')}`));
+  for (const [route, viewports] of matrix) {
+    const routeDiagnostics = diagnostics.filter(diagnostic => diagnostic.route === route && diagnostic.selector);
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      await page.goto(`${baseUrl}${route}`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+      await page.waitForTimeout(80);
+      const viewportName = `${viewport.width}x${viewport.height}`;
+      const baseFile = path.join(screenshotRoot, `${routeSlug(route)}-${viewportName}.png`);
+      await page.screenshot({ path: baseFile, fullPage: true });
+      const artifact: { route: string; viewport: string; path: string; annotatedPath?: string } = { route, viewport: viewportName, path: reportRelative(root, baseFile) };
+      for (const diagnostic of routeDiagnostics) {
+        const number = issueNumbers.get(diagnostic) || 'E00';
+        const selector = diagnostic.selector;
+        if (!selector) continue;
+        let locator;
+        try { locator = page.locator(selector).first(); } catch { continue; }
+        if (!(await locator.count().catch(() => 0))) continue;
+        await locator.scrollIntoViewIfNeeded().catch(() => {});
+        const box = await locator.boundingBox().catch(() => null);
+        if (!box || box.width <= 0 || box.height <= 0) continue;
+        const label = `${number} ${diagnostic.level} ${diagnostic.rule}`;
+        await locator.evaluate((element, text) => {
+          const target = element as HTMLElement;
+          target.dataset.pageskillA11yTarget = 'true';
+          target.style.outline = '4px solid #c21f39';
+          target.style.outlineOffset = '3px';
+          const annotation = document.createElement('div');
+          annotation.dataset.pageskillA11yAnnotation = 'true';
+          annotation.textContent = String(text);
+          annotation.style.cssText = 'position:fixed;z-index:2147483647;background:#c21f39;color:#fff;padding:4px 7px;font:700 12px/1.2 system-ui,sans-serif;border-radius:3px;pointer-events:none;max-width:80vw;';
+          const rect = target.getBoundingClientRect();
+          annotation.style.left = `${Math.max(0, rect.left)}px`;
+          annotation.style.top = `${Math.max(0, rect.top - 30)}px`;
+          document.body.append(annotation);
+        }, label);
+        const annotatedFile = path.join(screenshotRoot, `${routeSlug(route)}-${viewportName}-${number}.png`);
+        const left = Math.max(0, Math.min(viewport.width - 1, box.x - 18));
+        const top = Math.max(0, Math.min(viewport.height - 1, box.y - 48));
+        const width = Math.max(1, Math.min(viewport.width - left, box.width + 36));
+        const height = Math.max(1, Math.min(viewport.height - top, box.height + 66));
+        await page.screenshot({ path: annotatedFile, clip: { x: left, y: top, width, height } });
+        artifact.annotatedPath = reportRelative(root, annotatedFile);
+        await page.evaluate(() => {
+          document.querySelectorAll('[data-pageskill-a11y-annotation]').forEach(node => node.remove());
+          document.querySelectorAll('[data-pageskill-a11y-target]').forEach(node => {
+            const target = node as HTMLElement;
+            delete target.dataset.pageskillA11yTarget;
+            target.style.outline = '';
+            target.style.outlineOffset = '';
+          });
+        });
+      }
+      artifacts.push(artifact);
+    }
+  }
+  return artifacts;
+}
+
 export async function auditBrowserSite(ctx: BuildContext, requestedRoutes?: string[]): Promise<BrowserAuditResult> {
-  const outputRoot = path.resolve(ctx.out, ctx.deployment?.staticDirectory || 'public');
+  // Core always generates the public site at ctx.out. Runtime adapters may
+  // add host files beside it, but they do not introduce a second public root.
+  const outputRoot = path.resolve(ctx.out);
   const files = (await filesUnder(outputRoot)).filter(file => file.toLowerCase().endsWith('.html')).sort();
   if (!files.length) throw new Error('browser accessibility audit found no generated HTML files in the public output');
   const allRoutes = files.map(file => routeForFile(outputRoot, file));
@@ -500,17 +639,18 @@ export async function auditBrowserSite(ctx: BuildContext, requestedRoutes?: stri
   const page = await context.newPage();
   const diagnostics: AccessibilityDiagnostic[] = [];
   const checks = new Set<string>();
-  const responsiveRoutes = routes.filter(route => /\/posts\/(markdown|post-meta-demo|start)\//.test(route) || route === '/' || route.includes('/about/'));
+  const responsiveRoutes = new Set(representativeRoutes(routes, ctx));
   try {
     for (const route of routes) {
-      const result = await auditRoute(page, server.url, route, responsiveRoutes.includes(route));
+      const result = await auditRoute(page, server.url, route, responsiveRoutes.has(route));
       diagnostics.push(...result.diagnostics);
       result.checks.forEach(check => checks.add(check));
     }
+    const screenshots = await captureScreenshots(page, server.url, ctx.root, routes, diagnostics, ctx);
+    return { diagnostics, routes, checks: [...checks], browser: name, viewports: SCREENSHOT_VIEWPORTS.map(viewport => `${viewport.width}x${viewport.height}`), screenshots };
   } finally {
     await context.close().catch(() => {});
     await browser.close().catch(() => {});
     await server.close();
   }
-  return { diagnostics, routes, checks: [...checks], browser: name };
 }

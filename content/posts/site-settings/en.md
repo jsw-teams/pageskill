@@ -1,4 +1,5 @@
 ---
+kind: post
 title: 'Configuration: one clear source for site settings'
 description: Understand config.yml, optional config layers, site/theme.yml, content, and the boundary between site data and theme code.
 date: 2026-09-07
@@ -12,18 +13,18 @@ Pageskill separates the files a site author changes from the code that implement
 ```text
 config.yml
 ├─ site identity, locales, navigation, footer
-├─ content collections and views
+├─ content collections and collection-owned archives/feeds
 ├─ integrations, privacy policy, discovery, deployment
 └─ optional extends: ./config/*.yml
 
 site/theme.yml
-└─ small, schema-validated theme/plugin presentation overrides
+└─ small, schema-validated theme/component presentation overrides
 
 content/
 └─ Markdown pages, posts, assets, and Frontmatter
 
 themes/default/
-└─ reusable implementation, resources, plugins, and reference examples
+└─ reusable implementation, resources, components, and reference examples
 ```
 
 Ordinary site work stays in the first three layers. `themes/default/` is not a second site configuration directory.
@@ -77,7 +78,6 @@ When a site grows, reference project-local YAML files from the root:
 extends:
   - ./config/content.yml
   - ./config/discovery.yml
-  - ./config/deployment.yml
 ```
 
 The loader applies built-in defaults, then those files in order, then `config.yml`. Objects merge recursively; arrays replace the previous array; scalars, including explicit `null`, replace the previous value. It does not execute YAML, include arbitrary paths, or append arrays automatically. Every referenced file must remain inside the project root, and cycles or missing files fail with the source path.
@@ -112,22 +112,22 @@ The site instance file can be empty:
 
 ```yaml
 # site/theme.yml
-plugins: {}
+components: {}
 ```
 
-In fact, an omitted `theme.config` means the same empty override object. Plugin defaults and schemas live in code, so do not copy every `enabled: true` value into this file. Add a value only when this site differs from the theme default, for example:
+In fact, an omitted `theme.config` means the same empty override object. Component defaults and schemas live in code, so do not copy every `enabled: true` value into this file. Add a value only when this site differs from the theme default, for example:
 
 ```yaml
-plugins:
+components:
   search:
     maxResults: 12
 ```
 
-The advanced `plugins.chrome.navigation.before/after` and `plugins.chrome.footer.before/after` slots remain useful for a theme author or a site that needs a reusable insertion. They use the same safe link model, but ordinary navigation and footer links belong at the site level.
+The advanced `components.shell.navigation.before/after` and `components.shell.footer.before/after` slots remain useful for a theme author or a site that needs a reusable insertion. They use the same safe link model, but ordinary navigation and footer links belong at the site level.
 
 ## 5. Put content in Markdown
 
-Stable pages live at `content/pages/<id>/<locale>.md`. Tutorials, blogs, product notes, and release notes live at `content/posts/<id>/<locale>.md`. Every post needs `date`; an optional `update` records a later modification without changing publication date. `category: update` means a release-note view and is unrelated to the `update` timestamp. The [post metadata example](/en/posts/post-meta-demo/) shows both behaviors.
+Stable pages live at `content/pages/<id>/<locale>.md`. Tutorials, blogs, product notes, and ordinary posts live at `content/posts/<id>/<locale>.md` and release notes live at `content/updates/<id>/<locale>.md`. Every post needs `date`; an optional `updated` records a later modification without changing publication date. The `updates` collection is a real release-note collection, not a filtered view. The [post metadata example](/en/posts/post-meta-demo/) shows both behaviors.
 
 ## Expected result
 

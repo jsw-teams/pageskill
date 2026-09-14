@@ -43,7 +43,7 @@ test('reading time uses configured rates and never displays zero', () => {
   assert.equal(calculateContentMetrics('中文中', { wordsPerMinute: 220, cjkCharactersPerMinute: 2 }).readingMinutes, 2);
 });
 
-test('update dates accept strict ISO dates or timezone datetimes only', () => {
+test('updated dates accept strict ISO dates or timezone datetimes only', () => {
   assert.notEqual(parseIsoTimestamp('2026-09-12'), undefined);
   assert.notEqual(parseIsoTimestamp('2026-09-12T14:30+08:00'), undefined);
   assert.notEqual(parseIsoTimestamp('2026-09-12T14:30:00Z'), undefined);
@@ -53,23 +53,23 @@ test('update dates accept strict ISO dates or timezone datetimes only', () => {
   assert.ok(parseIsoTimestamp('2026-09-12') < parseIsoTimestamp('2026-09-13'));
 });
 
-test('post update validation runs during document checks and rejects invalid order', async () => {
+test('post updated validation runs during document checks and rejects invalid order', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'pageskill-post-validation-'));
   try {
     const file = path.join(root, 'content', 'posts', 'invalid', 'en.md');
     await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, '---\ntitle: Invalid\ndate: 2026-09-20\nupdate: yesterday\n---\nBody\n', 'utf8');
+    await writeFile(file, '---\ntitle: Invalid\ndate: 2026-09-20\nupdated: yesterday\n---\nBody\n', 'utf8');
     const config = {
       defaultLocale: 'en',
       activeLocales: ['en'],
-      content: { collections: { posts: { contentType: 'post', schema: { date: 'string', update: 'string' } } } }
+      content: { collections: { posts: { contentType: 'post', schema: { date: 'string', updated: 'string' } } } }
     };
     const invalid = await loadDocument(root, file, config);
-    assert.match(documentSchemaDiagnostics(config, invalid).join('\n'), /update.*valid ISO/);
+    assert.match(documentSchemaDiagnostics(config, invalid).join('\n'), /updated.*valid ISO/);
 
-    await writeFile(file, '---\ntitle: Invalid order\ndate: 2026-09-20\nupdate: 2026-09-12\n---\nBody\n', 'utf8');
+    await writeFile(file, '---\ntitle: Invalid order\ndate: 2026-09-20\nupdated: 2026-09-12\n---\nBody\n', 'utf8');
     const invalidOrder = await loadDocument(root, file, config);
-    assert.match(documentSchemaDiagnostics(config, invalidOrder).join('\n'), /update.*earlier than.*date/);
+    assert.match(documentSchemaDiagnostics(config, invalidOrder).join('\n'), /updated.*earlier than.*date/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

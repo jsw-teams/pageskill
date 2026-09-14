@@ -1,9 +1,9 @@
 # Reference for a site instance file selected by config.yml: theme.config.
-# Plugin code owns defaults and schemas; site/theme.yml should contain only
+# Component code owns defaults and schemas; site/theme.yml should contain only
 # the values this site overrides. A reusable theme package keeps each site's
 # instance data in site/theme.yml.
-plugins:
-  chrome:
+components:
+  shell:
     enabled: true
     navigation:
       enabled: true
@@ -17,12 +17,11 @@ plugins:
     enabled: true
     maxResults: 8
     shardSize: 500
-    # Optional localized labels; add copy.<locale> only when overriding
-    # messages.yml, for example: copy: { en: { placeholder: Search } }.
+    # Optional presentation overrides are schema-bounded; localized messages
+    # remain owned by the Component.
   toc:
     enabled: true
     maxDepth: 3
-    # Add copy.<locale> only when this site needs different wording.
   postMeta:
     enabled: true
     wordCount: true

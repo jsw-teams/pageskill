@@ -1,4 +1,5 @@
 ---
+kind: post
 title: Configure conditional Agent capabilities
 description: Implement the real service, browser tool, or DNS record first, then let Pageskill publish discovery data that matches it.
 date: 2026-09-11
@@ -17,7 +18,7 @@ This tutorial covers four conditional capabilities: authentication metadata, an 
 | --- | --- | --- | --- |
 | Authentication metadata | A protected route in `backend/handler.ts` plus a real OAuth/OIDC issuer, or an external resource server | `config.yml` `agentDiscovery.auth` | Conditional `/.well-known/oauth-protected-resource` and `auth.md`; authorization-server metadata is generated only when both real endpoints are supplied |
 | MCP card | An MCP transport under `backend/`, or an already deployed external MCP service | `config.yml` `agentDiscovery.mcp` | Conditional `/.well-known/mcp/server-card.json`; the card does not execute tools |
-| WebMCP | A browser script under `themes/<name>/plugins/<id>/` registered through the theme entry | The site instance selected by `theme.config`, normally `site/theme.yml`, plus `config.yml` `agentDiscovery.webmcp` | The browser script registers tools; the static renderer does not create a browser endpoint |
+| WebMCP | A browser script under `themes/<name>/components/<id>/` registered through the theme entry | The site instance selected by `theme.config`, normally `site/theme.yml`, plus `config.yml` `agentDiscovery.webmcp` | The browser script registers tools; the static renderer does not create a browser endpoint |
 | DNS-AID | A real agent endpoint, authoritative DNS zone, and DNSSEC | `config.yml` `agentDiscovery.dnsAid` | Only a configured state in Agent metadata; Pageskill never writes SVCB, TXT, TLSA, or DNSSEC records |
 
 Implement the first column, configure the middle column, and then run generation and live checks. Changing `agentDiscovery` alone cannot create a service.
@@ -104,7 +105,7 @@ agentDiscovery:
 Generate locally, then inspect the metadata and protected route separately:
 
 ```powershell
-npm run g -- --profile
+page g --profile
 Invoke-WebRequest https://api.example.com/.well-known/oauth-protected-resource
 Invoke-WebRequest https://api.example.com/api/private -SkipHttpErrorCheck
 ```
@@ -154,45 +155,47 @@ agentDiscovery:
 The renderer keeps each tool's `name`, `description`, and object-shaped `inputSchema` and writes `/.well-known/mcp/server-card.json`. It does not infer tools from backend code or implement MCP calls. Update the configuration with every service-side tool change, then run:
 
 ```powershell
-npm run g -- --profile
+page g --profile
 Get-Content dist\public\.well-known\mcp\server-card.json
 Invoke-WebRequest https://api.example.com/mcp -Method Get -SkipHttpErrorCheck
-npm run g -- --profile
+page g --profile
 ```
 
 Use a real MCP client or Inspector to run `tools/list` and one side-effect-free `tools/call`, and compare the endpoint, version, and schema with the card. Keep `enabled: true` only after those checks pass.
 
 ## 4. Register WebMCP browser tools
 
-WebMCP is not a static URL. In a secure context, page JavaScript calls `document.modelContext.registerTool()` to make a tool available to a browser Agent. Pageskill has no built-in WebMCP plugin; create it as a reusable theme plugin.
+WebMCP is not a static URL. In a secure context, page JavaScript calls `document.modelContext.registerTool()` to make a tool available to a browser Agent. Pageskill has no built-in WebMCP component; create it as a reusable theme component.
 
-### 4.1 Create and register the theme plugin
+### 4.1 Create and register the theme component
 
 ```text
-themes/default/plugins/web-tools/
+themes/default/components/web-tools/
   index.ts
   script.js
 ```
 
 ```ts
-// themes/default/plugins/web-tools/index.ts
-import type { ThemePluginDefinition } from '../../../../src/theme-api.ts';
+// themes/default/components/web-tools/index.ts
+import type { ComponentDefinition } from '../../../../src/theme-api.ts';
 
-export const plugin: ThemePluginDefinition = {
-  implementation: 'plugins/web-tools/index.ts',
+export const component: ComponentDefinition = {
+  id: 'web-tools',
+  capabilities: ['client'],
+  implementation: 'components/web-tools/index.ts',
   resources: {
-    // The browser module is loaded only when this theme plugin is enabled.
-    scripts: ['plugins/web-tools/script.js']
+    // The browser module is loaded only when this theme component is enabled.
+    scripts: ['components/web-tools/script.js']
   },
   defaults: { enabled: false },
   schema: { enabled: { type: 'boolean' } }
 };
 ```
 
-Export this plugin from `themes/default/plugins/index.ts`, then enable its instance in `site/theme.yml`:
+Export this component from `themes/default/components/index.ts`, then enable its instance in `site/theme.yml`:
 
 ```yaml
-plugins:
+components:
   webTools:
     enabled: true
 ```
@@ -200,7 +203,7 @@ plugins:
 ### 4.2 Register a real tool in the browser module
 
 ```js
-// themes/default/plugins/web-tools/script.js
+// themes/default/components/web-tools/script.js
 const modelContext = document.modelContext;
 
 if (modelContext) {
@@ -232,7 +235,7 @@ Use the current `document.modelContext` API from the [WebMCP draft](https://webm
 
 ### 4.3 Enable the discovery declaration last
 
-After the theme plugin loads and has been tested in the target browser, add:
+After the theme component loads and has been tested in the target browser, add:
 
 ```yaml
 # config.yml: this advertises a real browser module; it does not load one.
@@ -241,7 +244,7 @@ agentDiscovery:
     enabled: true
 ```
 
-This only makes generated Agent metadata show WebMCP as configured; the tools come from the theme script. Run `npm run s`, then in a WebMCP-capable secure context check `await document.modelContext.getTools()` and confirm the tool name, schema, and side-effect-free result. Unsupported browsers should fail without a registration error and must keep the ordinary page usable.
+This only makes generated Agent metadata show WebMCP as configured; the tools come from the theme script. Run `page s`, then in a WebMCP-capable secure context check `await document.modelContext.getTools()` and confirm the tool name, schema, and side-effect-free result. Unsupported browsers should fail without a registration error and must keep the ordinary page usable.
 
 ## 5. Publish DNS-AID
 
@@ -276,26 +279,26 @@ Regenerate and inspect the configured state in `/.well-known/agent.json`. Pagesk
 npm run compile-runtime
 npm run compile-theme
 npm run compile-backend
-npm run g -- --profile
+page g --profile
 
 $root = 'dist\public'
 Get-Content "$root\.well-known\agent.json" | ConvertFrom-Json
 Test-Path "$root\.well-known\oauth-protected-resource"
 Test-Path "$root\.well-known\mcp\server-card.json"
 git diff --check
-npm run g -- --profile
+page g --profile
 ```
 
 With the defaults off, the conditional endpoint files should not exist. After enabling one capability, only that capability's actual files or configured state should appear. Check the deployment type last: static Git/Pages publishes only `dist/public` and cannot host `backend/handler.ts` by itself. Authentication and MCP need the backend deployed in the same runtime or an already live external service. Never edit `dist/`, `.pageskill/`, or generated `.well-known` files by hand.
 
 ## Common failures
 
-- Treating `enabled: true` as an implementation: deploy the service, plugin, or DNS first, then enable the declaration.
+- Treating `enabled: true` as an implementation: deploy the service, component, or DNS first, then enable the declaration.
 - Generating an MCP card without an MCP transport: the card is an index, not a server.
-- Enabling the WebMCP flag without a theme script: Agent metadata says configured, but the browser has no tool; disable the flag or finish the plugin registration.
+- Enabling the WebMCP flag without a theme script: Agent metadata says configured, but the browser has no tool; disable the flag or finish the component registration.
 - Using an example domain, empty ID, or guessed DNS record: replace it with the real value returned by the provider or authoritative DNS before generating.
 - Expecting `/api/private` or `/api/mcp` to work after a static-only publish: package the backend with the snapshot or use an external endpoint.
 
 ## Next step
 
-For theme resources and browser code, read [Develop a reusable plugin](/en/posts/plugins/). For same-origin backend and publishing boundaries, read [Put the site online](/en/posts/deploy/).
+For theme resources and browser code, read [Develop a reusable component](/en/posts/components/). For same-origin backend and publishing boundaries, read [Put the site online](/en/posts/deploy/).

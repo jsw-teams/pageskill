@@ -1,17 +1,29 @@
-import { type DirectiveNode } from '../../../../src/lib/markdown.ts';
-import type { ThemeBlockDefinition } from '../../../../src/theme-api.ts';
+import type { ComponentDefinition } from '../../../../src/theme-api.ts';
 import { enumAttr, validateAttrs } from '../shared/index.ts';
 
-export const block: ThemeBlockDefinition = {
-  name: 'hero',
-  schema: { tone: 'string', align: 'string' },
+/** Hero presentation; title, body, actions, and media come from content. */
+export const component: ComponentDefinition = {
+  id: 'hero',
+  capabilities: ['render'],
+  contexts: ['page'],
+  schema: { tone: { type: 'string' }, align: { type: 'string' }, media: { type: 'string' }, mediaAlt: { type: 'string' } },
   defaults: { tone: 'default', align: 'left' },
-  render: (node: DirectiveNode, context) => {
-    validateAttrs(node, block);
-    const tone = enumAttr(node, 'tone', ['default', 'brand', 'muted'], 'default');
-    const align = enumAttr(node, 'align', ['left', 'center', 'right'], 'left');
-    const image = (name: string) => context.safeUrl(`/assets/${name}`);
-    const artwork = `<div class="hero-art" aria-hidden="true"><span class="hero-art-dot"></span><img class="hero-art-image hero-art-book" src="${image('hero-book.png')}" alt="" width="300" height="300" fetchpriority="high" decoding="async"><img class="hero-art-image hero-art-backpack" src="${image('hero-backpack.png')}" alt="" width="300" height="300" loading="eager" decoding="async"><img class="hero-art-image hero-art-telescope" src="${image('hero-telescope.png')}" alt="" width="300" height="300" loading="eager" decoding="async"></div>`;
-    return `<section class="block hero tone-${context.escapeHtml(tone)} align-${context.escapeHtml(align)}"><div class="hero-copy">${context.renderNodes(node.children)}</div>${artwork}</section>`;
-  }
+  render: (input, context) => {
+    if (input.node) validateAttrs(input.node, component);
+    const tone = input.node ? enumAttr(input.node, 'tone', ['default', 'brand', 'muted'], 'default') : input.attrs.tone || 'default';
+    const align = input.node ? enumAttr(input.node, 'align', ['left', 'center', 'right'], 'left') : input.attrs.align || 'left';
+    const namedCopy = ['title', 'body', 'actions']
+      .map(name => input.slots[name]?.length ? context.renderNodes(input.slots[name]) : '')
+      .filter(Boolean)
+      .join('');
+    const copy = namedCopy ? `${namedCopy}${input.renderedChildren}` : input.renderedChildren;
+    const namedMedia = input.slots.media?.length ? context.renderNodes(input.slots.media) : '';
+    const media = namedMedia
+      ? `<div class="hero-media">${namedMedia}</div>`
+      : input.attrs.media
+        ? `<div class="hero-media"><img src="${context.safeUrl(input.attrs.media)}" alt="${context.escapeHtml(input.attrs.mediaAlt || '')}" loading="eager" decoding="async"></div>`
+        : '';
+    return `<section class="component hero tone-${context.escapeHtml(tone)} align-${context.escapeHtml(align)}"><div class="hero-copy">${copy}</div>${media}</section>`;
+  },
+  example: ':::hero{tone="brand"}\n# A content-authored heading\nDescribe the page here.\n:::'
 };

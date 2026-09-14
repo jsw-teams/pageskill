@@ -1,4 +1,5 @@
 ---
+kind: post
 title: 给长内容加目录
 description: 使用真正的 Markdown 标题，让主题生成可用的内容目录。
 date: 2026-09-08
@@ -28,21 +29,21 @@ category: tutorial
 ## 2. 生成 post
 
 ```powershell
-npm run g
-npm run s
+page g
+page s
 ```
 
-当前 post 样式可以在正文旁显示目录。如果当前主题导出了 `toc` Block，需要指定目录位置时，可在正文加入：
+当前 post Component 可以在正文旁显示目录。如果当前主题导出了 `toc` Component，需要指定目录位置时，可在正文加入：
 
 ```markdown
 :::toc
 :::
 ```
 
-默认 `toc` 插件在 `themes/default/plugins/toc/`；Block、样式和 messages 是一个可复用模块。在 `theme.config` 指向的站点实例文件（通常是 `site/theme.yml`）的 `plugins.toc` 下设置开关和目录深度。
+默认 `toc` Component 在 `themes/default/components/toc/`；renderer、样式和 messages 是一个可复用模块。在 `theme.config` 指向的站点实例文件（通常是 `site/theme.yml`）的 `components.toc` 下设置开关和目录深度。
 
 ```yaml
-plugins:
+components:
   toc:
     enabled: true
     maxDepth: 4
@@ -64,4 +65,4 @@ plugins:
 
 ## 下一步
 
-当重复结构需要统一实现时，阅读[开发一个可复用插件](/zh-sg/posts/plugins/)。
+当重复结构需要统一实现时，阅读[开发一个可复用组件](/zh-sg/posts/components/)。

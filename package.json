@@ -1,17 +1,18 @@
 {
   "name": "pageskill",
-  "version": "3.1.0",
-  "description": "Pageskill: discover reusable Patterns, Blocks, and schemas, then compile localized websites with static pages and same-origin APIs from Markdown and configuration.",
+  "version": "4.0.0",
+  "description": "Pageskill: a Markdown-first content system with reusable Components, static generation, accessibility audits, and optional runtime adapters.",
   "license": "MIT",
   "type": "module",
   "packageManager": "npm@10.9.8",
   "bin": {
-    "pageskill": "src/bin/pageskill.mjs"
+    "page": "src/bin/page.mjs"
   },
   "exports": {
     ".": "./src/runtime/compiler.js",
     "./theme-api": "./src/runtime/theme-api.js",
-    "./fetch-router": "./src/runtime/fetch-router.js"
+    "./fetch-router": "./src/runtime/fetch-router.js",
+    "./runtime-contract": "./src/runtime/runtime-contract.js"
   },
   "files": [
     "AGENTS.md",
@@ -53,8 +54,8 @@
     "access": "public"
   },
   "scripts": {
-    "g": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/pageskill.mjs g",
-    "s": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/pageskill.mjs s",
+    "g": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/page.mjs g",
+    "s": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/page.mjs s",
     "test": "npm run g && node --test",
     "compile-runtime": "tsc -p tsconfig.emit.json",
     "compile-backend": "tsc -p tsconfig.backend.json",
@@ -74,6 +75,7 @@
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "wrangler": "^4.131.2"
   }
 }

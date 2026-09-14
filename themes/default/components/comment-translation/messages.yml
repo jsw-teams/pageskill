@@ -1,0 +1,19 @@
+messages:
+  zh-sg:
+    commentTranslation:
+      translate: 翻译
+      showOriginal: 显示原文
+      translated: 已翻译
+      translating: 正在翻译……
+  zh-tw:
+    commentTranslation:
+      translate: 翻譯
+      showOriginal: 顯示原文
+      translated: 已翻譯
+      translating: 正在翻譯……
+  en:
+    commentTranslation:
+      translate: Translate
+      showOriginal: Show original
+      translated: Translated
+      translating: Translating…

@@ -112,11 +112,10 @@ markdown.renderer.rules.fence = (tokens, index, options) => {
   const token = tokens[index];
   const rawLanguage = token.info?.trim().split(/\s+/)[0] || '';
   const language = /^[A-Za-z0-9_-]{1,32}$/.test(rawLanguage) ? rawLanguage : '';
-  const languageLabel = language ? `<span class="code-language" data-code-language>${escapeHtml(language)}</span>` : '';
-  const button = '<button type="button" class="code-copy" data-code-copy aria-label="Copy code">Copy</button>';
-  const status = '<span class="code-copy-status sr-only" data-code-copy-status aria-live="polite"></span>';
   const className = language ? ` class="language-${escapeHtml(language)}"` : '';
-  return `<div class="code-block" data-code-block><div class="code-block-toolbar">${languageLabel}${button}${status}</div><pre tabindex="0"><code${className}>${escapeHtml(token.content || '')}</code></pre></div>`;
+  // Code Copy is a Component concern. The Core Markdown renderer emits only
+  // the safe code block; the active codeCopy Component adds its UI contract.
+  return `<div class="code-block" data-code-block data-code-language-value="${escapeHtml(language)}"><pre tabindex="0"><code${className}>${escapeHtml(token.content || '')}</code></pre></div>`;
 };
 
 function parseAttrs(source: string, file: string, line: number): Record<string, string> {
@@ -126,7 +125,7 @@ function parseAttrs(source: string, file: string, line: number): Record<string, 
     while (/\s/.test(source[index] || '')) index += 1;
     if (index >= source.length) break;
     const key = source.slice(index).match(/^([\w-]+)=/);
-    if (!key) throw new MarkdownError(`invalid Block attribute near "${source.slice(index)}"; use key="value"`, position(file, line, index + 1));
+    if (!key) throw new MarkdownError(`invalid Component attribute near "${source.slice(index)}"; use key="value"`, position(file, line, index + 1));
     index += key[0].length;
     const quote = source[index];
     if (quote === '"' || quote === "'") {
@@ -234,7 +233,7 @@ export function parseMarkdown(source: string, file: string, firstLine = 1): Mark
       const raw = lines[cursor];
       const lineNumber = firstLine + cursor;
       if (isDirectiveClose(raw)) {
-        if (!stopAtClose) throw new MarkdownError('unexpected Block closing marker', position(file, lineNumber));
+        if (!stopAtClose) throw new MarkdownError('unexpected Component closing marker', position(file, lineNumber));
         cursor += 1;
         return nodes;
       }
@@ -260,7 +259,7 @@ export function parseMarkdown(source: string, file: string, firstLine = 1): Mark
       cursor = plainEnd(cursor);
       nodes.push(...markdownNodes(lines.slice(plainStart, cursor).join('\n'), file, firstLine + plainStart, environment));
     }
-    if (stopAtClose) throw new MarkdownError(`unclosed Block directive${opening ? ` "${opening.name}"` : ''}`, position(file, opening?.line || firstLine + lines.length - 1));
+    if (stopAtClose) throw new MarkdownError(`unclosed Component directive${opening ? ` "${opening.name}"` : ''}`, position(file, opening?.line || firstLine + lines.length - 1));
     return nodes;
   };
 

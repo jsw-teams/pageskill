@@ -1,4 +1,5 @@
 ---
+kind: post
 title: 給長內容加目錄
 description: 使用真正的 Markdown 標題，讓主題產生可用的內容目錄。
 date: 2026-09-08
@@ -28,21 +29,21 @@ category: tutorial
 ## 2. 產生 post
 
 ```powershell
-npm run g
-npm run s
+page g
+page s
 ```
 
-目前 post 樣式可以在正文旁顯示目錄。如果目前主題匯出了 `toc` Block，需要指定目錄位置時，可在正文加入：
+目前 post Component 可以在正文旁顯示目錄。如果目前主題匯出了 `toc` Component，需要指定目錄位置時，可在正文加入：
 
 ```markdown
 :::toc
 :::
 ```
 
-預設 `toc` 外掛在 `themes/default/plugins/toc/`；Block、樣式和 messages 是一個可重用模組。在 `theme.config` 指向的網站實例檔案（通常是 `site/theme.yml`）的 `plugins.toc` 下設定開關和目錄深度。
+預設 `toc` Component 在 `themes/default/components/toc/`；renderer、樣式和 messages 是一個可重用模組。在 `theme.config` 指向的網站實例檔案（通常是 `site/theme.yml`）的 `components.toc` 下設定開關和目錄深度。
 
 ```yaml
-plugins:
+components:
   toc:
     enabled: true
     maxDepth: 4
@@ -64,4 +65,4 @@ plugins:
 
 ## 下一步
 
-當重複結構需要統一實作時，閱讀[開發一個可重用外掛](/zh-tw/posts/plugins/)。
+當重複結構需要統一實作時，閱讀[開發一個可重用元件](/zh-tw/posts/components/)。

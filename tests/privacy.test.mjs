@@ -3,9 +3,9 @@ import test from 'node:test';
 import { validateConfigLayer } from '../src/runtime/config/validate.js';
 import { resolveConfiguredIntegrations, validateConfiguredIntegrations } from '../src/runtime/config/integrations.js';
 import { renderPrivacyConsent } from '../src/runtime/lib/privacy-consent.js';
-import { integrationAdapters } from '../.pageskill/theme-runtime/themes/default/plugins/cookies/integrations.js';
+import { integrationAdapters } from '../.pageskill/theme-runtime/themes/default/components/consent/integrations.js';
 
-const theme = { plugins: { privacyConsent: { integrations: integrationAdapters } } };
+const theme = { components: { consent: { integrations: integrationAdapters } } };
 
 test('site integrations use adapter-owned purpose and default enabled state', () => {
   const config = {

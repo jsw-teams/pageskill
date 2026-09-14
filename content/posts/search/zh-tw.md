@@ -1,4 +1,5 @@
 ---
+kind: post
 title: 讓訪客搜到頁面和內容
 description: 啟用現成的本地搜尋，並檢查每種語言產生的索引。
 date: 2026-09-08
@@ -11,10 +12,10 @@ Pageskill 搜尋會從頁面和帶日期的 post 產生。瀏覽器讀取目前�
 
 ## 1. 開啟搜尋設定
 
-在 `theme.config` 指向的網站實例檔案（通常是 `site/theme.yml`）中設定外掛選項：
+在 `theme.config` 指向的網站實例檔案（通常是 `site/theme.yml`）中設定元件選項：
 
 ```yaml
-plugins:
+components:
   search:
     enabled: true
     maxResults: 8
@@ -27,22 +28,22 @@ plugins:
 
 `maxResults` 限制顯示數量，`shardSize` 控制產生索引如何分片；網站還不大時保持預設值即可。
 
-`copy` 可選，也可以只翻譯一部分。語言啟用和回退仍然放在 `config.yml`，不要為搜尋外掛增加語言開關。只有要改變行為或 schema 時，才修改模組程式碼。
+`copy` 可選，也可以只翻譯一部分。語言啟用和回退仍然放在 `config.yml`，不要為搜尋元件增加語言開關。只有要改變行為或 schema 時，才修改模組程式碼。
 
-目前主題的搜尋模組在 `themes/default/plugins/search/`；`index.ts`、腳本、樣式和 messages 放在一起。只有需要改變預設搜尋行為時才修改這個模組。
+目前主題的搜尋模組在 `themes/default/components/search/`；`index.ts`、腳本、樣式和 messages 放在一起。只有需要改變預設搜尋行為時才修改這個模組。
 
 ## 2. 產生並試搜
 
 ```powershell
-npm run g
-npm run s
+page g
+page s
 ```
 
 在與 post 相同的語言頁面開啟預覽，輸入一個完整詞，再點選結果。搜尋會包含該語言的穩定頁面和帶日期 post。
 
 ## 成功結果
 
-搜尋框能返回標題、標題層級、摘要和正文的符合結果。結果保留原語言路由，執行 `npm run g` 後索引會更新。
+搜尋框能返回標題、標題層級、摘要和正文的符合結果。結果保留原語言路由，執行 `page g` 後索引會更新。
 
 ## 常見問題
 

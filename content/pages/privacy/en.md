@@ -1,4 +1,5 @@
 ---
+kind: page
 title: Privacy policy
 description: How this demo site handles data and how configured integrations participate in consent.
 ---

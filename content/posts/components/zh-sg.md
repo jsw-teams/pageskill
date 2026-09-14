@@ -1,0 +1,148 @@
+---
+kind: post
+title: 开发一个可复用组件
+description: 增加一个自带资源的主题组件，只注册一次，并在每个页面复用。
+date: 2026-09-08
+category: tutorial
+---
+
+# 开发一个可复用组件
+
+主题组件负责共享的浏览器行为、样式和 messages。只注册一次；post 继续写 Markdown，不复制 HTML。
+
+## 1. 创建一个模块目录
+
+```text
+themes/default/components/reading-tip/
+  index.ts
+  script.js
+  style.css
+  messages.yml
+```
+
+目录自己保存资源。`themes/default/index.ts` 是组装入口，由 `theme.config` 选择的文件（通常是 `site/theme.yml`）保存这个站点的组件覆盖项。
+
+## 2. 先配置已经登记的组件
+
+改代码前先查看组件 schema，再在 `site/theme.yml` 使用安全的外观选项。基础组件的开关、限制、shell 插入点和可选本地化文案属于实例数据。第三方 Integration 不同：只在根级 `integrations` 配置真正使用的 Provider 标识，purpose 和同意元数据由适配器自己拥有：
+
+```yaml
+components:
+  search:
+    enabled: true
+    maxResults: 8
+    # 只翻译部分语言时，缺少的 key 会从 messages.yml 回退。
+    copy:
+      zh-sg:
+        placeholder: 搜索本主题
+  toc:
+    enabled: true
+    maxDepth: 4
+```
+
+语言启用不是组件选项；`activeLocales` 和 `i18n.fallbackLocale` 放在 `config.yml` 或其扩展文件。新增语言只完成 50% 翻译也可以生成：缺少的界面 key 使用回退语言，已经存在的 Markdown 文件则完全按原文显示。
+
+## 3. 导出组件定义
+
+在 `index.ts` 使用公开的 `ComponentDefinition`：
+
+```ts
+import type { ComponentDefinition } from '../../../../src/theme-api.ts';
+
+export const component: ComponentDefinition = {
+  id: 'reading-tip',
+  capabilities: ['render', 'client'],
+  implementation: 'components/reading-tip/index.ts',
+  resources: {
+    // 让模块拥有自己的资源，编译器才能统一追踪和指纹化。
+    styles: ['components/reading-tip/style.css'],
+    scripts: ['components/reading-tip/script.js']
+  },
+  i18n: 'components/reading-tip/messages.yml',
+  defaults: { enabled: true },
+  schema: { enabled: { type: 'boolean' } }
+};
+```
+
+在主题的 `components` 数组注册一次：
+
+```ts
+import { component as shell } from './shell/chrome.ts';
+import { component as privacyConsent } from './consent/index.ts';
+import { component as readingTip } from './reading-tip/index.ts';
+
+export const components = [shell, search, toc, postMeta, privacyConsent, language, readingTip];
+```
+
+## 4. 写入最小可运行资源
+
+`script.js`：
+
+```js
+// 使用 DOM API，避免组件变成 HTML 注入入口。
+const marker = document.createElement('small');
+marker.className = 'reading-tip';
+marker.textContent = 'Reading tip enabled';
+document.querySelector('main')?.prepend(marker);
+```
+
+`style.css`：
+
+```css
+/* 样式和组件资源放在一起，删除时不会留下孤立依赖。 */
+.reading-tip { margin-inline-start: .5rem; }
+```
+
+`messages.yml`：
+
+```yaml
+messages:
+  en:
+    readingTip:
+      # 界面文案放这里，执行行为仍由 index.ts/script.js 负责。
+      label: Reading tip
+```
+
+## 5. 在 site/theme.yml 中保留实例开关
+
+```yaml
+# site/theme.yml
+components:
+  readingTip:
+    # 不改 renderer 就能开关已经登记的能力。
+    enabled: true
+```
+
+在克隆的站点运行检查：
+
+```powershell
+npm run compile-theme
+page g
+page s
+```
+
+## 成功结果
+
+生成的页面会加载组件脚本和样式，主要内容区域出现标记。把 `site/theme.yml` 中的 `components.readingTip.enabled` 改为 `false` 后重新生成即可移除；新增文章不需要再写 HTML。
+
+生成时会把模块的资源和 messages 收集到公开主题资源中。服务端嵌套 ESM 留在构建/运行时边界内，未变化的公开资源继续使用原内容 hash 路径和缓存身份。
+
+## 6. 以 Cookie 选择器作为参考
+
+本主题的[Cookie 选择器教程](/zh-sg/posts/cookies/)是一个完整参考实现。它在同样的模块结构上加入了 schema、本地化消息、同意后浏览器行为和安全渲染；当组件不止需要一个资源时，可以照这个结构扩展。
+
+普通导航和页脚链接是 `config.yml` 或其扩展文件中的站点数据；主题插槽仍通过 `site/theme.yml` 的 `components.shell` 配置。不要让组件脚本向 `.site-header` 或 `.site-footer` 任意追加链接。shell Component 只接受结构化标签和安全 URL；像本例这样的页面级行为仍可挂载到 `main` 内。
+
+如果组件要向浏览器 Agent 暴露 WebMCP 工具，先按[配置条件 Agent 能力](/zh-sg/posts/agent-discovery/)在组件脚本中登记真实的 `document.modelContext` 工具，再单独打开 `config.yml` 的发现声明；这个开关不会替组件加载脚本。
+
+## 7. 干净地移除组件
+
+能力不再需要时，删除主题组装入口中的 import、组件定义和资源登记、`site/theme.yml` 覆盖项，以及 Markdown directive 或 shell 引用。重新生成并检查 catalog；不要只删生成的资源，也不要为旧消费者保留第二套实现。
+
+## 常见坑
+
+资源路径都相对主题根目录。不要修改 `dist/`，不要把代码放进 `config.yml`，也不要让每篇文章直接导入组件。
+
+## 下一步
+
+阅读[把网站放到网上](/zh-sg/posts/deploy/)，了解主机如何发布生成的 `dist/public` 快照。

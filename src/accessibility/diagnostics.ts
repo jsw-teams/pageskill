@@ -5,7 +5,7 @@ function sourceLabel(diagnostic: AccessibilityDiagnostic): string {
 }
 
 export function formatAccessibilityDiagnostic(diagnostic: AccessibilityDiagnostic): string {
-  const location = [sourceLabel(diagnostic), diagnostic.selector].filter(Boolean).join(' ');
+  const location = [sourceLabel(diagnostic), diagnostic.component ? `component=${diagnostic.component}` : '', diagnostic.selector].filter(Boolean).join(' ');
   const wcag = diagnostic.wcag?.length ? ` [${diagnostic.wcag.join(', ')}]` : '';
   return `${diagnostic.level.toUpperCase()} ${diagnostic.rule} ${location}: ${diagnostic.message}${wcag}`;
 }

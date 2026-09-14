@@ -1,4 +1,5 @@
 ---
+kind: post
 title: 配置结构：站点设置只有一个清晰来源
 description: 理解 config.yml、可选配置分层、site/theme.yml、content，以及站点数据和主题代码的边界。
 date: 2026-09-07
@@ -12,18 +13,18 @@ Pageskill 把站点作者会修改的文件，与主题实现代码分开。可�
 ```text
 config.yml
 ├─ 站点身份、语言、导航、页脚
-├─ 内容 collection 和 view
+├─ 内容 collection 以及各 collection 自己的归档/Feed
 ├─ integrations、隐私政策、发现、部署
 └─ 可选 extends：./config/*.yml
 
 site/theme.yml
-└─ 少量、经过 schema 校验的主题/插件外观覆盖
+└─ 少量、经过 schema 校验的主题/组件外观覆盖
 
 content/
 └─ Markdown 页面、文章、资源和 Frontmatter
 
 themes/default/
-└─ 可复用实现、资源、插件和参考示例
+└─ 可复用实现、资源、组件和参考示例
 ```
 
 普通站点工作只需要前三层。`themes/default/` 不是另一套站点配置目录。
@@ -85,7 +86,6 @@ footer:
 extends:
   - ./config/content.yml
   - ./config/discovery.yml
-  - ./config/deployment.yml
 ```
 
 加载顺序是：Pageskill 内建默认值、按顺序读取的这些文件、最后的 `config.yml`。对象递归合并，数组整体替换，标量（包括显式 `null`）覆盖前值。YAML 不会执行代码、随意 include 路径或自动追加数组。每个文件都必须留在项目根内，循环或缺失文件会显示来源路径并失败。
@@ -120,22 +120,22 @@ privacy:
 
 ```yaml
 # site/theme.yml
-plugins: {}
+components: {}
 ```
 
-省略 `theme.config` 也会得到同样的空覆盖对象。插件默认值和 schema 在代码中维护，因此不要把每个 `enabled: true` 都复制进来。只有站点与主题默认值不同才写，例如：
+省略 `theme.config` 也会得到同样的空覆盖对象。组件默认值和 schema 在代码中维护，因此不要把每个 `enabled: true` 都复制进来。只有站点与主题默认值不同才写，例如：
 
 ```yaml
-plugins:
+components:
   search:
     maxResults: 12
 ```
 
-高级主题仍可以使用 `plugins.chrome.navigation.before/after` 和 `plugins.chrome.footer.before/after` 插槽插入可复用链接；它们共用同一套安全链接模型，但普通 Navigation 和 Footer link 属于站点级配置。
+高级主题仍可以使用 `components.shell.navigation.before/after` 和 `components.shell.footer.before/after` 插槽插入可复用链接；它们共用同一套安全链接模型，但普通 Navigation 和 Footer link 属于站点级配置。
 
 ## 5. 用 Markdown 管理内容
 
-稳定页面位于 `content/pages/<id>/<locale>.md`。教程、博客、产品记录和版本说明位于 `content/posts/<id>/<locale>.md`。每篇 post 都需要 `date`；可选的 `update` 记录后续修改，不改变发布日期。`category: update` 表示版本说明 view，与 `update` 时间戳不是同一概念。[文章元数据示例](/zh-sg/posts/post-meta-demo/)同时展示了两条路径。
+稳定页面位于 `content/pages/<id>/<locale>.md`。教程、博客、产品记录和普通文章位于 `content/posts/<id>/<locale>.md`，版本说明位于 `content/updates/<id>/<locale>.md`。每篇 post 都需要 `date`；可选的 `updated` 记录后续修改，不改变发布日期。`content/updates/` 是独立的版本说明 collection，不是筛选 view，也不是 `updated` 时间戳。[文章元数据示例](/zh-sg/posts/post-meta-demo/)同时展示了两条路径。
 
 ## 预期结果
 

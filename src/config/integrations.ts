@@ -1,25 +1,25 @@
-import type { PageskillTheme, ThemeIntegrationAdapter, ThemeOptionSchema } from '../theme-api.ts';
+import type { PageskillTheme, ProviderAdapter, ComponentOptionSchema } from '../theme-api.ts';
 import { isRecord } from './merge.ts';
 
 export type ConfiguredIntegration = {
   id: string;
   settings: Record<string, any>;
   enabled: boolean;
-  adapter: ThemeIntegrationAdapter;
+  adapter: ProviderAdapter;
   purpose: string;
-  consent: ThemeIntegrationAdapter['privacy']['consent'];
-  load: ThemeIntegrationAdapter['privacy']['load'];
+  consent: ProviderAdapter['privacy']['consent'];
+  load: ProviderAdapter['privacy']['load'];
   runtime: string;
 };
 
-function schemaValueMatches(value: unknown, schema: ThemeOptionSchema): boolean {
+function schemaValueMatches(value: unknown, schema: ComponentOptionSchema): boolean {
   if (schema.type === 'array') return Array.isArray(value);
   if (schema.type === 'object') return isRecord(value);
   if (schema.type === 'number') return typeof value === 'number' && Number.isFinite(value);
   return typeof value === schema.type;
 }
 
-function validateSchemaValue(value: unknown, schema: ThemeOptionSchema, label: string): void {
+function validateSchemaValue(value: unknown, schema: ComponentOptionSchema, label: string): void {
   if (!schemaValueMatches(value, schema)) throw new Error(`${label} must be ${schema.type}`);
   if (schema.enum && !schema.enum.some(candidate => JSON.stringify(candidate) === JSON.stringify(value))) {
     throw new Error(`${label} must be one of ${schema.enum.map(candidate => String(candidate)).join(', ')}`);
@@ -51,31 +51,31 @@ function validateSchemaValue(value: unknown, schema: ThemeOptionSchema, label: s
   }
 }
 
-function adapterEntries(theme: PageskillTheme): Array<[string, ThemeIntegrationAdapter]> {
-  const entries: Array<[string, ThemeIntegrationAdapter]> = [];
+function adapterEntries(theme: PageskillTheme): Array<[string, ProviderAdapter]> {
+  const entries: Array<[string, ProviderAdapter]> = [];
   const owners = new Map<string, string>();
-  for (const [pluginName, plugin] of Object.entries(theme.plugins || {})) {
-    for (const [id, adapter] of Object.entries(plugin.integrations || {})) {
-      if (!isRecord(adapter)) throw new Error(`theme plugin ${pluginName} integration ${id} must be a code-owned adapter`);
-      if (owners.has(id)) throw new Error(`integration adapter ${id} is registered by both ${owners.get(id)} and ${pluginName}`);
-      if (adapter.id !== id) throw new Error(`theme plugin ${pluginName} integration ${id} must declare the same id`);
-      if (!adapter.runtime || typeof adapter.runtime !== 'string') throw new Error(`theme plugin ${pluginName} integration ${id} must declare a runtime implementation`);
-      if (!adapter.privacy || typeof adapter.privacy !== 'object') throw new Error(`theme plugin ${pluginName} integration ${id} must declare privacy metadata`);
-      if (!adapter.privacy.purpose || !['required', 'optional', 'none'].includes(adapter.privacy.consent)) throw new Error(`theme plugin ${pluginName} integration ${id} has invalid privacy consent metadata`);
-      if (!['immediate', 'consent', 'on-demand'].includes(adapter.privacy.load)) throw new Error(`theme plugin ${pluginName} integration ${id} has invalid load policy`);
-      for (const field of adapter.publicFields || []) if (!adapter.schema?.[field]) throw new Error(`theme plugin ${pluginName} integration ${id} exposes unknown public field ${field}`);
-      owners.set(id, pluginName);
+  for (const [componentName, component] of Object.entries(theme.components || {})) {
+    for (const [id, adapter] of Object.entries(component.integrations || {})) {
+      if (!isRecord(adapter)) throw new Error(`theme component ${componentName} integration ${id} must be a code-owned adapter`);
+      if (owners.has(id)) throw new Error(`integration adapter ${id} is registered by both ${owners.get(id)} and ${componentName}`);
+      if (adapter.id !== id) throw new Error(`theme component ${componentName} integration ${id} must declare the same id`);
+      if (!adapter.runtime || typeof adapter.runtime !== 'string') throw new Error(`theme component ${componentName} integration ${id} must declare a runtime implementation`);
+      if (!adapter.privacy || typeof adapter.privacy !== 'object') throw new Error(`theme component ${componentName} integration ${id} must declare privacy metadata`);
+      if (!adapter.privacy.purpose || !['required', 'optional', 'none'].includes(adapter.privacy.consent)) throw new Error(`theme component ${componentName} integration ${id} has invalid privacy consent metadata`);
+      if (!['immediate', 'consent', 'on-demand'].includes(adapter.privacy.load)) throw new Error(`theme component ${componentName} integration ${id} has invalid load policy`);
+      for (const field of adapter.publicFields || []) if (!adapter.schema?.[field]) throw new Error(`theme component ${componentName} integration ${id} exposes unknown public field ${field}`);
+      owners.set(id, componentName);
       entries.push([id, adapter]);
     }
   }
   return entries;
 }
 
-export function integrationAdapters(theme: PageskillTheme): Record<string, ThemeIntegrationAdapter> {
+export function integrationAdapters(theme: PageskillTheme): Record<string, ProviderAdapter> {
   return Object.fromEntries(adapterEntries(theme));
 }
 
-function validateConfiguredIntegration(id: string, raw: unknown, adapter: ThemeIntegrationAdapter, source: string): void {
+function validateConfiguredIntegration(id: string, raw: unknown, adapter: ProviderAdapter, source: string): void {
   const label = `${source}: integrations.${id}`;
   if (!isRecord(raw)) throw new Error(`${label} must be a mapping`);
   const schema = adapter.schema || {};
@@ -89,7 +89,7 @@ function validateConfiguredIntegration(id: string, raw: unknown, adapter: ThemeI
   }
   // An explicitly disabled integration may be kept in place without a valid
   // identifier, but an enabled node must satisfy every adapter requirement.
-  if (enabled !== false) for (const [key, option] of Object.entries(schema)) {
+  if (enabled !== false) for (const [key, option] of Object.entries(schema) as Array<[string, ComponentOptionSchema]>) {
     if (option.required && raw[key] === undefined) throw new Error(`${label}.${key} is required`);
   }
 }

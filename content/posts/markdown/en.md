@@ -1,4 +1,5 @@
 ---
+kind: post
 title: "Markdown: write a complete Pageskill article"
 description: A practical guide to the Markdown syntax that Pageskill renders and checks.
 date: 2026-09-07
@@ -30,7 +31,7 @@ Today I finished one small goal and recorded what made it work.
 - Keep [one useful link](https://example.com/notes)
 
 ```text
-npm run g
+page g
 ```
 ````
 
@@ -85,9 +86,9 @@ Every generated code block has a localized Copy button. You can copy the whole b
 
 Use `---` for a thematic break. A table is kept scrollable on a narrow screen, while the rest of the page reflows to the viewport.
 
-## 5. Reuse a Pageskill Block
+## 5. Compose a reusable Component
 
-Pageskill supports trusted Blocks for repeated presentation patterns. This feature grid is content in Markdown, while its structure and styles belong to the selected theme:
+The default Theme exposes trusted Components for repeated presentation behavior. This feature grid is content in Markdown, while its structure and styles belong to the selected Theme:
 
 :::feature-grid{columns="2"}
 ### Content stays portable
@@ -104,14 +105,14 @@ Change site data in `config.yml` and theme instance options in `site/theme.yml`.
 Before publishing, run:
 
 ```text
-npm run g
-npm run s
+page g
+page s
 ```
 
 Open `/en/posts/hello/`, check the title and links, and try the page at a narrow width. The generated post is included in the post archive, search index, Feed, and sitemap when its Frontmatter and route are valid.
 
 ## Common mistakes and next steps
 
-A post without `date` cannot be published. Use a stable `YYYY-MM-DD` date, keep translated files under one post id, and add `update: YYYY-MM-DD` only when the article was revised after publication.
+A post without `date` cannot be published. Use a stable `YYYY-MM-DD` date, keep translated files under one post id, and add `updated: YYYY-MM-DD` only when the article was revised after publication.
 
 For the first complete publishing path, read [Publish your first tutorial](/en/posts/first-post/). For site-wide settings, continue to [Configuration](/en/posts/site-settings/); for the theme instance boundary, read [Customize the theme](/en/posts/customize/).

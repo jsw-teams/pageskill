@@ -47,5 +47,9 @@ footer:
 #   consent:
 #     decisionRetentionDays: 180
 
-# Deployment targets are intentionally omitted. Add provider settings and
-# environment-variable names in a private deployment layer when publishing.
+# Runtime is optional. A static site can omit this block entirely. Cloudflare
+# Pages is the bundled reference adapter; its D1 and optional AI bindings are
+# configured by the host, not by Core.
+# runtime:
+#   adapter: cloudflare-pages
+#   backend: true

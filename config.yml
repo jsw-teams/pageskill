@@ -2,6 +2,12 @@ extends:
   - ./config/content.yml
   - ./config/discovery.yml
 
+# The repository demo opts into the reference runtime. Core sites may omit
+# this block and remain fully static.
+runtime:
+  adapter: cloudflare-pages
+  backend: true
+
 siteUrl: https://pageskill.openjsu.com
 defaultLocale: en
 activeLocales:
@@ -45,6 +51,14 @@ navigation:
       target: _blank
 
 footer:
+  kicker:
+    zh-sg: 内容网站
+    zh-tw: 內容網站
+    en: Content website
+  note:
+    zh-sg: 用清晰步骤把 Markdown 变成网站。
+    zh-tw: 用清楚步驟把 Markdown 變成網站。
+    en: Turn Markdown into a site with clear structure.
   links:
     - key: privacy
       href: /:locale/privacy/

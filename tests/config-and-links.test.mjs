@@ -55,7 +55,6 @@ test('layered config recursively merges objects, replaces arrays, and hashes all
   assert.deepEqual(first.config.siteName.nested, { base: true, second: true, root: true });
   assert.deepEqual(first.config.list, ['root']);
   assert.equal(first.config.nullable, null);
-  assert.deepEqual(first.config.archive, { pageSize: 50 });
   assert.equal(first.config.i18n.fallbackLocale, 'en');
   assert.equal(first.config.agentDiscovery.skills.enabled, true);
   assert.equal(first.configFiles.length, 3);
@@ -100,17 +99,20 @@ test('extends reports missing, invalid, escaped, and circular files with field c
   const badDeployment = await project();
   await put(badDeployment, 'config.yml', baseConfig('extends: ./config/deployment.yml\n'));
   await put(badDeployment, 'config/deployment.yml', 'deployment:\n  targets: [not-a-target]\n');
-  await assert.rejects(() => loadConfig(badDeployment), /config\/deployment\.yml: deployment\.targets\[0\].*unsupported target/);
+  await assert.rejects(() => loadConfig(badDeployment), /config\/deployment\.yml: deployment was removed/);
+  const badViews = await project();
+  await put(badViews, 'config.yml', baseConfig('content:\n  views:\n    updates: {}\n'));
+  await assert.rejects(() => loadConfig(badViews), /content\.views was removed/);
 });
 
 test('explicit theme.config is the only theme instance source', async () => {
   const root = await project();
   await put(root, 'config.yml', baseConfig('theme:\n  name: default\n  config: ./site/theme.yml\n'));
-  await put(root, 'site/theme.yml', 'plugins:\n  search:\n    maxResults: 12\n');
-  await put(root, 'themes/default/theme.yml', 'plugins:\n  search:\n    maxResults: 8\n');
+  await put(root, 'site/theme.yml', 'components:\n  search:\n    maxResults: 12\n');
+  await put(root, 'themes/default/theme.yml', 'components:\n  search:\n    maxResults: 8\n');
   const explicit = await loadThemeConfig(root, { theme: { name: 'default', config: './site/theme.yml' } });
   assert.equal(explicit.file, path.join(root, 'site/theme.yml'));
-  assert.equal(explicit.config.plugins.search.maxResults, 12);
+  assert.equal(explicit.config.components.search.maxResults, 12);
 
   const noInstance = await loadThemeConfig(root, { theme: { name: 'default' } });
   assert.equal(noInstance.file, undefined);
@@ -119,19 +121,14 @@ test('explicit theme.config is the only theme instance source', async () => {
   await assert.rejects(() => loadThemeConfig(root, { theme: { name: 'default', config: './site/unsafe.yml' } }), /copy.*not supported/);
 });
 
-test('deployment normalization has one target vocabulary and safe public defaults', () => {
-  const resolved = resolveDeploymentConfig({ deployment: { targets: ['cloudflare-pages', 'cloudflare-workers', 'github-pages'], backend: false, staticDirectory: 'site-public' } });
-  assert.deepEqual(resolved.targets, ['cloudflare-pages', 'cloudflare-workers', 'github-pages']);
-  assert.equal(resolved.staticDirectory, 'site-public');
-  assert.equal(resolved.backend, false);
-  assert.equal(resolved.cloudflare.apiTokenEnv, 'CLOUDFLARE_API_TOKEN');
-  assert.equal(resolved.github.tokenEnv, 'GITHUB_TOKEN');
-  assert.equal(resolved.vps.port, 22);
-  assert.equal('openaiSitesConfigured' in resolved, false);
-  assert.throws(() => resolveDeploymentConfig({ deployment: { targets: ['cf-pages'] } }), /unsupported target/);
-  assert.throws(() => resolveDeploymentConfig({ deployment: { targets: 'github-pages' } }), /targets must be an array/);
-  assert.throws(() => resolveDeploymentConfig({ deployment: { openaiSites: { staticDirectory: 'site-public' } } }), /openaiSites\.staticDirectory/);
-  assert.throws(() => resolveDeploymentConfig({ deployment: { staticDirectory: {} } }), /relative path/);
+test('deployment normalization is optional and adapter-neutral', () => {
+  const resolved = resolveDeploymentConfig({});
+  assert.deepEqual(resolved, { enabled: false, staticDirectory: 'public', publicDirectory: 'public', backend: false });
+  assert.deepEqual(resolveDeploymentConfig({ runtime: { adapter: 'cloudflare-pages', backend: true } }), { adapter: 'cloudflare-pages', enabled: true, staticDirectory: 'public', publicDirectory: 'public', backend: true });
+  assert.deepEqual(resolveDeploymentConfig({ runtime: { adapter: 'custom-runtime', backend: false } }), { adapter: 'custom-runtime', enabled: true, staticDirectory: 'public', publicDirectory: 'public', backend: false });
+  assert.throws(() => resolveDeploymentConfig({ deployment: { targets: ['github-pages'] } }), /deployment was removed/);
+  assert.throws(() => resolveDeploymentConfig({ runtime: { staticDirectory: 'site-public' } }), /fixed to "public"/);
+  assert.throws(() => resolveDeploymentConfig({ runtime: { adapter: '../outside' } }), /safe adapter id/);
 });
 
 test('site links resolve locale, labels, current state, and external target security', () => {
