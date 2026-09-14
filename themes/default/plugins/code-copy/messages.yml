@@ -1,0 +1,16 @@
+messages:
+  zh-sg:
+    codeCopy:
+      copy: 复制代码
+      copied: 已复制
+      failed: 复制失败
+  zh-tw:
+    codeCopy:
+      copy: 複製程式碼
+      copied: 已複製
+      failed: 複製失敗
+  en:
+    codeCopy:
+      copy: Copy code
+      copied: Copied
+      failed: Copy failed

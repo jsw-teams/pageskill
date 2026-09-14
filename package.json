@@ -55,16 +55,17 @@
   "scripts": {
     "g": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/pageskill.mjs g",
     "s": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/pageskill.mjs s",
-    "d": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/pageskill.mjs d",
-    "test": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node --test",
+    "test": "npm run g && node --test",
     "compile-runtime": "tsc -p tsconfig.emit.json",
     "compile-backend": "tsc -p tsconfig.backend.json",
     "compile-theme": "tsc -p tsconfig.theme.json"
   },
   "dependencies": {
+    "axe-core": "^4.13.0",
     "lucide": "0.468.0",
     "markdown-it": "^15.0.0",
     "markdown-it-task-lists": "^2.1.1",
+    "playwright": "^1.63.0",
     "sharp": "^0.35.3",
     "yaml": "^2.9.0"
   },

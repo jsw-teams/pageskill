@@ -140,4 +140,4 @@ Keep resource paths relative to the theme root. Do not edit `dist/`, put code in
 
 ## Next step
 
-Read [Put the site online](/en/posts/deploy/) and run the deployment dry-run before a real publish.
+Read [Put the site online](/en/posts/deploy/) to learn how a host publishes the generated `dist/public` snapshot.

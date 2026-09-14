@@ -18,6 +18,8 @@ Pageskill 3.1.0 completes the portable configuration refactor. This entry contai
 - Moved document loading, frontmatter/date/metrics validation, and pattern selection into a compiler document module while keeping the public `createContext`, `refreshContext`, `build`, `check`, `inspect`, `getCatalog`, and `siteDiscoveryOptions` facade unchanged. Compiler, CLI, and deploy now consume one normalized deployment configuration.
 - Replaced remaining default-theme locale conditionals with message and locale metadata fallbacks and updated generated Agent guidance to point to config extends files and the resolved theme instance.
 - Added Node 22 built-in tests for configuration layers, path security, link resolution, metrics, strict dates, cache/output metadata, sitemap, search, and RSS behavior.
+- Added a four-layer accessibility gate for source Markdown, generated HTML, real-browser axe/computed-style checks, and keyboard, dynamic-component, zoom, reflow, reduced-motion, forced-colors, and text-selection checks. The default theme now has stronger contrast, a visible focus treatment, selectable blockquotes, keyboard-safe tables, and localized accessible code-copy controls.
+- Rewrote the three-language Markdown tutorial as a real syntax and accessibility demonstration, and separated site artifact generation from host publication.
 
 ### Breaking changes and migration
 
@@ -27,7 +29,7 @@ Pageskill 3.1.0 completes the portable configuration refactor. This entry contai
 - Navigation and footer now use one `links` schema. The advanced `plugins.chrome.navigation.before/after` and `plugins.chrome.footer.before/after` slots remain available for reusable theme extensions.
 - Removed the old Privacy Consent instance fields (`provider`, `storage`, category arrays, provider arrays, `gatedScripts`, plugin `copy`, and the plugin-level `enabled` switch). Use root `integrations` and, only when necessary, `privacy.consent.decisionRetentionDays`; the consent state stores choices only.
 - Existing posts need no new fields. `update` is optional, and absent update data produces no update date or notice. RSS `pubDate` continues to use the original `date`.
-- The daily commands remain `npm run g`, `npm run s`, and `npm run d`. Run `npm test`, `npm run g -- --profile`, and `npm run d -- --dry-run` before a real publish; a dry run still requires a configured target.
+- The public CLI now contains only `npm run g` and `npm run s`. `g` validates, audits, and generates the site; `s` previews and reports rebuild feedback. Hosts publish the generated artifacts through their own workflow.
 
 ## 3.0.2 — 2026-09-10
 
@@ -53,7 +55,7 @@ Pageskill 3.0.2 separates version history from tutorial content and tightens the
 - Move older release-note files from `content/updates/<version>/` to `content/posts/<version>/`, keep the locale/date/author/cover fields, and add `category: update` to every translation. Existing public `/:locale/updates/<version>/` links remain the update-view links; ordinary posts continue to use `/:locale/posts/<id>/`. Add `category: tutorial` when a post is a tutorial and omit it when the default `uncategorized` label is wanted.
 - A new locale can be activated before it is fully translated. Add its UI and content files as they become ready; missing UI keys use the fallback language, a missing whole document uses fallback content, and an existing partially translated Markdown file remains exactly as authored rather than being silently machine-translated.
 - If an older theme contains a language enable/disable switch, remove that redundant setting; the visitor language chooser remains available from the active locale list and fallback behavior.
-- Run `npm run g -- --profile`, inspect the post and update archives/feeds, then run `npm run d -- --dry-run` before publishing.
+- Run `npm run g -- --profile`, inspect the post and update archives/feeds, then use the host's preview workflow before publishing.
 - Do not copy generated discovery files into the source tree. For API entries, optional ARD queries, or conditional Agent capabilities, follow [Configure conditional Agent capabilities](content/posts/agent-discovery/en.md) to implement the real service, theme browser module, or external DNS first; then configure `config.yml` and regenerate so files, media types, and response headers stay aligned.
 - Migrate the old object-shaped `privacyConsent.integrations` to the array shown in the Cookie tutorial. The compiler accepts the old provider keys during this transition and maps `conversionId` to the Google Ads `tagId` slot and `siteId` to Baidu `siteSignature`; new configuration should use the canonical provider names and real values. A Google Ads conversion event still needs its own reviewed event implementation; the consent adapter only initializes the Google tag.
 
@@ -70,7 +72,7 @@ Pageskill 3.0.2 separates version history from tutorial content and tightens the
 - The local preview returned `text/markdown` for an explicit Markdown request, `application/linkset+json` for `/.well-known/api-catalog`, generated `Link`/`Content-Signal` headers, and 404 responses without private configuration text for `/config.yml` and `/assets/config.yml`.
 - The 56-file internal `href`/`src` check found no missing references. The posts Feed contains 10 items and the updates Feed contains 3, with the two collections isolated; the old post routes for 3.0.0 and 3.0.1 are absent.
 - Desktop (1280px) and mobile (390px) checks passed: language cards are 136px and share a title baseline, archive covers are 144x81, article title/date/author alignment is compact, mobile TOC starts collapsed and expands on click, and there is no horizontal overflow. The root language page matched Traditional Chinese browser preference and localized its brand and privacy links to `zh-tw`.
-- `git diff --check` passed. `npm run d -- --dry-run` exited 1 because `deployment.targets` is not configured; no deployment or npm publication was performed.
+- `git diff --check` passed. No deployment or npm publication was performed in this checkout because publication is owned by the hosting workflow.
 
 ## 3.0.1 — 2026-09-09
 
@@ -82,24 +84,24 @@ Pageskill 3.0.1 is a patch release on the 3.0 line. It folds the current compile
 - Kept runtime routing source-backed: generated Worker/Pages/VPS entrypoints run the Fetch Router first, unmatched `/api` requests stay 404, and static output remains under `dist/public` while private deployment files stay outside that public snapshot.
 - Made post ordering use valid ISO publication dates, newest first, with deterministic ID order for same-day articles. Existing dates remain unchanged; an invalid post date now fails validation instead of silently sorting as a current article.
 - Added optional post `author` and `cover` Frontmatter through the collection schema, document/cache mapping, article page, post list, and archive. Authors fall back to the localized site author; covers accept safe local asset paths or HTTPS URLs, carry alt/dimensions/loading metadata, and disappear cleanly when omitted.
-- Refreshed the three-language content path and publishing guidance. Git integration builds with `npm run g` and publishes only `dist/public`; a same-package backend uses `npm run d` so the private runtime is staged separately. The retired `npm run build` alias and whole-`dist` publishing are not part of the contract.
+- Refreshed the three-language content path and publishing guidance. Git integration builds with `npm run g` and publishes only `dist/public`; a same-package backend uses the host's documented Worker/Functions workflow so the private runtime is staged separately. The retired `npm run build` alias and whole-`dist` publishing are not part of the contract.
 
 ### Compatibility
 
 - Existing posts do not need new fields: keep their valid ISO `date`, leave `author` absent when the site-author fallback is sufficient, and add `cover` only for a safe local asset or HTTPS image.
-- Replace `npm run build` with `npm run g`; use `npm run s` for a persistent preview and `npm run d -- --dry-run` before a real publish. Static hosting receives `dist/public`; backend-capable publishing uses `npm run d` to stage private files correctly.
+- Replace `npm run build` with `npm run g`; use `npm run s` for a persistent preview and the host's preview workflow before a real publish. Static hosting receives `dist/public`; backend-capable hosts stage private files through their documented workflow.
 - Keep existing post IDs, dates, and `/:locale/posts/<id>/` links. If a cover path is unsafe, replace it with a path under `content/assets/`, an HTTPS URL, or omit the cover.
 
 ### Removed and replacements
 
 - The `npm run build` alias was removed to avoid two names for the same generation step; use `npm run g`.
-- Publishing the whole `dist/` directory is not supported because it may contain private runtime files; use `dist/public` for static output or `npm run d` for a backend-aware package.
+- Publishing the whole `dist/` directory is not supported because it may contain private runtime files; use `dist/public` for static output or the host's backend-aware package workflow.
 - No article metadata capability was removed. Articles without `author` or `cover` continue to render through the fallback and no-cover behavior.
 
 ### Verification
 
 - Observed locally for this release: `npm run compile-runtime`, `npm run compile-theme`, and `npm run g` (including the backend compile), generating 42 documents; targeted checks confirmed newest-first and same-day ordering, stable title/summary/date/author separation, cover rendering and fallback, localized labels, no duplicate post title, and rejection of an unsafe cover URL.
-- No npm publication or Cloudflare deployment is claimed here. The deleted legacy `test/` tree remains deleted. `npm run d -- --dry-run` was also run and correctly refused because this checkout has no deployment target; add a ready target and rerun it before `npm run d`.
+- No npm publication or Cloudflare deployment is claimed here. The deleted legacy `test/` tree remains deleted. Deployment publication was intentionally outside this repository's observed verification scope.
 
 ## 3.0.0 — 2026-09-07
 
@@ -107,7 +109,7 @@ Pageskill 3.0.0 keeps the 3.0 version line and makes the first site easier to st
 
 ### Changed
 
-- Reduced the public daily CLI workflow to `pageskill g`, `pageskill s`, and `pageskill d`. `g` validates and generates, `s` keeps a preview running, and `d` publishes configured targets. A new site starts by cloning this repository, running `npm install` and `npm run g`, then editing the clone in place.
+- Reduced the public daily CLI workflow to `pageskill g` and `pageskill s`. `g` validates and generates, while `s` keeps a preview running; a host publishes the generated public snapshot. A new site starts by cloning this repository, running `npm install` and `npm run g`, then editing the clone in place.
 - Reorganized the current content tree. Stable pages keep the three-language home, About, and privacy policy. Tutorials, ordinary blog writing, and product records now live under `content/posts/<id>/<locale>.md`, keep the required `date`, and use locale post routes. Retired long guide and development page copies and the older prompt note were removed from the current tree without redirect shadows; their history remains in Git and this changelog.
 - Rewrote the localized beginner path around short posts for starting, site settings, Markdown, the first article, Cookie choices, theme customization, search, the table of contents, plugin development, deployment, and this 3.0 note. The privacy policy is a stable page; each tutorial post gives steps, a smallest useful example, an expected result, a common trap, and a next link.
 - Refreshed the home learning path with six reusable bear illustrations and links to the first six steps. The visual change is content and theme work; no benchmark or performance claim is implied.
@@ -124,7 +126,7 @@ Pageskill 3.0.0 keeps the 3.0 version line and makes the first site easier to st
 2. Keep stable pages under `content/pages/<id>/<locale>.md` without a date. Put tutorials, blog notes, product records, and release notes under `content/posts/<id>/<locale>.md` with the required ISO date and one id across locales.
 3. If a release note is still under `content/updates/<version>/`, move it to `content/posts/<version>/` and add `category: update`; keep public update links and use post routes for ordinary articles.
 4. Keep the Cookie policy at `/:locale/privacy/`, replace example contact and service details with real reviewed content, and keep the existing consent storage key.
-5. If an older workflow uses `npm run build`, replace it with `npm run g`; use `npm run s` for preview and `npm run d -- --dry-run` before publishing.
+5. If an older workflow uses `npm run build`, replace it with `npm run g`; use `npm run s` for preview and the host's preview workflow before publishing.
 
 ### Removed and replacements
 
@@ -135,7 +137,7 @@ Pageskill 3.0.0 keeps the 3.0 version line and makes the first site easier to st
 
 ### Verification workflow
 
-Routine checks use a dry run for deployment; the real publish command is reserved for a ready target:
+Routine checks build the public snapshot; publication is handled by the ready hosting workflow:
 
 ```text
 npm run compile-runtime
@@ -144,10 +146,9 @@ npm run compile-backend
 npm run g
 npm run g -- --profile
 npm run s
-npm run d -- --dry-run
 ```
 
-Run `pageskill d` only when the site is ready for the actual publish.
+Use the host's documented publication workflow only after the generated public snapshot and private runtime package have been reviewed.
 
 ## History
 

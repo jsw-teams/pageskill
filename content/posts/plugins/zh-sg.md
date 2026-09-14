@@ -140,4 +140,4 @@ npm run s
 
 ## 下一步
 
-阅读[把网站放到网上](/zh-sg/posts/deploy/)，先做发布 dry-run，再真正发布。
+阅读[把网站放到网上](/zh-sg/posts/deploy/)，了解主机如何发布生成的 `dist/public` 快照。

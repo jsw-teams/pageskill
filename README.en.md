@@ -51,11 +51,9 @@ npm run g
 npm run s
 ```
 
-`g` validates and generates, `s` starts a local preview, and `d` publishes the targets declared in `deployment.targets`. Before publishing, inspect the action with:
+`g` validates and generates the public site and deployment artifacts, while `s` starts a local preview and reports accessibility findings after rebuilds. Pageskill does not call hosting-provider APIs; give `dist/public` to your host or Git integration, and let `g` generate the backend runtime and hosting configuration when those are configured.
 
-```powershell
-npm run d -- --dry-run
-```
+`g` and `npm test` audit the generated HTML with the installed Edge browser or Playwright Chromium. The audit covers keyboard focus, visible focus, names and ARIA, contrast, responsive reflow, 200% zoom, reduced motion, forced colors, text selection, and component interactions. Automated checks do not replace a manual assistive-technology review; if Edge is unavailable, run `npx playwright install chromium`.
 
 Read the complete [Start your site in ten minutes](content/posts/start/en.md) guide.
 

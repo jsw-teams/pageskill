@@ -55,6 +55,7 @@ export type CachedDocument = {
 };
 
 export type CachedImage = { hash: string; output: string };
+export type ImageDimensions = { width: number; height: number };
 
 export type CacheManifest = {
   version: 4;
@@ -108,6 +109,7 @@ export type BuildContext = {
   configHash: string;
   themeHash: string;
   imageCache: Record<string, CachedImage>;
+  imageDimensions: Record<string, ImageDimensions>;
   collectionIndex: Map<string, Document[]>;
   translationIndex: Map<string, Document[]>;
   documentPositions: Map<string, number>;

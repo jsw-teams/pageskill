@@ -16,7 +16,8 @@ Pageskill 3.1.0 keeps Markdown, multilingual content, Patterns, Blocks, themes, 
 - Navigation and footer use one safe Link Schema. Internal links can use `/:locale/`, external HTTP(S) links are allowed, current-page state is limited to internal routes, and `_blank` links receive `noopener noreferrer`.
 - Root `integrations` describes only providers the site actually uses. A trusted Provider Adapter owns its schema, public identifier validation, privacy purpose, consent requirement, load policy, and resource implementation. Consent categories are derived from configured adapters; a site without a consent-required integration has no banner.
 - Posts calculate Markdown metrics and reading time, accept a strict `update` timestamp, show a localized update notice, use `update` for sitemap `lastmod`, retain `date` for RSS publication, and include the field in search and incremental cache data.
-- The compiler facade remains available through `createContext`, `refreshContext`, `build`, `check`, `inspect`, `getCatalog`, and `siteDiscoveryOptions`; deployment configuration is normalized once for the compiler, CLI, and deploy command.
+- The compiler facade remains available through `createContext`, `refreshContext`, `build`, `check`, `inspect`, `getCatalog`, and `siteDiscoveryOptions`; deployment configuration is normalized once for build artifact generation.
+- `g` now runs source, final-HTML, real-browser, computed-style, keyboard, responsive, and dynamic-component accessibility checks; `s` repeats the relevant feedback after rebuilds. The default theme targets WCAG 2.2 AA without claiming that automation replaces manual review.
 
 ## Breaking configuration cleanup
 
@@ -48,9 +49,8 @@ npm run compile-theme
 npm run compile-backend
 npm run g
 npm run g -- --profile
-npm run d -- --dry-run
 ```
 
-The dry run still requires a real `deployment.targets` entry. Keep provider secrets in environment variables, inspect generated discovery from the source-backed output, and publish only `dist/public` for a static target.
+Keep provider secrets in environment variables, inspect generated discovery from the source-backed output, and publish only `dist/public` for a static target through the host's workflow.
 
 Read [Configuration](/en/posts/site-settings/), [Configure integrations and privacy consent](/en/posts/cookies/), and [the post metadata example](/en/posts/post-meta-demo/) for the author workflow.

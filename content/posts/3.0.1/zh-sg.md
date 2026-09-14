@@ -41,19 +41,19 @@ cover: assets/og-default-product.webp
 
 `author` 是可选的普通文字。省略时，文章会沿用对应语言的站点作者，因此旧文章无需批量修改。`cover` 是可选的：把本地源图片放在 `content/assets/`，在 Frontmatter 写 `assets/<路径>`（或 `/assets/<路径>`）；公开文件会生成到 `dist/public/assets/<路径>`。也可以使用 HTTPS 图片 URL。没有封面的文章页、文章列表和归档不会显示图片，也不会被强行塞入统一默认图。
 
-静态 Git 集成使用 `npm run g` 并发布 `dist/public`。同一次发布需要 backend 时，先运行 `npm run d -- --dry-run`，确认目标和计划正确后才运行 `npm run d`；不要发布私有的 `dist/` 根目录。
+静态 Git 集成使用 `npm run g` 并发布 `dist/public`。同一次发布需要 backend 时，配置主机支持的 Worker 或 Functions 工作流，让它把生成的私有运行时与公开快照一起使用；不要发布私有的 `dist/` 根目录。
 
 ## 兼容迁移
 
 1. 现有带日期文章可以继续使用。保留原来的 ISO `date`；`author` 和 `cover` 都是可选字段，不需要批量补 Frontmatter。
 2. 已有 `author` 就继续保留普通文字；没有作者就让站点作者回退生效。封面请改为 `content/assets/` 下的本地路径或 HTTPS URL；危险协议、越界路径无法兼容时，直接移除 `cover` 即可。
-3. 已退休的 `npm run build` 别名请改用 `npm run g`。持续预览使用 `npm run s`，真正发布前使用 `npm run d -- --dry-run`；静态托管接收 `dist/public`，包含 backend 的发布使用发布命令正确暂存私有运行时。
+3. 已退休的 `npm run build` 别名请改用 `npm run g`。持续预览使用 `npm run s`，发布前使用主机的预览工作流；静态托管接收 `dist/public`，需要 backend 时由主机按文档暂存生成的私有运行时。
 4. 保留现有 `/:locale/posts/<id>/` 文章链接。元数据字段是向后兼容的增量，不会改变文章 ID 或路由。
 
 ## 已移除项与替代方案
 
 - `npm run build` 别名不再支持。原因是减少含义重复的生成入口；替代用法是 `npm run g`，它会校验并生成公开快照。
-- 不再支持发布整个 `dist/` 目录，因为其中可能包含私有运行时资料。静态发布使用 `dist/public`，需要 backend 时使用 `npm run d` 生成发布包。
+- 不再支持发布整个 `dist/` 目录，因为其中可能包含私有运行时资料。静态发布使用 `dist/public`，需要 backend 时使用主机文档规定的运行时打包流程。
 - 没有移除文章元数据能力。没有 `author` 或 `cover` 的旧文章仍按作者回退和无封面行为正常显示。
 
 ## 发布前验证
@@ -67,10 +67,9 @@ npm run compile-backend
 npm run g
 npm run g -- --profile
 npm run s
-npm run d -- --dry-run
 ```
 
-本次 3.0.1 工作实际观察到运行时/主题编译、`npm run g` 生成 45 篇文档，本地预览以 200 状态提供首页和本文，以及日期排序、同日稳定次序、元数据映射、三语作者标签、封面加载、无封面回退、标题去重和危险封面 URL 拒绝等局部检查。本次也运行了 `npm run d -- --dry-run`，因当前 checkout 没有发布目标而正确拒绝并退出。不声称 npm 发布、Cloudflare 部署或生产浏览器结果。
+本次 3.0.1 工作实际观察到运行时/主题编译、`npm run g` 生成 45 篇文档，本地预览以 200 状态提供首页和本文，以及日期排序、同日稳定次序、元数据映射、三语作者标签、封面加载、无封面回退、标题去重和危险封面 URL 拒绝等局部检查。不声称 npm 发布、Cloudflare 部署或生产浏览器结果。
 
 ## 继续阅读
 

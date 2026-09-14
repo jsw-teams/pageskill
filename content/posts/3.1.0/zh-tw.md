@@ -16,7 +16,8 @@ Pageskill 3.1.0 繼續保留 Markdown、多語言內容、Pattern、Block、Them
 - Navigation 和 Footer 共用一套安全 Link Schema。內部連結可以寫 `/:locale/`，外部連結只允許 HTTP(S)，目前頁面狀態只用於內部路由，`_blank` 會自動獲得 `noopener noreferrer`。
 - 根設定的 `integrations` 只描述本站真正使用的 Provider。受信任的 Provider Adapter 自己擁有 schema、公開識別驗證、隱私用途、同意要求、載入策略和資源實作。同意分類從實際設定的適配器推導；沒有需要同意的 Integration 就沒有橫幅。
 - Post 根據 Markdown 正文自動計算字數和閱讀時間，接受嚴格的 `update` 時間戳，顯示本地化更新提示；sitemap 的 `lastmod` 使用 `update`，RSS 發佈時間仍使用 `date`，搜尋和增量快取也保存 update。
-- `createContext`、`refreshContext`、`build`、`check`、`inspect`、`getCatalog` 和 `siteDiscoveryOptions` 公共 facade 繼續可用；compiler、CLI 和 deploy 共用一次標準化的部署設定解析。
+- `createContext`、`refreshContext`、`build`、`check`、`inspect`、`getCatalog` 和 `siteDiscoveryOptions` 公共 facade 繼續可用；部署設定只在產生建置產物時統一解析。
+- `g` 現在會檢查原始碼、最終 HTML、真實瀏覽器、計算樣式、鍵盤、響應式視窗和動態元件；`s` 會在重建後重複回報。預設主題以 WCAG 2.2 AA 為目標，但不會聲稱自動化可以取代人工審查。
 
 ## Breaking 設定清理
 
@@ -48,9 +49,8 @@ npm run compile-theme
 npm run compile-backend
 npm run g
 npm run g -- --profile
-npm run d -- --dry-run
 ```
 
-Dry run 仍要求設定真實的 `deployment.targets`。Provider secret 放在環境變數中，產生後的發現檔案要從原始碼結果檢查；靜態目標只發佈 `dist/public`。
+Provider secret 放在環境變數中，產生後的發現檔案要從原始碼結果檢查；靜態目標透過代管商工作流程只發佈 `dist/public`。
 
 請繼續閱讀[設定結構](/zh-tw/posts/site-settings/)、[設定 Integration 與隱私同意](/zh-tw/posts/cookies/)和[文章中繼資料範例](/zh-tw/posts/post-meta-demo/)。

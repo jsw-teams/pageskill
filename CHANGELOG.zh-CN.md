@@ -18,6 +18,8 @@ Pageskill 3.1.0 完成可移植配置重构。本条明确包含配置 API break
 - 将文档加载、Frontmatter/日期/metrics 校验和 Pattern 选择移入 compiler 文档模块，同时保持 `createContext`、`refreshContext`、`build`、`check`、`inspect`、`getCatalog`、`siteDiscoveryOptions` 公共 facade 不变。compiler、CLI 和 deploy 现在消费同一个标准化 deployment 配置。
 - 将默认主题剩余的 locale 条件分支改为 message 和 locale metadata fallback，并更新生成的 Agent 指引，使其指向 config extends 文件和实际主题实例文件。
 - 增加 Node 22 内置测试，覆盖配置层、路径安全、链接、metrics、严格日期、缓存/输出元数据、sitemap、搜索和 RSS 行为。
+- 增加四层无障碍质量门：源码 Markdown、生成 HTML、真实浏览器 axe/计算样式，以及键盘、动态组件、缩放、重排、减少动画、高对比度和文字选择检查。默认主题现在有更高的对比度、明显的焦点样式、可选择的引用块、键盘安全的表格和本地化的可访问代码复制控件。
+- 将三语 Markdown 教程重写为真实的语法与无障碍示例，并把站点产物生成与主机发布职责分开。
 
 ### Breaking change 与迁移
 
@@ -27,7 +29,7 @@ Pageskill 3.1.0 完成可移植配置重构。本条明确包含配置 API break
 - Navigation 和 Footer 现在只使用同一套 `links` schema。可复用主题仍可使用高级 `plugins.chrome.navigation.before/after` 与 `plugins.chrome.footer.before/after` 插槽。
 - 删除旧 Privacy Consent 实例字段（`provider`、`storage`、分类数组、Provider 数组、`gatedScripts`、插件 `copy` 和插件级 `enabled`）。现在使用根级 `integrations`，只有确有需要时才设置 `privacy.consent.decisionRetentionDays`；浏览器同意状态只保存选择。
 - 旧文章不需要新增字段。`update` 可选，没有更新时间时不会生成更新时间或更新提示；RSS 的 `pubDate` 仍使用原始 `date`。
-- 日常命令仍是 `npm run g`、`npm run s` 和 `npm run d`。正式发布前运行 `npm test`、`npm run g -- --profile` 和 `npm run d -- --dry-run`；dry-run 仍要求配置 target。
+- 对外 CLI 现在只有 `npm run g` 和 `npm run s`。`g` 负责校验、无障碍审查和生成，`s` 负责预览并报告重建反馈；发布由主机自己的工作流完成。
 
 ## 3.0.2 — 2026-09-10
 
@@ -53,7 +55,7 @@ Pageskill 3.0.2 把版本历史和教程内容分开，并收紧响应式阅读�
 - 仍放在 `content/updates/<version>/` 的旧版本文章，迁移到 `content/posts/<version>/`，保留语言、日期、作者和封面字段，并给每种语言增加 `category: update`。现有公开的 `/:locale/updates/<version>/` 链接继续作为更新视图链接；普通 post 继续使用 `/:locale/posts/<id>/`。教程增加 `category: tutorial`，想使用默认未分类时省略 `category`。
 - 新增语言可以在尚未完成翻译前启用。随着翻译进度补上界面和内容文件；缺失的界面键使用回退语言，缺失整篇文档使用回退内容，已经部分翻译的 Markdown 则保持原样，不会静默机器翻译。
 - 如果旧主题有语言启用/禁用开关，请删除这个重复设置；访客语言选择仍来自有效语言列表，并保留回退行为。
-- 发布前运行 `npm run g -- --profile`，检查文章和更新归档/Feed，再运行 `npm run d -- --dry-run`。
+- 发布前运行 `npm run g -- --profile`，检查文章和更新归档/Feed，再使用主机的预览工作流。
 - 不要把生成的发现文件复制回源码。需要 API 条目、可选 ARD 查询或条件 Agent 能力时，先按[配置条件 Agent 能力](content/posts/agent-discovery/zh-sg.md)实现真实服务、主题浏览器模块或外部 DNS，再在 `config.yml` 配置后重新生成，让文件、媒体类型和响应头保持一致。
 - 把旧的对象形 `privacyConsent.integrations` 迁移为 Cookie 教程中的数组。迁移期间编译器会接受旧 provider key，并把 `conversionId` 映射到 Google Ads 的 `tagId`、把 `siteId` 映射到百度的 `siteSignature`；新配置应使用 canonical provider 名称和 provider 自己提供的真实值。Google Ads 转化事件仍需单独审核并实现事件逻辑，同意适配器只初始化 Google tag。
 - Cookie 的新配置使用 `purpose`：`measurement` 对应访问量测量，`advertising` 对应广告信号，`fraud-prevention` 对应验证码/反滥用，`social-embedding` 对应 X widget；这些键是同意状态的稳定用途键，不是账户 ID、Cookie 名称或 provider 自造标识。
@@ -71,7 +73,7 @@ Pageskill 3.0.2 把版本历史和教程内容分开，并收紧响应式阅读�
 - 本地预览实测：明确请求 Markdown 时返回 `text/markdown`，`/.well-known/api-catalog` 返回 `application/linkset+json`，响应带生成的 `Link`/`Content-Signal`；访问 `/config.yml` 和 `/assets/config.yml` 返回 404 且没有私有配置文本。
 - 56 个 HTML 内部 `href`/`src` 检查没有缺失引用。posts Feed 有 10 条、updates Feed 有 3 条，两个集合保持隔离；3.0.0 和 3.0.1 的旧 posts 路由已经不存在。
 - 1280px 桌面和 390px 手机检查通过：语言卡片均为 136px 且标题基线一致，归档封面为 144x81，文章标题／日期／作者紧凑对齐，手机目录默认折叠并可点击展开，页面没有横向溢出。根语言页能匹配繁体中文浏览器偏好，品牌和隐私链接会指向 `zh-tw`。
-- `git diff --check` 通过。`npm run d -- --dry-run` 因未配置 `deployment.targets` 以退出码 1 结束；没有执行部署或 npm 发布。
+- `git diff --check` 通过。本 checkout 没有执行部署或 npm 发布，发布由主机工作流负责。
 
 ## 3.0.1 — 2026-09-09
 
@@ -83,24 +85,24 @@ Pageskill 3.0.1 是 3.0 版本线上的修订版，把当前编译器、内容�
 - 保持运行时路由由源码驱动：生成的 Worker/Pages/VPS 入口先运行 Fetch Router，未匹配的 `/api` 仍返回 404，公开输出继续位于 `dist/public`，私有发布文件不进入公开快照。
 - 文章排序改为使用有效 ISO 发布日期，按新到旧排列；同日文章按稳定的 ID 次序排列。现有日期没有被改成今天；无效文章日期现在会在校验阶段失败，不会被悄悄排成当前文章。
 - 让文章 collection schema、文档/缓存映射、文章页、文章列表和归档都支持可选的 `author`、`cover` Frontmatter。作者缺省时回退到对应语言的站点作者；封面只接受安全的本地资源路径或 HTTPS URL，并提供 alt、尺寸和加载策略；没有封面时干净隐藏。
-- 更新三语内容路径和发布说明。Git 集成使用 `npm run g`，只发布 `dist/public`；同包 backend 使用 `npm run d`，让私有运行时单独暂存。退休的 `npm run build` 别名和发布整个 `dist` 都不是当前契约。
+- 更新三语内容路径和发布说明。Git 集成使用 `npm run g`，只发布 `dist/public`；同包 backend 使用主机文档规定的 Worker/Functions 工作流，让私有运行时单独暂存。退休的 `npm run build` 别名和发布整个 `dist` 都不是当前契约。
 
 ### 兼容用法
 
 - 旧文章不需要批量补新字段：保留有效 ISO `date`，没有特别作者时可省略 `author`，只有需要图片时才增加安全的本地资源或 HTTPS `cover`。
-- 用 `npm run g` 替代 `npm run build`；预览使用 `npm run s`，真实发布前使用 `npm run d -- --dry-run`。静态托管接收 `dist/public`，包含 backend 的发布使用 `npm run d` 正确暂存私有文件。
+- 用 `npm run g` 替代 `npm run build`；预览使用 `npm run s`，正式发布前使用主机的预览工作流。静态托管接收 `dist/public`，需要 backend 时由主机按文档正确暂存私有运行时。
 - 保留现有文章 ID、日期和 `/:locale/posts/<id>/` 链接。封面路径不安全时，改成 `content/assets/` 下的本地路径、HTTPS URL，或直接省略封面。
 
 ### 已移除项与替代方案
 
 - `npm run build` 别名已移除，原因是避免同一生成步骤存在两个名称；替代用法是 `npm run g`。
-- 不支持发布整个 `dist/` 目录，因为其中可能包含私有运行时文件；静态输出使用 `dist/public`，需要 backend 时使用 `npm run d` 生成发布包。
+- 不支持发布整个 `dist/` 目录，因为其中可能包含私有运行时文件；静态输出使用 `dist/public`，需要 backend 时使用主机文档规定的运行时打包流程。
 - 没有移除文章元数据能力。没有 `author` 或 `cover` 的文章仍按作者回退和无封面行为显示。
 
 ### 验证
 
 - 本次在本地实际观察到：`npm run compile-runtime`、`npm run compile-theme` 和 `npm run g`（其中包含 backend 编译），生成 42 篇文档；局部检查确认了新到旧及同日稳定排序、标题/摘要/日期/作者分离、封面与缺省回退、三语标签、没有重复文章标题，以及危险封面 URL 会被拒绝。
-- 本条不声称 npm 发布或 Cloudflare 部署。旧的 `test/` 树仍保持删除状态；本次也实际运行了 `npm run d -- --dry-run`，由于当前 checkout 没有发布目标而正确拒绝并退出。准备好发布目标后仍需重新 dry-run，再执行 `npm run d`。
+- 本条不声称 npm 发布或 Cloudflare 部署。旧的 `test/` 树仍保持删除状态；本 checkout 的发布验证由主机工作流负责。
 
 ## 3.0.0 — 2026-09-07
 
@@ -108,7 +110,7 @@ Pageskill 3.0.0 沿用 3.0 版本线，让第一次搭站更容易开始。
 
 ### 变更
 
-- 对外日常 CLI 收成 `pageskill g`、`pageskill s` 和 `pageskill d`。`g` 自动校验并生成，`s` 持续预览，`d` 发布已配置目标。新站从克隆仓库开始，运行 `npm install` 和 `npm run g`，再直接修改这个目录。
+- 对外日常 CLI 收成 `pageskill g` 和 `pageskill s`。`g` 自动校验并生成，`s` 持续预览，发布交给主机工作流。新站从克隆仓库开始，运行 `npm install` 和 `npm run g`，再直接修改这个目录。
 - 重组当前内容树。稳定页面保留三语首页、About 和隐私政策。教程、普通博客文章和产品记录统一放在 `content/posts/<id>/<locale>.md`，保留必填 `date`，使用语言文章路由。旧的冗长 guide、development 页面副本和旧 prompt 笔记从当前树移除，不建立 redirect 影子；历史留在 Git 和本更新日志。
 - 围绕开始、站点设置、Markdown、第一篇文章、Cookie 选择、主题自定义、搜索、文章目录、插件开发、部署和本篇 3.0 说明重写本地化新手路径。隐私政策是稳定页面；每篇教程文章提供步骤、最小可用例子、成功结果、常见坑和下一步链接。
 - 首页学习路径换成六张可复用的小熊插图，并链接前六个步骤。这是内容和主题视觉更新，不暗示 benchmark 或性能结果。
@@ -125,7 +127,7 @@ Pageskill 3.0.0 沿用 3.0 版本线，让第一次搭站更容易开始。
 2. 稳定页面放在 `content/pages/<id>/<locale>.md`，不需要日期。教程、博客文章、产品记录和版本文章放在 `content/posts/<id>/<locale>.md`，补上必填的 ISO 日期，并让多个语言共用同一个 id。
 3. 如果版本文章仍在 `content/updates/<version>/`，移到 `content/posts/<version>/` 并增加 `category: update`；保留公开更新链接，普通文章使用文章路由。
 4. Cookie 政策继续使用 `/:locale/privacy/`，把示例联系人和服务替换为真实且经过审核的内容，并保留现有同意存储键。
-5. 旧工作流如果使用 `npm run build`，改用 `npm run g`；预览使用 `npm run s`，发布前使用 `npm run d -- --dry-run`。
+5. 旧工作流如果使用 `npm run build`，改用 `npm run g`；预览使用 `npm run s`，发布前使用主机的预览工作流。
 
 ### 已移除项与替代方案
 
@@ -136,7 +138,7 @@ Pageskill 3.0.0 沿用 3.0 版本线，让第一次搭站更容易开始。
 
 ### 验证流程
 
-日常检查使用部署 dry-run；真正发布命令只在目标准备好后执行：
+日常检查生成公开快照；正式发布由准备好的主机工作流负责：
 
 ```text
 npm run compile-runtime
@@ -145,10 +147,9 @@ npm run compile-backend
 npm run g
 npm run g -- --profile
 npm run s
-npm run d -- --dry-run
 ```
 
-只有准备好真正发布时才运行 `pageskill d`。
+只有检查好生成的公开快照和私有运行时包后，才使用主机的正式发布流程。
 
 ## 历史
 

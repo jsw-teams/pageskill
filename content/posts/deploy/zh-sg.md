@@ -1,94 +1,63 @@
 ---
 title: 把网站放到网上
-description: 配置一个发布目标，生成公开快照，并保持同源 API 与私有代码隔离。
+description: 生成安全的公开快照，再交给负责发布的主机或 Git 工作流。
 date: 2026-09-07
 category: tutorial
 ---
 
 # 把网站放到网上
 
-发布前先确认站点在本地可打开。Pageskill 的公开快照位于 `dist/public`；`backend/handler.ts` 和运行时秘密留在服务端，动态请求由同源 API 处理。
+Pageskill 负责生成网站，实际发布由托管商或 Git 集成完成。公开快照位于 `dist/public`；backend 代码、私有运行时文件和 secret 都留在这个静态目录之外。
 
-## 1. 写入发布目标
+## 1. 在本地生成和预览
 
-在站点根目录的 `config.yml` 填入你实际使用的目标。下面以已有 Git remote 发布为例：
+运行 Pageskill 对外提供的两个命令：
 
-```yaml
-deployment:
-  targets:
-    - github
-  github:
-    remote: origin
-    branch: gh-pages
+```powershell
+npm run g
+npm run s
 ```
 
-令牌或 SSH 密钥放在本机环境和密钥文件里，不要写进 `config.yml`、文章或公开目录。
+生成步骤会校验内容并运行无障碍审查；预览步骤可以在交给主机前检查同一份输出。
 
-## 2. 配置 Cloudflare Pages Git 集成（仅静态）
+## 2. 为主机设置静态输出
 
-如果 Cloudflare Pages 从 Git 构建这个仓库，在仓库根目录的控制台使用以下值：
+对于 Cloudflare Pages、GitHub Pages 等基于 Git 的静态主机，在主机控制台设置从仓库构建：
 
 ```text
 构建命令：npm run g
 构建输出目录：dist/public
 ```
 
-`npm run build` 不是 Pageskill 命令。`dist/public` 是公开快照，里面只有生成页面、资源、Feed 和站点地图。不要把输出目录设为 `dist`；私有构建根还可能包含 `_pageskill/`、`server/`、`.pageskill/`、`_worker.js` 和其他部署文件，直接发布整个 `dist/` 可能暴露 backend 代码或私有运行时文件。
+主机会在构建时运行 Pageskill，并且只上传 `dist/public`。不要使用私有的 `dist` 根目录，因为其中还可能有 `_pageskill/`、`server/`、`.pageskill/`、Worker 文件和其他生成的部署资料。
 
-这条 Git 集成路径只发布静态内容，不会自动把 `backend/handler.ts` 打包成同一个 Pages Worker。如果站点不需要运行时 API，可以按需设置 `deployment.backend: false`；输出目录仍必须是 `dist/public`。
+## 3. 保持部署数据只有正式格式
 
-## 3. 先生成公开文件
-
-```powershell
-npm run g
-```
-
-查看 `dist/public`，确认首页、文章、资源和站点地图都在里面。需要 API 的站点还要准备同一个服务的后端运行时。
-
-渲染器还会根据 `config.yml` 和实际写出的输出生成 Agent 发现信息：`/.well-known/agent.json`、`/.well-known/ai-catalog.json`、条件生成的 API catalog、Agent Skills 索引、`robots.txt` 和 `llms.txt`。不要手工新增这些文件。启用 Markdown mirror 时，页面会协商 `Accept: text/markdown`。
-
-如果需要鉴权元数据、MCP card、WebMCP 或 DNS-AID，先阅读[配置条件 Agent 能力](/zh-sg/posts/agent-discovery/)：受保护路由和 issuer 放在 backend/外部服务，MCP card 的 endpoint 和工具必须对应真实 transport，WebMCP 必须由主题浏览器模块调用 `document.modelContext.registerTool()`，DNS-AID 必须由权威 DNS 发布并验证 DNSSEC。完成这些实际实现和线上检查后，才在 `config.yml` 打开对应开关；静态渲染器只生成声明，不会创建 endpoint 或发布 DNS。
-
-## 4. 先查看发布计划
-
-先运行安全检查：
-
-```powershell
-npm run d -- --dry-run
-```
-
-查看目标和源文件路径；这个命令不会上传文件。
-
-## 5. 准备好后发布
-
-```powershell
-npm run d
-```
-
-只有目标准备好时才运行 `npm run d`。Pageskill 会按 `deployment.targets` 执行目标。发布后从目标域名打开首页和一篇文章，再调用你自己的同源 API 路径确认服务端边界。
-
-如果 Pages 项目必须在同一次部署中包含 backend，不要把 Git 集成的输出目录改成 `dist`。请配置 CLI 目标，让 `npm run d` 负责打包：
+如果主机需要生成 Worker、Pages Function 或 hosting 配置，在 `config.yml` 使用正式 target 和静态目录，让 `npm run g` 生成对应产物：
 
 ```yaml
 deployment:
   targets:
     - cloudflare-pages
+  staticDirectory: public
   backend: true
-  cloudflare:
-    apiTokenEnv: CLOUDFLARE_API_TOKEN
-    pages:
-      project: your-pages-project
 ```
 
-把 `CLOUDFLARE_API_TOKEN` 放在部署环境中，然后先运行 `npm run d -- --dry-run`，确认结果后再运行 `npm run d`。CLI 会生成 `dist`，把公开目录复制到临时的 `.pageskill/pages-upload-*`，再把生成的 `_worker.js` 和私有 `_pageskill` 运行时放进这个上传目录。Pages 上传的是这个临时目录，而不是私有的 `dist/` 根目录，因此 backend 和公开资源可以一起工作，又不会把私有构建文件当成静态资源。现有 Git 集成不会自动执行这一步；把控制台输出目录改成 `dist` 不是安全的解决办法。
+target 只选择要生成的产物，不会让站点配置获得保存 Provider token 的权限。凭证放在主机的 secret store 或环境变量中。静态 Git 集成本身不能把 `backend/handler.ts` 打包成同一个 Worker；需要运行时 API 时，应使用主机支持的 Worker/Functions 工作流。
 
-## 成功结果
+## 4. 检查生成结果
 
-静态 Git 集成接收 `dist/public` 并打开生成页面；CLI Pages 目标接收上面所述的过滤后 Worker 包，私有 Worker、server 文件和秘密不会进入公开快照。
+运行 `npm run g` 后，确认 `dist/public` 里有首页、多语言路由、资源、Feed、sitemap、`robots.txt` 和生成的发现文件。目标需要时，Pageskill 还会在公开快照旁边生成私有运行时资料；不要把它复制到公开目录。
 
-## 常见坑
+Agent Discovery、Agent Skills、API Catalog、Markdown mirror 和 `llms.txt` 都由渲染器生成。如果要配置 OAuth、MCP、WebMCP 或 DNS-AID，请先阅读[配置条件 Agent 能力](/zh-sg/posts/agent-discovery/)，实现真实服务、浏览器模块或 DNS 记录；生成的元数据不会创建这些服务。
 
-`targets: []` 或 remote、branch 不匹配时，发布没有目标可执行。先检查 `config.yml`，也不要把完整项目根目录直接当成静态网站根目录。
+## 5. 发布后验证
+
+使用主机自己的构建日志和预览环境确认构建成功，然后从公开域名打开本地化首页、普通文章、带更新信息的文章和隐私页面。如果启用了 backend，调用文档中声明的同源 API，确认鉴权和错误响应仍是 API 响应，不会变成静态 HTML。
+
+## 常见问题
+
+公开目录是 `dist/public`，不是项目根目录，也不是私有的 `dist` 根目录。不要把 access token、SSH key 或 backend secret 写入 YAML、Markdown 或公开生成文件。如果主机不能运行 `npm run g`，就在 CI 中构建，再通过主机文档规定的方式上传 `dist/public` 产物。
 
 ## 下一步
 

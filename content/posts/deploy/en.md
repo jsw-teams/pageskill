@@ -1,94 +1,63 @@
 ---
 title: Put the site online
-description: Configure one deployment target, publish the public snapshot, and keep same-origin APIs separate from private code.
+description: Generate a safe public snapshot and hand it to the hosting workflow that owns publication.
 date: 2026-09-07
 category: tutorial
 ---
 
 # Put the site online
 
-First make sure the site opens locally. Pageskill puts the public snapshot in `dist/public`; `backend/handler.ts` and runtime secrets stay on the server while dynamic requests use same-origin APIs.
+Pageskill generates a site; your hosting provider or Git integration publishes it. The public snapshot is `dist/public`. Backend code, private runtime files, and secrets stay outside that static directory.
 
-## 1. Configure a deployment target
+## 1. Generate and preview locally
 
-In the site root `config.yml`, enter the target you actually use. This example publishes through an existing Git remote:
+Run the two public Pageskill commands:
 
-```yaml
-deployment:
-  targets:
-    - github
-  github:
-    remote: origin
-    branch: gh-pages
+```powershell
+npm run g
+npm run s
 ```
 
-Keep tokens or SSH keys in the local environment and key files. Do not put them in `config.yml`, articles, or the public directory.
+The generate step validates content and runs the accessibility audit. The preview lets you inspect the same output locally before handing it to a host.
 
-## 2. Configure Cloudflare Pages Git integration (static-only)
+## 2. Configure the host for static output
 
-If Cloudflare Pages builds this repository from Git, use these console values at the repository root:
+For a Git-based static host such as Cloudflare Pages or GitHub Pages, configure the host to build from the repository:
 
 ```text
 Build command: npm run g
 Build output directory: dist/public
 ```
 
-`npm run build` is not a Pageskill command. `dist/public` is the public snapshot: it contains generated pages, assets, feeds, and the sitemap. Do not set the output directory to `dist`; the private build root can also contain `_pageskill/`, `server/`, `.pageskill/`, `_worker.js`, and other deployment files. Publishing the whole `dist/` directory can expose backend code or private runtime files.
+The host runs Pageskill during its build and uploads only `dist/public`. Do not use the private `dist` root: it can also contain `_pageskill/`, `server/`, `.pageskill/`, worker files, and other generated deployment material.
 
-This Git integration path is static-only. It does not automatically package `backend/handler.ts` as a same-package Pages Worker. If the site has no runtime API, set `deployment.backend: false` when appropriate; the output directory must still be `dist/public`.
+## 3. Keep deployment data canonical
 
-## 3. Generate the public files
-
-```powershell
-npm run g
-```
-
-Inspect `dist/public` and check that the home page, articles, assets, and sitemap are present. A site with APIs also needs its server runtime alongside the same service.
-
-The renderer also creates Agent discovery from `config.yml` and the outputs it actually wrote: `/.well-known/agent.json`, `/.well-known/ai-catalog.json`, the conditional API catalog, the Agent Skills index, `robots.txt`, and `llms.txt`. Do not add these files by hand. Pages with Markdown mirrors negotiate `Accept: text/markdown`.
-
-If you need authentication metadata, an MCP card, WebMCP, or DNS-AID, first read [Configure conditional Agent capabilities](/en/posts/agent-discovery/): keep protected routes and the issuer in the backend or an external service, make the MCP card endpoint and tools match a real transport, register WebMCP tools from a theme browser module with `document.modelContext.registerTool()`, and publish and verify DNS-AID through the authoritative DNS provider with DNSSEC. Enable the matching `config.yml` switch only after those implementations and live checks pass; the static renderer publishes declarations, not endpoints or DNS records.
-
-## 4. Preview the publishing plan
-
-Run the safe check first:
-
-```powershell
-npm run d -- --dry-run
-```
-
-Review the resolved target and source path. This command does not upload anything.
-
-## 5. Publish when ready
-
-```powershell
-npm run d
-```
-
-Run `npm run d` only when the target is ready. Pageskill runs the targets under `deployment.targets`. After publishing, open the home page and one article at the target domain, then call one of your same-origin API paths to check the server boundary.
-
-For a Pages project that must include the backend in the same deployment, do not point Git integration at `dist`. Configure the CLI target and let `npm run d` create the package:
+If a host needs a generated Worker, Pages function, or hosting configuration, declare its canonical target and static directory in `config.yml` so `npm run g` can produce the right artifacts:
 
 ```yaml
 deployment:
   targets:
     - cloudflare-pages
+  staticDirectory: public
   backend: true
-  cloudflare:
-    apiTokenEnv: CLOUDFLARE_API_TOKEN
-    pages:
-      project: your-pages-project
 ```
 
-Keep `CLOUDFLARE_API_TOKEN` in the deployment environment, then run `npm run d -- --dry-run` and, when the result is correct, `npm run d`. The CLI builds `dist`, copies only the public tree into a temporary `.pageskill/pages-upload-*` directory, and adds the generated `_worker.js` plus its private `_pageskill` runtime there. That staged directory is the Pages upload source, so the backend and public assets are integrated without publishing the private `dist/` root. The existing Git integration cannot perform this extra staging step automatically; changing the console output directory to `dist` is not a safe workaround.
+The target selects generated artifacts; it does not grant the site configuration permission to store provider tokens. Put credentials in the host’s secret store or environment. A static Git integration cannot package `backend/handler.ts` as a same-package Worker by itself, so use the provider’s supported Worker/Functions workflow when the site needs runtime APIs.
 
-## Expected result
+## 4. Inspect the generated result
 
-The static Git integration receives `dist/public` and opens generated pages. The CLI Pages target receives the filtered Worker package described above; private Worker or server files and secrets stay out of the public snapshot.
+After `npm run g`, confirm that `dist/public` contains the home page, localized routes, assets, feeds, sitemap, `robots.txt`, and the generated discovery files. Pageskill also creates private runtime material beside the public snapshot when the configured target needs it; never copy that material into the public directory.
 
-## Common trap
+The renderer owns Agent Discovery, Agent Skills, API Catalog, Markdown mirrors, and `llms.txt`. If you configure OAuth, MCP, WebMCP, or DNS-AID, first implement the real service, browser module, or DNS records described in [Configure conditional Agent capabilities](/en/posts/agent-discovery/); generated metadata cannot create those services.
 
-With `targets: []`, or a mismatched remote or branch, there is no deployment target to run. Check `config.yml`, and do not use the whole project root as the static site root.
+## 5. Verify after publication
+
+Use the host’s own deployment logs and preview environment to confirm the build passed. Then open the localized home page, one ordinary post, the update example, and the privacy page at the public domain. If backend behavior is enabled, call your documented same-origin API and verify its authorization and error responses remain API responses rather than static HTML.
+
+## Common traps
+
+The public directory is `dist/public`, not the project root and not the private `dist` root. Do not place access tokens, SSH keys, or backend secrets in YAML, Markdown, or generated public files. If the host cannot run `npm run g`, build in CI and upload the resulting `dist/public` artifact through that host’s documented mechanism.
 
 ## Next step
 

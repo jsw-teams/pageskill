@@ -157,7 +157,7 @@ agentDiscovery:
 npm run g -- --profile
 Get-Content dist\public\.well-known\mcp\server-card.json
 Invoke-WebRequest https://api.example.com/mcp -Method Get -SkipHttpErrorCheck
-npm run d -- --dry-run
+npm run g -- --profile
 ```
 
 用实际 MCP client/Inspector 再执行一次 `tools/list` 和一个无副作用的 `tools/call`，确认 card 的 endpoint、版本和 schema 与服务返回值一致。只有这些检查通过后才保留 `enabled: true`。
@@ -283,7 +283,7 @@ Get-Content "$root\.well-known\agent.json" | ConvertFrom-Json
 Test-Path "$root\.well-known\oauth-protected-resource"
 Test-Path "$root\.well-known\mcp\server-card.json"
 git diff --check
-npm run d -- --dry-run
+npm run g -- --profile
 ```
 
 默认关闭时，两个条件 endpoint 文件应不存在；打开某项后，只能看到该项实际生成的文件或 configured 状态。最后检查部署类型：静态 Git/Pages 只发布 `dist/public`，无法单独承载 `backend/handler.ts`；鉴权和 MCP 必须同时部署同源 backend，或改用已经上线的外部服务。不要手动修改 `dist/`、`.pageskill/` 或生成的 `.well-known` 文件。

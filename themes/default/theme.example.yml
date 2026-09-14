@@ -31,5 +31,7 @@ plugins:
     updateNotice: true
     wordsPerMinute: 220
     cjkCharactersPerMinute: 400
+  codeCopy:
+    enabled: true
   # Consent UI has no required instance options. Configure real provider
   # adapters in config.yml under integrations instead of this theme file.

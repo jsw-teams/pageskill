@@ -41,19 +41,19 @@ cover: assets/og-default-product.webp
 
 `author` 是可選的普通文字。省略時，文章會沿用對應語言的網站作者，因此舊文章不必批次修改。`cover` 是可選的：把本地來源圖片放在 `content/assets/`，在 Frontmatter 寫 `assets/<路徑>`（或 `/assets/<路徑>`）；公開檔案會產生到 `dist/public/assets/<路徑>`。也可以使用 HTTPS 圖片 URL。沒有封面的文章頁、文章列表和彙整不會顯示圖片，也不會被強行套用統一預設圖。
 
-靜態 Git 整合使用 `npm run g` 並發佈 `dist/public`。同一次發佈需要 backend 時，先執行 `npm run d -- --dry-run`，確認目標和計畫正確後才執行 `npm run d`；不要發佈私有的 `dist/` 根目錄。
+靜態 Git 整合使用 `npm run g` 並發佈 `dist/public`。同一次發佈需要 backend 時，設定代管商支援的 Worker 或 Functions 工作流程，讓它把產生的私有執行時與公開快照一起使用；不要發佈私有的 `dist/` 根目錄。
 
 ## 相容遷移
 
 1. 現有帶日期文章可以繼續使用。保留原來的 ISO `date`；`author` 和 `cover` 都是可選欄位，不需要批次補 Frontmatter。
 2. 已有 `author` 就繼續保留普通文字；沒有作者就讓網站作者回退生效。封面請改為 `content/assets/` 下的本地路徑或 HTTPS URL；危險協定、越界路徑無法相容時，直接移除 `cover` 即可。
-3. 已退休的 `npm run build` 別名請改用 `npm run g`。持續預覽使用 `npm run s`，真正發佈前使用 `npm run d -- --dry-run`；靜態代管接收 `dist/public`，包含 backend 的發佈使用發佈命令正確暫存私有執行時。
+3. 已退休的 `npm run build` 別名請改用 `npm run g`。持續預覽使用 `npm run s`，發佈前使用代管商的預覽工作流程；靜態代管接收 `dist/public`，需要 backend 時由代管商依文件暫存產生的私有執行時。
 4. 保留現有 `/:locale/posts/<id>/` 文章連結。元資料欄位是向後相容的增量，不會改變文章 ID 或路由。
 
 ## 已移除項目與替代方案
 
 - `npm run build` 別名不再支援。原因是減少含義重複的建置入口；替代用法是 `npm run g`，它會驗證並產生公開快照。
-- 不再支援發佈整個 `dist/` 目錄，因為其中可能包含私有執行時資料。靜態發佈使用 `dist/public`，需要 backend 時使用 `npm run d` 產生發佈套件。
+- 不再支援發佈整個 `dist/` 目錄，因為其中可能包含私有執行時資料。靜態發佈使用 `dist/public`，需要 backend 時使用代管商文件規定的執行時打包流程。
 - 沒有移除文章元資料能力。沒有 `author` 或 `cover` 的舊文章仍按作者回退和無封面行為正常顯示。
 
 ## 發佈前驗證
@@ -67,10 +67,9 @@ npm run compile-backend
 npm run g
 npm run g -- --profile
 npm run s
-npm run d -- --dry-run
 ```
 
-本次 3.0.1 工作實際觀察到執行時/主題編譯、`npm run g` 產生 45 篇文件，本機預覽以 200 狀態提供首頁和本文，以及日期排序、同日穩定次序、元資料映射、三語作者標籤、封面載入、無封面回退、標題去重和危險封面 URL 拒絕等局部檢查。本次也執行了 `npm run d -- --dry-run`，因目前 checkout 沒有發佈目標而正確拒絕並退出。不聲稱 npm 發佈、Cloudflare 部署或生產瀏覽器結果。
+本次 3.0.1 工作實際觀察到執行時/主題編譯、`npm run g` 產生 45 篇文件，本機預覽以 200 狀態提供首頁和本文，以及日期排序、同日穩定次序、元資料映射、三語作者標籤、封面載入、無封面回退、標題去重和危險封面 URL 拒絕等局部檢查。不聲稱 npm 發佈、Cloudflare 部署或生產瀏覽器結果。
 
 ## 繼續閱讀
 

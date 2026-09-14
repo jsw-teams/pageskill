@@ -87,7 +87,8 @@ export function blogRelationsFor(
   const previousLabel = translate(doc.locale, 'previous', 'Previous post');
   const nextLabel = translate(doc.locale, 'next', 'Next post');
   const relatedLabel = translate(doc.locale, 'related', 'Related');
-  return `<footer class="post-relations"><nav class="post-pagination">${relationLink(previousLabel, newer)}${relationLink(nextLabel, older)}</nav>${related.length ? `<section class="related-posts"><h2>${escapeHtml(relatedLabel)}</h2><ul>${related.map(candidate => `<li><a href="${safeUrl(routeFor(ctx, candidate))}">${escapeHtml(candidate.title)}</a></li>`).join('')}</ul></section>` : ''}</footer>`;
+  const paginationLabel = translate(doc.locale, 'postPagination', 'Post navigation');
+  return `<footer class="post-relations"><nav class="post-pagination" aria-label="${escapeHtml(paginationLabel)}">${relationLink(previousLabel, newer)}${relationLink(nextLabel, older)}</nav>${related.length ? `<section class="related-posts"><h2>${escapeHtml(relatedLabel)}</h2><ul>${related.map(candidate => `<li><a href="${safeUrl(routeFor(ctx, candidate))}">${escapeHtml(candidate.title)}</a></li>`).join('')}</ul></section>` : ''}</footer>`;
 }
 
 export function rebuildDocumentIndexes(ctx: BuildContext): void {

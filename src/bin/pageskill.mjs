@@ -2,20 +2,20 @@
 
 import { createContext, refreshContext, build, check, siteDiscoveryOptions } from '../runtime/compiler.js';
 import { createSiteFetchHandler } from '../runtime/fetch-router.js';
+import { auditGeneratedSite, formatAccessibilityDiagnostics, formatAccessibilitySummary, hasAccessibilityErrors } from '../runtime/accessibility/index.js';
 import { promises as fs } from 'node:fs';
 import { watch } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { deploy, deployHelp } from '../deploy.mjs';
 import { classifyPublicUrl, publicPathFromUrl } from '../runtime/lib/static-security.js';
 
 const args = process.argv.slice(2);
 const requestedCommand = args[0] || '';
 const commandArgs = args.slice(1);
 const root = process.env.PAGESKILL_SITE_ROOT || process.cwd();
-const publicCommands = new Set(['g', 's', 'd']);
+const publicCommands = new Set(['g', 's']);
 const helpFlags = new Set(['--help', '-h']);
 
 async function packageVersion() {
@@ -23,17 +23,15 @@ async function packageVersion() {
   return String(packageManifest.version);
 }
 
-async function printHelp({ deployment = false } = {}) {
+async function printHelp() {
   console.log(`Pageskill ${await packageVersion()}
 
-Usage: pageskill <g|s|d> [options]
+Usage: pageskill <g|s> [options]
 
-  g [--profile]    Generate dist/ and validate source contracts
-  s [port]          Serve a local incremental preview (default: 4173)
-  d [--dry-run]     Validate, generate, and deploy from config.yml
+  g [--profile]     Generate dist/public/ and run the accessibility audit
+  s [port]           Serve a local incremental preview with audit feedback (default: 4173)
   --help, -h        Show this help
-
-${deployment ? `\n${deployHelp()}` : ''}`);
+`);
 }
 
 function rejectUnexpectedArgs(command, values, allowed) {
@@ -74,11 +72,6 @@ function parseServeArgs(values) {
   const port = Number(portValue);
   if (!/^\d+$/.test(String(portValue)) || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`Invalid preview port: ${portValue}`);
   return { port };
-}
-
-function parseDeployArgs(values) {
-  rejectUnexpectedArgs('d', values, new Set(['--dry-run']));
-  return { dryRun: values.includes('--dry-run') };
 }
 
 function contentType(file) {
@@ -315,9 +308,46 @@ async function writeFetchResponse(response, nodeResponse) {
   nodeResponse.end(Buffer.from(await response.arrayBuffer()));
 }
 
+function printAccessibilityReport(report) {
+  console.log(formatAccessibilitySummary(report));
+  if (report.diagnostics.length) console.error(formatAccessibilityDiagnostics(report.diagnostics));
+}
+
+async function writeAccessibilityReport(report) {
+  const reportFile = path.join(root, '.pageskill', 'accessibility.json');
+  await fs.mkdir(path.dirname(reportFile), { recursive: true });
+  await fs.writeFile(reportFile, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+}
+
+function accessibilityAuditOptions(ctx, changes = []) {
+  if (!changes.length) return {};
+  const normalized = changes.map(file => String(file).replaceAll('\\', '/').replace(/^\.\//, '').toLocaleLowerCase());
+  const fullAudit = normalized.some(file => file === 'config.yml' || file.startsWith('config/') || file === 'agents.md' || file === 'site/' || file.startsWith('site/') || file.startsWith('themes/') || file.startsWith('backend/') || file.startsWith('content/assets/'));
+  if (fullAudit) return {};
+  const sourceFiles = normalized.filter(file => file.startsWith('content/') && file.endsWith('.md')).map(file => path.resolve(root, file));
+  if (!sourceFiles.length) return {};
+  const changedSources = new Set(sourceFiles.map(file => file.toLocaleLowerCase()));
+  const routes = [...ctx.routes.entries()]
+    .filter(([, doc]) => changedSources.has(path.resolve(doc.source).toLocaleLowerCase()))
+    .map(([route]) => route);
+  return routes.length ? { routes, sourceFiles } : {};
+}
+
+async function previewAccessibility(ctx, options = {}) {
+  try {
+    const report = await auditGeneratedSite(ctx, options);
+    await writeAccessibilityReport(report);
+    printAccessibilityReport(report);
+  } catch (error) {
+    console.error(`Accessibility audit unavailable: ${error?.message || String(error)}`);
+  }
+}
+
 async function develop(port) {
   let ctx = await createContext(root);
   await build(ctx);
+  await check(ctx);
+  await previewAccessibility(ctx);
   let timer;
   let building = false;
   const changedFiles = new Set();
@@ -344,6 +374,8 @@ async function develop(port) {
           if (changes.some(file => { const value = String(file).toLocaleLowerCase(); return value.startsWith('backend/') && value.endsWith('.ts'); })) await compileGeneratedProject('tsconfig.backend.json', '.pageskill/backend-runtime', 'Backend');
           await refreshContext(ctx, changes);
           await build(ctx);
+          await check(ctx);
+          await previewAccessibility(ctx, accessibilityAuditOptions(ctx, changes));
           backendRouter = await loadPreviewRouter(ctx);
           fetchHandler = createSiteFetchHandler({
             router: backendRouter,
@@ -409,6 +441,10 @@ async function generate(profile = false) {
   const ctx = await createContext(root);
   await build(ctx);
   await check(ctx);
+  const report = await auditGeneratedSite(ctx);
+  await writeAccessibilityReport(report);
+  printAccessibilityReport(report);
+  if (hasAccessibilityErrors(report)) throw new Error('Accessibility audit failed; fix the reported errors before publishing the generated site.');
   console.log(`Generated ${ctx.docs.length} documents in ${Math.round(ctx.profile.total)}ms`);
   if (profile) console.log(JSON.stringify(ctx.profile, null, 2));
 }
@@ -425,7 +461,7 @@ async function main() {
   }
   if (!publicCommands.has(requestedCommand)) throw new Error(`Unknown command: ${requestedCommand}. Run pageskill --help for available commands.`);
   if (commandArgs.length === 1 && helpFlags.has(commandArgs[0])) {
-    await printHelp({ deployment: requestedCommand === 'd' });
+    await printHelp();
     return;
   }
   if (commandArgs.some(value => helpFlags.has(value))) throw new Error(`Help must be requested by itself for pageskill ${requestedCommand}.`);
@@ -440,11 +476,6 @@ async function main() {
     await develop(options.port);
     return;
   }
-  const options = parseDeployArgs(commandArgs);
-  const ctx = await createContext(root);
-  await build(ctx);
-  await check(ctx);
-  await deploy(root, ctx, options.dryRun ? ['--dry-run'] : []);
 }
 
 try {

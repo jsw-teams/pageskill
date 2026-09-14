@@ -157,7 +157,7 @@ The renderer keeps each tool's `name`, `description`, and object-shaped `inputSc
 npm run g -- --profile
 Get-Content dist\public\.well-known\mcp\server-card.json
 Invoke-WebRequest https://api.example.com/mcp -Method Get -SkipHttpErrorCheck
-npm run d -- --dry-run
+npm run g -- --profile
 ```
 
 Use a real MCP client or Inspector to run `tools/list` and one side-effect-free `tools/call`, and compare the endpoint, version, and schema with the card. Keep `enabled: true` only after those checks pass.
@@ -283,7 +283,7 @@ Get-Content "$root\.well-known\agent.json" | ConvertFrom-Json
 Test-Path "$root\.well-known\oauth-protected-resource"
 Test-Path "$root\.well-known\mcp\server-card.json"
 git diff --check
-npm run d -- --dry-run
+npm run g -- --profile
 ```
 
 With the defaults off, the conditional endpoint files should not exist. After enabling one capability, only that capability's actual files or configured state should appear. Check the deployment type last: static Git/Pages publishes only `dist/public` and cannot host `backend/handler.ts` by itself. Authentication and MCP need the backend deployed in the same runtime or an already live external service. Never edit `dist/`, `.pageskill/`, or generated `.well-known` files by hand.

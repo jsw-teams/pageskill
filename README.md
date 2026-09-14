@@ -51,11 +51,9 @@ npm run g
 npm run s
 ```
 
-`g` 校验并生成，`s` 启动本地预览，`d` 发布 `deployment.targets` 中声明的正式目标。发布前先运行：
+`g` 校验并生成公开站点与部署所需产物，`s` 启动本地预览并在重建时提供无障碍反馈。Pageskill 不主动调用托管商 API；将 `dist/public` 交给你的主机或 Git 集成，backend 运行时和对应的 hosting 配置由 `g` 一起生成。
 
-```powershell
-npm run d -- --dry-run
-```
+`g` 和 `npm test` 会在生成后使用本机 Edge 或 Playwright Chromium 检查真实 HTML，包括键盘焦点、可见焦点、名称与 ARIA、颜色对比度、响应式重排、200% 缩放、减少动态效果、强制颜色、文本选择和组件交互。自动检查不能替代人工辅助技术审查；没有 Edge 时可运行 `npx playwright install chromium`。
 
 完整步骤请看[十分钟开始你的站点](content/posts/start/zh-sg.md)或[Start your site in ten minutes](content/posts/start/en.md)。
 

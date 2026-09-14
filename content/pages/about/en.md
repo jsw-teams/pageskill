@@ -13,12 +13,11 @@ Themes provide reusable article structures, styles, and Blocks. Start with the c
 
 Foundation plugin options and localized copy belong in the site instance file selected by `theme.config`, normally `site/theme.yml`; language activation and fallback belong in `config.yml` or its extends files. The `themes/<name>/` directory is reusable implementation code, not a site instance configuration directory. The renderer generates Agent discovery metadata and Markdown mirrors from those sources, so generated files are outputs to inspect rather than files to maintain.
 
-## Remember three commands
+## Remember two commands
 
 | Command | Does |
 | --- | --- |
 | `npm run g` | Validates and generates public files. |
 | `npm run s` | Starts a persistent preview; press `Ctrl+C` to stop it. |
-| `npm run d` | Publishes the configured target. |
 
 The current home page is under `content/pages/home/`; tutorials, blogs, product articles, and version updates are under `content/posts/`. Add `category: update` to a version note to include it in the [update archive](/en/updates/) without mixing it into the normal post list. The privacy policy has the fixed route `/:locale/privacy/`. Start with [Start your site in ten minutes](/en/posts/start/).

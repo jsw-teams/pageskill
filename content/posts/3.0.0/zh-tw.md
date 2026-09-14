@@ -9,11 +9,11 @@ cover: assets/og-default-product.webp
 
 # 3.0 更新：更簡單的入口
 
-Pageskill 3.0 繼續用 Markdown、設定和主題產生網站，但第一次使用只要記住三個入口：產生 `g`、預覽 `s`、發佈 `d`。這次發佈也明確了 post 分類和執行時邊界，版本仍然是 3.0.0。
+Pageskill 3.0 繼續用 Markdown、設定和主題產生網站。第一次使用只要用 `g` 產生並驗證，再用 `s` 預覽；代管商工作流程負責發佈產生的公開快照。這次發佈也明確了 post 分類和執行時邊界，版本仍然是 3.0.0。
 
 ## 功能特性
 
-- 日常工作流程有三個清楚的指令：`npm run g` 驗證並產生，`npm run s` 持續執行本機預覽，`npm run d` 發佈已準備好的目標。新網站從複製儲存庫開始，執行 `npm install` 和 `npm run g`，再直接修改這個目錄。
+- 日常工作流程有兩個清楚的指令：`npm run g` 驗證並產生，`npm run s` 持續執行本機預覽。代管商或 Git 整合負責發佈產生的 `dist/public` 快照。新網站從複製儲存庫開始，執行 `npm install` 和 `npm run g`，再直接修改這個目錄。
 - 穩定頁面放在 `content/pages/<id>/<locale>.md`，不需要日期；教學、部落格、產品記錄和版本更新放在 `content/posts/<id>/<locale>.md`，必須有 ISO `date`；明確寫 `category: tutorial` 才標為教學，省略分類預設為 `uncategorized`（未分類），版本更新使用 `category: update`，可以和教學分開篩選。
 - 本地化新手路徑整理成開始、網站設定、Markdown、第一篇教學、Cookie 選擇器外掛構建、主題自訂、搜尋、內容目錄、外掛開發和發佈等短教學。主題能力可以撰寫一次後重用，不需要為每個頁面複製 HTML。
 - 首頁學習路徑使用六張可重用的小熊插圖，並連結前六個步驟；本地搜尋、內容目錄和更新視圖提供獨立入口，不會把版本說明混進普通 post 列表。
@@ -27,11 +27,11 @@ Pageskill 3.0 繼續用 Markdown、設定和主題產生網站，但第一次使
 
 ## 相容用法與遷移
 
-1. 複製儲存庫，執行 `npm install` 和 `npm run g`，之後直接在複製的網站目錄修改。預覽使用 `npm run s`，發佈前使用 `npm run d -- --dry-run` 檢查計畫，準備好後才執行 `npm run d`。
+1. 複製儲存庫，執行 `npm install` 和 `npm run g`，之後直接在複製的網站目錄修改。預覽使用 `npm run s`，並把代管商設定為建置和發佈 `dist/public`。
 2. 穩定頁面放在 `content/pages/<id>/<locale>.md`，不補日期；教學、部落格文章、產品記錄和版本文章放在 `content/posts/<id>/<locale>.md`，補上必填的 ISO `date`，讓 `en`、`zh-sg`、`zh-tw` 共用同一個 ID 並保持日期一致。每個版本文章的翻譯都增加 `category: update`。
 3. 如果舊版本文章仍在 `content/updates/<version>/`，把各語言檔案移到 `content/posts/<version>/` 並增加 `category: update`。更新視圖可用時保留公開更新連結；普通 post 繼續使用 `/:locale/posts/<id>/`。
 4. Cookie 政策繼續指向 `/:locale/privacy/`，並在[隱私說明](/zh-tw/privacy/)中換成真實且經過審核的聯絡人和服務。保留現有同意儲存鍵，避免回訪者無故失去選擇。
-5. 舊工作流程如果使用 `npm run build`，改用 `npm run g`；預覽和發佈分別使用 `npm run s`、`npm run d`。已移除的冗長 guide/development 頁面由學習路徑中的短文章取代。
+5. 舊工作流程如果使用 `npm run build`，改用 `npm run g`；Pageskill 只提供 `npm run g` 和 `npm run s`，發佈交給代管商工作流程。已移除的冗長 guide/development 頁面由學習路徑中的短文章取代。
 
 ## 已移除項目與替代方案
 
@@ -55,4 +55,4 @@ Pageskill 3.0 繼續用 Markdown、設定和主題產生網站，但第一次使
 1. 執行 `npm run compile-runtime`、`npm run compile-theme` 和 `npm run compile-backend`。
 2. 執行 `npm run g -- --profile`，檢查頁面、語言連結和公開檔案。
 3. 執行 `npm run s`，開啟本機首頁、post 和 Cookie 設定，修改一個巢狀主題 TypeScript 模組確認會重載；按 `Ctrl+C` 停止預覽。
-4. 執行 `npm run d -- --dry-run`；只有準備好發佈時才執行 `npm run d`。
+4. 執行 `npm run g -- --profile`，檢查產生的公開檔案，再使用代管商的預覽環境確認發佈結果。

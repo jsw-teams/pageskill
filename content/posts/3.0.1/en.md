@@ -41,19 +41,19 @@ cover: assets/og-default-product.webp
 
 `author` is optional plain text. If it is omitted, the article inherits the matching locale's site author, so existing articles continue to show an author without being edited. `cover` is optional. Put a local source image under `content/assets/` and write `assets/<path>` (or `/assets/<path>`) in Frontmatter; the public file is generated under `dist/public/assets/<path>`. HTTPS image URLs are also accepted. Without a cover, the article page, list, and archive render no image or forced default.
 
-For a static Git integration, use `npm run g` and publish `dist/public`. When backend behavior is part of the same deployment, run `npm run d -- --dry-run` first and publish with `npm run d` only after the target and plan are ready. Never publish the private `dist/` root.
+For a static Git integration, use `npm run g` and publish `dist/public`. When backend behavior is part of the same deployment, configure the host's supported Worker or Functions workflow to consume the generated private runtime alongside the public snapshot. Never publish the private `dist/` root.
 
 ## Compatibility and migration
 
 1. Existing dated posts remain valid. Keep their original ISO `date`; `author` and `cover` are optional, so no mass frontmatter edit is required.
 2. If an old article used `author`, keep the field as plain text. If it did not, leave it absent and let the site author fallback apply. For a cover, use a local path under `content/assets/` or an HTTPS URL; replace unsafe or traversing paths with one of those forms, or remove `cover` when no image is needed.
-3. Replace the retired `npm run build` alias with `npm run g`. Use `npm run s` for a persistent preview and `npm run d -- --dry-run` before a real publish. Static hosts should receive `dist/public`; backend-capable publishing should use the deployment command so private runtime files are staged correctly.
+3. Replace the retired `npm run build` alias with `npm run g`. Use `npm run s` for a persistent preview and the host's preview workflow before publication. Static hosts should receive `dist/public`; backend-capable hosts should stage the generated private runtime through their documented workflow.
 4. Keep the existing `/:locale/posts/<id>/` article links. The metadata fields are additive and do not change a post's ID or route.
 
 ## Removed and replacements
 
 - The `npm run build` alias is no longer supported. This removes a second, ambiguous generation entry point; use `npm run g`, which validates and generates the public snapshot.
-- Publishing the whole `dist/` directory is no longer supported because it can expose private runtime material. Use `dist/public` for static output or `npm run d` for a backend-aware package.
+- Publishing the whole `dist/` directory is no longer supported because it can expose private runtime material. Use `dist/public` for static output or the host's documented backend-aware package workflow.
 - No article metadata feature was removed. Older posts without `author` or `cover` continue to render through the fallback and no-cover behavior described above.
 
 ## Verify before publishing
@@ -67,10 +67,9 @@ npm run compile-backend
 npm run g
 npm run g -- --profile
 npm run s
-npm run d -- --dry-run
 ```
 
-This 3.0.1 pass observed the runtime/theme compiles, `npm run g` generating 45 documents, the local preview serving the home page and this article with status 200, and targeted checks for date ordering, same-day stability, metadata mapping, localized author labels, cover loading, missing-cover fallback, duplicate-title removal, and unsafe-cover rejection. `npm run d -- --dry-run` was run and correctly refused because this checkout has no deployment target. No npm publication, Cloudflare deployment, or production browser result is claimed.
+This 3.0.1 pass observed the runtime/theme compiles, `npm run g` generating 45 documents, the local preview serving the home page and this article with status 200, and targeted checks for date ordering, same-day stability, metadata mapping, localized author labels, cover loading, missing-cover fallback, duplicate-title removal, and unsafe-cover rejection. No npm publication, Cloudflare deployment, or production browser result is claimed.
 
 ## Continue
 

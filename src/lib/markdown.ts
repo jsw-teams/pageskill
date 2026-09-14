@@ -34,6 +34,8 @@ function slug(value: string) {
 function sanitizeUrl(value: string): string {
   const input = String(value || '').trim();
   if (!input) return '#';
+  if (/^#[A-Za-z][A-Za-z0-9._:-]{0,160}$/.test(input)) return input;
+  if (/[\u0000-\u001f\u007f-\u009f\\]/.test(input)) return '#';
   try {
     const url = new URL(input, 'https://pageskill.invalid');
     return ['http:', 'https:', 'mailto:', 'tel:'].includes(url.protocol) ? input : '#';
@@ -70,7 +72,7 @@ markdown.renderer.rules.table_open = (_tokens, _index, _options, environment) =>
   const env = environment as MarkdownEnvironment;
   env.tableHeaders = [];
   env.tableColumn = 0;
-  return '<div class="table-wrap"><table>';
+  return '<div class="table-wrap" tabindex="0"><table>';
 };
 markdown.renderer.rules.tr_open = (tokens, index, options, environment, renderer) => {
   const env = environment as MarkdownEnvironment;
@@ -81,6 +83,7 @@ markdown.renderer.rules.th_open = (tokens, index, options, environment, renderer
   const env = environment as MarkdownEnvironment;
   const inline = tokens[index + 1];
   if (inline?.type === 'inline' && env.tableHeaders) env.tableHeaders.push(inline.content || '');
+  tokens[index].attrSet('scope', 'col');
   return renderer.renderToken(tokens, index, options);
 };
 markdown.renderer.rules.th_close = (tokens, index, options, environment, renderer) => {
@@ -103,6 +106,17 @@ markdown.renderer.rules.image = (tokens, index, options, environment, renderer) 
   tokens[index].attrSet('loading', 'lazy');
   tokens[index].attrSet('decoding', 'async');
   return defaultImage ? defaultImage(tokens, index, options, environment, renderer) : renderer.renderToken(tokens, index, options);
+};
+
+markdown.renderer.rules.fence = (tokens, index, options) => {
+  const token = tokens[index];
+  const rawLanguage = token.info?.trim().split(/\s+/)[0] || '';
+  const language = /^[A-Za-z0-9_-]{1,32}$/.test(rawLanguage) ? rawLanguage : '';
+  const languageLabel = language ? `<span class="code-language" data-code-language>${escapeHtml(language)}</span>` : '';
+  const button = '<button type="button" class="code-copy" data-code-copy aria-label="Copy code">Copy</button>';
+  const status = '<span class="code-copy-status sr-only" data-code-copy-status aria-live="polite"></span>';
+  const className = language ? ` class="language-${escapeHtml(language)}"` : '';
+  return `<div class="code-block" data-code-block><div class="code-block-toolbar">${languageLabel}${button}${status}</div><pre tabindex="0"><code${className}>${escapeHtml(token.content || '')}</code></pre></div>`;
 };
 
 function parseAttrs(source: string, file: string, line: number): Record<string, string> {

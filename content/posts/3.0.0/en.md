@@ -9,11 +9,11 @@ cover: assets/og-default-product.webp
 
 # 3.0 update: a simpler entry
 
-Pageskill 3.0 still generates sites from Markdown, settings, and themes, but a first-time author only needs three entries: generate with `g`, preview with `s`, and publish with `d`. The release also makes the post taxonomy and runtime boundary explicit; the version remains 3.0.0.
+Pageskill 3.0 still generates sites from Markdown, settings, and themes. A first-time author uses `g` to generate and validate, then `s` to preview; the hosting workflow publishes the resulting public snapshot. The release also makes the post taxonomy and runtime boundary explicit; the version remains 3.0.0.
 
 ## Features
 
-- The daily workflow has three clear commands: `npm run g` validates and generates, `npm run s` keeps a local preview running, and `npm run d` publishes a ready target. A new site starts by cloning the repository, running `npm install` and `npm run g`, then editing that clone in place.
+- The daily workflow has two clear commands: `npm run g` validates and generates, and `npm run s` keeps a local preview running. A host or Git integration publishes the generated `dist/public` snapshot. A new site starts by cloning the repository, running `npm install` and `npm run g`, then editing that clone in place.
 - Stable pages live under `content/pages/<id>/<locale>.md` without a date. Tutorials, blogs, product records, and version updates live under `content/posts/<id>/<locale>.md` with a required ISO `date`; `category: tutorial` marks a tutorial, an omitted category defaults to `uncategorized`, and `category: update` marks a release note that can be filtered separately.
 - The localized beginner path is organized as short tutorials for starting, site settings, Markdown, the first tutorial, the Cookie selector plugin build, theme customization, search, the table of contents, plugin development, and deployment. Reusable theme capabilities can be documented once and reused instead of copying page HTML.
 - The home learning path uses six reusable bear illustrations and links to the first six steps. Search, the post table of contents, and the filtered updates view provide dedicated entry points without mixing release notes into ordinary post lists.
@@ -27,11 +27,11 @@ Pageskill 3.0 still generates sites from Markdown, settings, and themes, but a f
 
 ## Compatibility and migration
 
-1. Clone the repository, run `npm install`, then run `npm run g`; keep editing the cloned site in place. Use `npm run s` for preview and `npm run d -- --dry-run` to inspect a publishing plan before a real `npm run d`.
+1. Clone the repository, run `npm install`, then run `npm run g`; keep editing the cloned site in place. Use `npm run s` for preview and configure the host to build and publish `dist/public`.
 2. Keep stable pages in `content/pages/<id>/<locale>.md` without a date. Put tutorials, blog notes, product records, and release notes in `content/posts/<id>/<locale>.md` with the required ISO `date`, one ID across `en`, `zh-sg`, and `zh-tw`, and aligned dates. Add `category: update` to every release-note translation.
 3. If an older release note still lives under `content/updates/<version>/`, move each locale file to `content/posts/<version>/` and add `category: update`. Keep the public update link when the updates view is available; ordinary posts continue to use `/:locale/posts/<id>/`.
 4. Point the Cookie policy to `/:locale/privacy/` and replace example contacts and services with real reviewed content. Keep the existing consent storage key so returning visitors do not lose their choice unexpectedly.
-5. If an older workflow uses `npm run build`, replace it with `npm run g`. The preview and publish commands are `npm run s` and `npm run d`; the short localized posts are the supported replacement for the retired long guide copies.
+5. If an older workflow uses `npm run build`, replace it with `npm run g`. The supported Pageskill commands are `npm run g` and `npm run s`; the short localized posts are the supported replacement for the retired long guide copies.
 
 ## Removed and replacements
 
@@ -55,4 +55,4 @@ Use these steps to check your site:
 1. Run `npm run compile-runtime`, `npm run compile-theme`, and `npm run compile-backend`.
 2. Run `npm run g -- --profile` and inspect the generated pages, language links, and public files.
 3. Run `npm run s`, open the local home page, a post, and Cookie settings, change a nested theme TypeScript module to verify the reload, then press `Ctrl+C` to stop the preview.
-4. Run `npm run d -- --dry-run`; run `npm run d` only when you are ready to publish.
+4. Run `npm run g -- --profile`, inspect the generated public files, and use the host's preview environment before publication.

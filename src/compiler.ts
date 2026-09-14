@@ -21,8 +21,8 @@ import { contentMetricsOptions, defaultPattern, documentIdentity, documentSchema
 import { blogRelationsFor, contentViewSettings, documentKey, documentOutputs, documentViewCollection, documentsForCollection, postCategory, rebuildDocumentIndexes, routeFor, sourceDocuments, translationKey, viewForDocument } from './compiler/routes.ts';
 import type { MarkdownNode, SourcePosition, DirectiveNode } from './lib/markdown.ts';
 import type { PageskillTheme, ThemeBlockDefinition, ThemeChromeConfig, ThemeChromeLink, ThemeI18nSource, ThemeOptionSchema, ThemePluginDefinition, ThemeRenderContext, ThemeResources, ThemeShellContext } from './theme-api.ts';
-import type { BuildContext, BuildProfile, CacheManifest, CachedDocument, CachedImage, Document, Locale } from './compiler/types.ts';
-export type { BuildContext, BuildProfile, CachedDocument, CachedImage, Document, Locale } from './compiler/types.ts';
+import type { BuildContext, BuildProfile, CacheManifest, CachedDocument, CachedImage, Document, ImageDimensions, Locale } from './compiler/types.ts';
+export type { BuildContext, BuildProfile, CachedDocument, CachedImage, Document, ImageDimensions, Locale } from './compiler/types.ts';
 // Increment this whenever compiler output semantics change so an existing
 // incremental cache cannot preserve a discovery file rendered by old code.
 const RENDERER_VERSION = '3.1.0';
@@ -640,6 +640,28 @@ function dependenciesFor(ctx: BuildContext, doc: Document): string[] {
 }
 
 function slug(value: string) { return value.toLocaleLowerCase().normalize('NFKC').replace(/[^\p{Letter}\p{Number}\s-]/gu, '').trim().replace(/[\s_-]+/g, '-'); }
+function addIntrinsicImageDimensions(ctx: BuildContext, markup: string): string {
+  return markup.replace(/<img\b([^>]*?)>/g, (_match, attributes: string) => {
+    if (/\bwidth\s*=|\bheight\s*=/i.test(attributes)) return `<img${attributes}>`;
+    const source = attributes.match(/\bsrc="([^"\n]+)"/i)?.[1] || '';
+    if (!source.startsWith('/') || source.startsWith('//')) return `<img${attributes}>`;
+    const pathname = source.split(/[?#]/, 1)[0];
+    const dimensions = ctx.imageDimensions[pathname];
+    if (!dimensions) return `<img${attributes}>`;
+    return `<img${attributes} width="${dimensions.width}" height="${dimensions.height}">`;
+  });
+}
+
+function renderMarkdownNode(ctx: BuildContext, doc: Document, node: MarkdownNode): string {
+  if (node.kind === 'directive') return '';
+  if (node.kind !== 'code') return addIntrinsicImageDimensions(ctx, node.html);
+  if (!pluginEnabled(ctx, 'codeCopy')) return node.html.replace(/<div class="code-block" data-code-block><div class="code-block-toolbar">[\s\S]*?<\/div>(<pre[\s\S]*?<\/pre>)<\/div>/, '$1');
+  const copy = themeText(ctx, doc.locale, 'codeCopy.copy', 'Copy code');
+  const copied = themeText(ctx, doc.locale, 'codeCopy.copied', 'Copied');
+  const failed = themeText(ctx, doc.locale, 'codeCopy.failed', 'Copy failed');
+  const button = `<button type="button" class="code-copy" data-code-copy data-copy-label="${escapeHtml(copy)}" data-copied-label="${escapeHtml(copied)}" data-failed-label="${escapeHtml(failed)}" aria-label="${escapeHtml(copy)}">${escapeHtml(copy)}</button>`;
+  return node.html.replace('<button type="button" class="code-copy" data-code-copy aria-label="Copy code">Copy</button>', button);
+}
 function themeContextFor(ctx: BuildContext, doc: Document): ThemeRenderContext {
   let context!: ThemeRenderContext;
   context = {
@@ -647,7 +669,7 @@ function themeContextFor(ctx: BuildContext, doc: Document): ThemeRenderContext {
     config: ctx.config,
     theme: ctx.theme,
     themeConfig: ctx.themeConfig,
-    renderNodes: nodes => nodes.map(node => node.kind === 'directive' ? context.renderBlock(node) : node.html).join(''),
+    renderNodes: nodes => nodes.map(node => node.kind === 'directive' ? context.renderBlock(node) : renderMarkdownNode(ctx, doc, node)).join(''),
     renderBlock: node => renderThemeBlock(ctx, node, context),
     renderInline,
     escapeHtml,
@@ -695,7 +717,7 @@ function fallbackShell(context: ThemeShellContext): string {
   const siteMapLabel = context.translate('siteMap', 'Site map');
   const privacyPolicy = context.privacy.enabled ? `<a class="footer-tool-link" data-privacy-policy href="${context.safeUrl(context.privacy.policyHref)}">${context.escapeHtml(context.privacy.policyLabel)}</a>` : '';
   const footerTools = `<nav class="footer-tools" aria-label="${context.escapeHtml(siteMapLabel)}">${renderChromeLinks(context, chrome.footer.before, 'footer-tool-link')}${context.footerLinks}<a class="footer-tool-link" href="/sitemap.xml" data-site-map>${context.escapeHtml(siteMapLabel)}</a>${privacyPolicy}${context.privacyTriggerMarkup || ''}${renderChromeLinks(context, chrome.footer.after, 'footer-tool-link')}</nav>`;
-  return `<!doctype html><html lang="${context.escapeHtml(context.htmlLang || context.doc.locale)}"><head>${context.head}</head><body class="${context.bodyClass}" data-pattern="${context.escapeHtml(context.doc.pattern)}">${context.privacyMarkup}<a class="skip" href="#main">${context.escapeHtml(context.skipLabel)}</a><header class="site-header"><div class="header-inner"><a class="brand" href="${context.homeHref}"><img class="brand-mark" src="${context.brandIcon}" alt="" width="32" height="32"><span class="brand-copy"><strong>${context.escapeHtml(context.siteName)}</strong><small>${context.escapeHtml(context.headerNote)}</small></span></a>${headerActions ? `<div class="header-actions">${headerActions}</div>` : ''}</div></header><main id="main" class="${context.mainClass}">${pageHeader}${context.content}</main><footer class="site-footer"><div class="footer-grid">${footerTools}</div></footer></body></html>`;
+  return `<!doctype html><html lang="${context.escapeHtml(context.htmlLang || context.doc.locale)}"><head>${context.head}</head><body class="${context.bodyClass}" data-pattern="${context.escapeHtml(context.doc.pattern)}">${context.privacyMarkup}<a class="skip" href="#main">${context.escapeHtml(context.skipLabel)}</a><header class="site-header"><div class="header-inner"><a class="brand" href="${context.homeHref}"><img class="brand-mark" src="${context.brandIcon}" alt="" width="32" height="32"><span class="brand-copy"><strong>${context.escapeHtml(context.siteName)}</strong><small>${context.escapeHtml(context.headerNote)}</small></span></a>${headerActions ? `<div class="header-actions">${headerActions}</div>` : ''}</div></header><main id="main" tabindex="-1" class="${context.mainClass}">${pageHeader}${context.content}</main><footer class="site-footer"><div class="footer-grid">${footerTools}</div></footer></body></html>`;
 }
 
 function pluginEnabled(ctx: BuildContext, name: string): boolean {
@@ -871,7 +893,7 @@ function localSearchData(ctx: BuildContext, doc: Document, themeBase: string) {
     maxResults: Math.max(1, Math.min(50, numericPluginSetting(ctx, 'search', 'maxResults', 1)))
   };
   const inputId = `pageskill-search-${doc.locale.replace(/[^a-z0-9]+/gi, '-')}-${shortHash(doc.id).slice(0, 6)}`;
-  const searchMarkup = search.enabled ? `<form class="site-search" data-local-search data-search-index="${escapeHtml(search.indexHref)}" data-search-max-results="${search.maxResults}" data-search-no-results="${escapeHtml(search.noResultsLabel)}" data-search-error="${escapeHtml(search.errorLabel)}" data-search-query-hint="${escapeHtml(search.queryHint)}" data-search-hit-title="${escapeHtml(search.hitTitleLabel)}" data-search-hit-description="${escapeHtml(search.hitDescriptionLabel)}" data-search-hit-heading="${escapeHtml(search.hitHeadingLabel)}" data-search-hit-content="${escapeHtml(search.hitContentLabel)}" data-search-hit-path="${escapeHtml(search.hitPathLabel)}" role="search"><label class="sr-only" for="${inputId}">${escapeHtml(search.label)}</label><div class="site-search-control"><input id="${inputId}" name="q" type="search" autocomplete="off" placeholder="${escapeHtml(search.placeholder)}" data-search-input><button type="submit" aria-label="${escapeHtml(search.submitLabel)}">⌕</button></div><div class="search-results" data-search-results hidden aria-live="polite" aria-label="${escapeHtml(search.resultLabel)}"></div><script type="module" src="${search.scriptSrc}"></script></form>` : '';
+  const searchMarkup = search.enabled ? `<form class="site-search" data-local-search data-search-index="${escapeHtml(search.indexHref)}" data-search-max-results="${search.maxResults}" data-search-no-results="${escapeHtml(search.noResultsLabel)}" data-search-error="${escapeHtml(search.errorLabel)}" data-search-query-hint="${escapeHtml(search.queryHint)}" data-search-hit-title="${escapeHtml(search.hitTitleLabel)}" data-search-hit-description="${escapeHtml(search.hitDescriptionLabel)}" data-search-hit-heading="${escapeHtml(search.hitHeadingLabel)}" data-search-hit-content="${escapeHtml(search.hitContentLabel)}" data-search-hit-path="${escapeHtml(search.hitPathLabel)}" role="search" aria-label="${escapeHtml(search.label)}"><label class="sr-only" for="${inputId}">${escapeHtml(search.label)}</label><div class="site-search-control"><input id="${inputId}" name="q" type="search" autocomplete="off" placeholder="${escapeHtml(search.placeholder)}" data-search-input><button type="submit" aria-label="${escapeHtml(search.submitLabel)}">⌕</button></div><div class="search-results" data-search-results hidden aria-live="polite" aria-label="${escapeHtml(search.resultLabel)}"></div><script type="module" src="${search.scriptSrc}"></script></form>` : '';
   return { search, searchMarkup };
 }
 
@@ -970,7 +992,7 @@ function notFoundMarkup(ctx: BuildContext, locale: string): string {
   const homeHref = safeUrl(routeFor(ctx, generatedDocument('home', locale, 'Home', '', `/${locale}/`)));
   const guide = ctx.docs.find(doc => doc.collection === 'posts' && doc.id === 'start' && doc.locale === locale);
   const guideLink = guide ? `<a class="button-secondary" href="${safeUrl(routeFor(ctx, guide))}">${escapeHtml(guideLabel)}</a>` : '';
-  return `<section class="error-page" aria-labelledby="not-found-title"><p class="error-code" aria-hidden="true">404</p><h2 id="not-found-title">${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p><div class="error-actions"><a class="button-primary" href="${homeHref}">${escapeHtml(homeLabel)}</a>${guideLink}</div></section>`;
+  return `<section class="error-page" aria-labelledby="not-found-title"><p class="error-code" aria-hidden="true">404</p><h1 id="not-found-title">${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p><div class="error-actions"><a class="button-primary" href="${homeHref}">${escapeHtml(homeLabel)}</a>${guideLink}</div></section>`;
 }
 
 async function writeGeneratedPages(ctx: BuildContext) {
@@ -1157,12 +1179,11 @@ function agentFunctionMap(ctx: BuildContext) {
     // Conditional discovery entries describe the implementation boundary as
     // data. The generated Skill and catalog expose these fields without a
     // second hand-maintained instruction list.
-    { id: 'configure-auth-discovery', purpose: 'Publish OAuth protected-resource metadata only for an implemented protected service and real authorization server', paths: [...configSources, 'config.yml:agentDiscovery.auth', 'backend/handler.ts or an external resource server', 'external OAuth/OIDC issuer'], prerequisites: ['Verify bearer tokens, issuer, audience, expiry, and scopes in the protected service', 'Use real resource and issuer URLs'], outputs: ['/.well-known/oauth-protected-resource', 'auth.md', 'optional /.well-known/oauth-authorization-server'], commands: ['pageskill g --profile', 'pageskill d --dry-run'] },
-    { id: 'configure-mcp-discovery', purpose: 'Publish an MCP server card whose endpoint and tool schemas match a real MCP transport', paths: [...configSources, 'config.yml:agentDiscovery.mcp', 'backend/handler.ts or an external MCP server'], prerequisites: ['Deploy a working MCP endpoint before enabling the card', 'Keep card tool metadata aligned with the server tools/list response'], outputs: ['/.well-known/mcp/server-card.json'], commands: ['pageskill g --profile', 'pageskill d --dry-run'] },
+    { id: 'configure-auth-discovery', purpose: 'Publish OAuth protected-resource metadata only for an implemented protected service and real authorization server', paths: [...configSources, 'config.yml:agentDiscovery.auth', 'backend/handler.ts or an external resource server', 'external OAuth/OIDC issuer'], prerequisites: ['Verify bearer tokens, issuer, audience, expiry, and scopes in the protected service', 'Use real resource and issuer URLs'], outputs: ['/.well-known/oauth-protected-resource', 'auth.md', 'optional /.well-known/oauth-authorization-server'], commands: ['pageskill g --profile'] },
+    { id: 'configure-mcp-discovery', purpose: 'Publish an MCP server card whose endpoint and tool schemas match a real MCP transport', paths: [...configSources, 'config.yml:agentDiscovery.mcp', 'backend/handler.ts or an external MCP server'], prerequisites: ['Deploy a working MCP endpoint before enabling the card', 'Keep card tool metadata aligned with the server tools/list response'], outputs: ['/.well-known/mcp/server-card.json'], commands: ['pageskill g --profile'] },
     { id: 'register-webmcp-tools', purpose: 'Register browser tools from a theme plugin only when a real WebMCP module is loaded and tested', paths: [...configSources, 'config.yml:agentDiscovery.webmcp', themeInstance, 'themes/<name>/plugins/<id>/'], prerequisites: ['Register tools through document.modelContext with explicit JSON schemas', 'Validate inputs and confirm consequential actions in the page'], outputs: ['/.well-known/agent.json configured state; browser tools come from the theme script'], commands: ['npm run compile-theme', 'pageskill s', 'pageskill g --profile'] },
-    { id: 'publish-dns-aid', purpose: 'Advertise DNS-AID only after an external DNS provider has published real SVCB/TXT or TLSA records with DNSSEC as required', paths: [...configSources, 'config.yml:agentDiscovery.dnsAid', 'external authoritative DNS zone'], prerequisites: ['Deploy the advertised agent endpoint', 'Verify the public DNS records and DNSSEC chain before enabling the flag'], outputs: ['/.well-known/agent.json configured state; DNS records are never generated here'], commands: ['Resolve-DnsName', 'pageskill g --profile', 'pageskill d --dry-run'] },
+    { id: 'publish-dns-aid', purpose: 'Advertise DNS-AID only after an external DNS provider has published real SVCB/TXT or TLSA records with DNSSEC as required', paths: [...configSources, 'config.yml:agentDiscovery.dnsAid', 'external authoritative DNS zone'], prerequisites: ['Deploy the advertised agent endpoint', 'Verify the public DNS records and DNSSEC chain before enabling the flag'], outputs: ['/.well-known/agent.json configured state; DNS records are never generated here'], commands: ['Resolve-DnsName', 'pageskill g --profile'] },
     { id: 'preview', purpose: 'Open the local development server with a persistent incremental context', paths: ['src/bin/pageskill.mjs', 'src/compiler.ts'], commands: ['pageskill s'] },
-    { id: 'deploy', purpose: 'Build and publish the configured public site target', paths: [...configSources, 'dist/public/'], commands: ['pageskill d --dry-run', 'pageskill d'] },
     { id: 'dynamic-backend', purpose: 'Add runtime business logic, secrets, writes, or webhooks', paths: ['backend/handler.ts'], commands: ['pageskill g'] }
   ];
 }
@@ -1701,6 +1722,24 @@ async function processImageVariants(ctx: BuildContext, assetRoot: string) {
     next[key] = { hash, output };
   });
   ctx.imageCache = next;
+}
+
+async function readImageDimensions(assetRoot: string): Promise<Record<string, ImageDimensions>> {
+  const dimensions: Record<string, ImageDimensions> = {};
+  let sharp: any;
+  try { ({ default: sharp } = await import('sharp')); } catch { return dimensions; }
+  for (const file of await walk(assetRoot)) {
+    const relative = normalizePath(path.relative(assetRoot, file));
+    try {
+      const metadata = await sharp(file).metadata();
+      if (!metadata.width || !metadata.height) continue;
+      const publicPath = ['favicon.ico', 'favicon-32x32.png', 'apple-touch-icon.png', 'favicon-v2.ico'].includes(relative)
+        ? `/${relative}`
+        : `/assets/${relative}`;
+      dimensions[publicPath] = { width: metadata.width, height: metadata.height };
+    } catch { /* unsupported or malformed assets remain without intrinsic dimensions */ }
+  }
+  return dimensions;
 }
 
 async function copyThemeAndAssets(ctx: BuildContext) {
@@ -2279,7 +2318,7 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
   profile.load = duration(loadStart);
   profile.documents = docs.length;
   const byKey = new Map(docs.map(doc => [`${doc.collection}:${doc.id}:${doc.locale}`, doc]));
-  return { root, out: path.join(root, 'dist'), config, configFiles: loadedConfig.configFiles, deployment: resolveDeploymentConfig(config), theme: runtimeTheme, themeConfig, themeConfigFile: loadedThemeConfig.file, themeI18n, themeDefinition, docs, byKey, routes: new Map(), cache, profile, outputs: new Set(), diagnostics: [], configHash: loadedConfig.configHash, themeHash, assetHash, backendHash, contentRoots, imageCache: {}, outputHashes: {}, collectionIndex: new Map(), translationIndex: new Map(), documentPositions: new Map(), tagIndex: new Map(), markdownCache: new Map(), sourceParseCache, themeStyleSources, themeAssetHashes };
+  return { root, out: path.join(root, 'dist'), config, configFiles: loadedConfig.configFiles, deployment: resolveDeploymentConfig(config), theme: runtimeTheme, themeConfig, themeConfigFile: loadedThemeConfig.file, themeI18n, themeDefinition, docs, byKey, routes: new Map(), cache, profile, outputs: new Set(), diagnostics: [], configHash: loadedConfig.configHash, themeHash, assetHash, backendHash, contentRoots, imageCache: {}, imageDimensions: {}, outputHashes: {}, collectionIndex: new Map(), translationIndex: new Map(), documentPositions: new Map(), tagIndex: new Map(), markdownCache: new Map(), sourceParseCache, themeStyleSources, themeAssetHashes };
 }
 
 export async function refreshContext(ctx: BuildContext, changedFiles: string[] = []): Promise<BuildContext> {
@@ -2366,6 +2405,7 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
 
   const globalChanged = !outputDirectoryExists || ctx.cache.rendererVersion !== RENDERER_VERSION || ctx.cache.configHash !== ctx.configHash || ctx.cache.themeHash !== ctx.themeHash || ctx.cache.backendHash !== ctx.backendHash;
   const assetChanged = ctx.cache.assetHash !== ctx.assetHash;
+  ctx.imageDimensions = await readImageDimensions(path.join(ctx.root, 'content', 'assets'));
   const currentSources = new Set(ctx.docs.map(doc => doc.source));
   const dependencyChanges = new Set<string>();
   const directlyChanged = new Set<string>();
@@ -2394,7 +2434,7 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   for (const doc of ctx.docs) {
     const cached = ctx.cache.documents[doc.source];
     const dependent = (cached?.dependencies || []).some(key => dependencyChanges.has(key));
-    if (globalChanged || directlyChanged.has(doc.source) || !cached || dependent) affected.add(doc.source);
+    if (globalChanged || assetChanged || directlyChanged.has(doc.source) || !cached || dependent) affected.add(doc.source);
     else for (const output of cached.outputs || documentOutputs(ctx, doc)) retainOutput(ctx, output);
   }
 
