@@ -49,7 +49,8 @@ footer:
 
 # Runtime is optional. A static site can omit this block entirely. Cloudflare
 # Pages is the bundled reference adapter; its D1 and optional AI bindings are
-# configured by the host, not by Core.
+# configured by the host, not by Core. Pageskill does not generate or invoke
+# Wrangler; configure production bindings in the hosting project's settings.
 # runtime:
 #   adapter: cloudflare-pages
 #   backend: true

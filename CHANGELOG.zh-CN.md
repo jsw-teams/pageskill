@@ -18,6 +18,7 @@ Pageskill 4.0.0 是一次 breaking architecture release。当前产品模型统�
 - Comments 保持为可选 External Component，Comment Translation 拆成独立的 `client + server + storage + cache + ai` 可选能力。评论列表加入分页 Cache 与写入失效，翻译加入持久化查询、source hash 和 AI 前的 single-flight。
 - 私有无障碍输出扩展为带标注的 `report.pdf`、`index.html`、`report.json`、`summary.json`，每个路由都有 baseline 截图，代表/有问题路由有五种视口截图，并在审查完成后生成标出 issue 的临时裁剪图。
 - 增加 Component hardcoding/content-ownership 回归覆盖，用完全不同品牌的 fixture 验证只替换 Markdown、Config 和 Runtime Data 就能生成新站点，不必修改 Theme TypeScript。
+- 移除 Wrangler 依赖和生成的主机配置。Cloudflare 适配器现在只输出 Pages `_worker.js` 契约，使用原生 Node 预览，并把 D1、AI 与 migration 管理交给托管项目。
 
 ### Breaking change 与迁移
 

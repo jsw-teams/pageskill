@@ -117,17 +117,9 @@ async function compileProject(projectFile, outputDirectory, label) {
   if (code !== 0) throw new Error(`${label} compiler exited with code ${code}`);
 }
 
-async function applyLocalMigrations(ctx) {
-  const adapter = await loadRuntimeAdapter(ctx?.deployment?.adapter);
-  await adapter?.applyLocalMigrations?.({ root, backend: Boolean(ctx?.deployment?.backend) });
-}
-
 async function startPreview(ctx, port) {
   const adapter = await loadRuntimeAdapter(ctx?.deployment?.adapter);
-  if (adapter) {
-    if (!adapter.startPreview) throw new Error(`runtime adapter "${adapter.id}" does not provide a local preview`);
-    return adapter.startPreview({ root, outputDirectory: ctx.out, backend: Boolean(ctx.deployment.backend), port });
-  }
+  if (adapter?.startPreview) return adapter.startPreview({ root, outputDirectory: ctx.out, backend: Boolean(ctx.deployment.backend), port });
   return startStaticPreview(ctx.out, port);
 }
 
@@ -197,14 +189,13 @@ function sourceRelative(file) {
 
 function shouldWatch(relative) {
   const normalized = relative.toLocaleLowerCase();
-  return normalized === 'config.yml' || normalized.startsWith('config/') || normalized === 'agents.md' || normalized.startsWith('content/') || normalized.startsWith('themes/') || normalized.startsWith('backend/') || normalized.startsWith('migrations/') || normalized === 'site/theme.yml';
+  return normalized === 'config.yml' || normalized.startsWith('config/') || normalized === 'agents.md' || normalized.startsWith('content/') || normalized.startsWith('themes/') || normalized.startsWith('backend/') || normalized === 'site/theme.yml';
 }
 
 async function serve(port) {
   let ctx = await createContext(root);
   await build(ctx);
   await check(ctx);
-  await applyLocalMigrations(ctx);
   let child = await startPreview(ctx, port);
   let timer;
   let building = false;
@@ -230,7 +221,6 @@ async function serve(port) {
           ctx = await refreshContext(ctx, files);
           await build(ctx);
           await check(ctx);
-          if (files.some(file => file.startsWith('migrations/'))) await applyLocalMigrations(ctx);
           await restartPreview();
           console.log(`Rebuilt ${ctx.docs.length} documents (${files.length} changed files) in ${Math.round(ctx.profile.total)}ms`);
         } catch (error) {

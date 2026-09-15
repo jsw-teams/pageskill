@@ -63,7 +63,6 @@ export type RuntimeBuildAdapter = {
   id: string;
   prepare?: (context: RuntimePrepareContext) => Promise<void> | void;
   build?: (context: RuntimeBuildContext) => Promise<void> | void;
-  applyLocalMigrations?: (context: Pick<RuntimeBuildContext, 'root' | 'backend'>) => Promise<void> | void;
   startPreview?: (context: Pick<RuntimeBuildContext, 'root' | 'outputDirectory' | 'backend'> & { port: number }) => Promise<unknown> | unknown;
 };
 

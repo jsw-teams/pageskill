@@ -11,8 +11,6 @@ static/favicon-32x32.png
 static/favicon.ico
 static/site.webmanifest
 .npm-cache/
-.wrangler/
-wrangler.toml
 .publish-myblog/
 current
 releases/

@@ -23,7 +23,7 @@ Ordinary authors work with Markdown, configuration, Components, `page g`, `page 
 - A Component owns behavior and presentation. Content owns content: reader-facing titles, descriptions, body copy, links, articles, categories, examples, and brand data come from Markdown, Frontmatter, Config, or Runtime Data. Component defaults may contain behavior and structure defaults, never site prose or demo records.
 - `backend/handler.ts` is the Cloudflare reference Runtime Adapter and example Server Component implementation. It is not a Pageskill Core dependency.
 - `migrations/` contains auditable D1 migrations. Never create production tables during a request.
-- `src/` owns the Core compiler, `page` CLI, libraries, accessibility audit, Fetch Router, runtime contracts, and Theme contract. Never hand-edit generated `src/runtime/`, `.pageskill/`, `dist/`, or `wrangler.toml`.
+- `src/` owns the Core compiler, `page` CLI, libraries, accessibility audit, Fetch Router, runtime contracts, and Theme contract. Never hand-edit generated `src/runtime/`, `.pageskill/`, or `dist/`. Pageskill does not generate or consume a host CLI configuration file.
 
 ## Supported workflow
 
@@ -31,9 +31,9 @@ The only public CLI commands are:
 
 - `page g [--profile]`: quickly validate and generate `dist/public` plus Agent readiness output. It must not start a browser or run the page-level accessibility audit.
 - `page c`: run the complete four-layer accessibility audit in a real browser, including axe, keyboard/dynamic checks, responsive viewports, and private reports/screenshots.
-- `page s [port]` or `page s --port <port>`: watch source dependencies, rebuild, serve the generated site, and provide development feedback. With no runtime adapter it uses the Core static preview; a configured adapter may add its own local runtime.
+- `page s [port]` or `page s --port <port>`: watch source dependencies, rebuild, serve the generated site, and provide development feedback. With no runtime adapter it uses the Core static preview; the bundled Cloudflare adapter runs the generated Fetch Worker directly on Node.
 
-`runtime.adapter` is optional. A site with no backend, database, cache provider, AI provider, or runtime adapter must still complete `page g` and `page s`; `page c` additionally requires a browser binary. Cloudflare Pages is the bundled reference Runtime Adapter, not a Core dependency. `env.ASSETS`, D1, Workers AI, and other host bindings belong to that adapter and missing bindings must only disable the affected optional feature.
+`runtime.adapter` is optional. A site with no backend, database, cache provider, AI provider, or runtime adapter must still complete `page g` and `page s`; `page c` additionally requires a browser binary. Cloudflare Pages is the bundled reference Runtime Adapter, not a Core dependency. `page g` emits the Pages `_worker.js` contract only; it does not emit a Wrangler configuration or invoke Wrangler. Configure `env.ASSETS`, D1, Workers AI, and other host bindings in the hosting project. The local Node preview supplies only a file-backed `ASSETS` binding, so missing D1 or AI bindings must only disable the affected optional feature.
 
 Package scripts `npm run g`, `npm run c`, and `npm run s` are repository conveniences that compile source before invoking the same `page` CLI; they are not additional public command names.
 
@@ -78,7 +78,7 @@ Comments are an External Component reference implementation, not Core behavior. 
 
 Comment Translation is a separate optional External Component capability. Without an AI provider, comments remain usable and translation controls stay disabled. Translation must check L1 Function Cache, then persistent cache keyed by `commentId`, `sourceHash`, and `targetLocale`, then use single-flight before AI. Twenty concurrent requests for one identity must produce one AI call; a changed source hash must produce a new call.
 
-Cloudflare Pages + Functions + D1 + Workers AI + Cache API is documented as one complete reference Runtime Adapter only. Do not make Core imports depend on Cloudflare, Vercel, AWS, Supabase, or another host.
+Cloudflare Pages + Functions + D1 + Workers AI + Cache API is documented as one complete reference Runtime Adapter only. Pageskill does not manage host bindings or database migrations; apply migrations with the hosting provider's own administration workflow. Do not make Core imports depend on Cloudflare, Vercel, AWS, Supabase, or another host.
 
 ## Accessibility and secure rendering
 

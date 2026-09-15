@@ -45,6 +45,8 @@ runtime:
 
 `runtime.adapter` selects a real adapter; it does not grant the site configuration permission to store provider tokens. Put credentials and bindings in the host’s secret store or environment. Cloudflare Pages + Functions + D1 + Workers AI is one reference implementation, not a Pageskill Core dependency. A different platform needs its own Runtime Adapter that implements the same web-standard Server Function, Storage, Cache, and AI contracts.
 
+Pageskill does not generate or invoke Wrangler. For a Cloudflare Pages Function, configure the `COMMENTS_DB` D1 binding and optional `AI` binding in the Pages project settings. The generated `_worker.js` consumes those host bindings; if an optional binding is absent, static pages remain available and the affected API returns a clear 503 response. Apply `migrations/` through the host's own database administration workflow.
+
 ## 4. Inspect the generated result
 
 After `page g`, confirm that `dist/public` contains the home page, localized routes, assets, feeds, sitemap, `robots.txt`, and the generated discovery files. A configured reference runtime may also create private runtime material beside the public snapshot; never copy that material into the public directory.

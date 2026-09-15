@@ -76,7 +76,6 @@
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
-    "typescript": "^5.9.3",
-    "wrangler": "^4.131.2"
+    "typescript": "^5.9.3"
   }
 }

@@ -18,6 +18,7 @@ Pageskill 4.0.0 is a breaking architecture release. The current product model is
 - Kept Comments optional as an External Component and separated Comment Translation as an optional `client + server + storage + cache + ai` capability. Added page cache invalidation, persistent translation lookup, source-hash identity, and single-flight protection before AI inference.
 - Expanded private accessibility output to an annotated `report.pdf`, `index.html`, `report.json`, `summary.json`, baseline screenshots for every route, and five-viewport representative/error/warning screenshots with post-audit annotated issue crops.
 - Added Component hardcoding/content-ownership regression coverage and a differently branded fixture to verify that replacing Markdown, Config, and Runtime Data does not require Theme TypeScript changes.
+- Removed the Wrangler dependency and generated host configuration. The Cloudflare adapter now emits only the Pages `_worker.js` contract, uses a native Node preview, and leaves D1, AI, and migration administration to the hosting project.
 
 ### Breaking changes and migration
 

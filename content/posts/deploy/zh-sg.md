@@ -45,6 +45,8 @@ runtime:
 
 `runtime.adapter` 只选择真实的适配器，不会让站点配置获得保存 Provider token 的权限。凭证和 binding 放在主机的 secret store 或环境变量中。Cloudflare Pages + Functions + D1 + Workers AI 只是一个参考实现，不是 Pageskill Core 依赖；其他平台要使用自己的 Runtime Adapter，实现相同的 Web 标准 Server Function、Storage、Cache 和 AI 契约。
 
+Pageskill 不会生成或调用 Wrangler。使用 Cloudflare Pages Function 时，在 Pages 项目设置中配置 `COMMENTS_DB` D1 binding 和可选的 `AI` binding。生成的 `_worker.js` 会读取这些主机 binding；缺少可选 binding 时，静态页面仍然可用，受影响的 API 会明确返回 503。`migrations/` 请通过主机自己的数据库管理流程执行。
+
 ## 4. 检查生成结果
 
 运行 `page g` 后，确认 `dist/public` 里有首页、多语言路由、资源、Feed、sitemap、`robots.txt` 和生成的发现文件。选择参考运行时后，公开快照旁边可能有私有运行时资料；不要把它复制到公开目录。

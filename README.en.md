@@ -47,9 +47,9 @@ The public CLI has exactly three commands:
 
 - `page g [--profile]`: quickly validate and generate `dist/public` plus Agent readiness output. It does not start a browser or run page-level accessibility checks.
 - `page c`: start a real browser for the complete axe, keyboard, dynamic-state, responsive-viewport, and zoom accessibility audit, writing private reports and screenshots under `.pageskill/`.
-- `page s [port]` or `page s --port <port>`: watch source and preview the site. Without a Runtime Adapter it uses the Core static preview; a configured adapter may add its local runtime.
+- `page s [port]` or `page s --port <port>`: watch source and preview the site. Without a Runtime Adapter it uses the Core static preview; with the Cloudflare adapter it runs the generated Fetch Worker directly on Node without Wrangler.
 
-`page g` and `page s` work without a backend, database, cache, AI provider, or Runtime Adapter; `page c` additionally requires a browser available in the current environment. Cloudflare Pages + Functions + D1 + Workers AI is the official reference Runtime Adapter, not a Pageskill Core dependency.
+`page g` and `page s` work without a backend, database, cache, AI provider, or Runtime Adapter; `page c` additionally requires a browser available in the current environment. Cloudflare Pages + Functions + D1 + Workers AI is the official reference Runtime Adapter, not a Pageskill Core dependency. Pageskill does not generate or invoke a Wrangler configuration; production `COMMENTS_DB`, `AI`, and other bindings come from the Cloudflare Pages project, while the local Node preview supplies only a file-backed `ASSETS` binding and returns clear 503 responses for missing optional bindings.
 
 ## The Component contract
 
@@ -105,4 +105,4 @@ Accessibility is a development tool, not site content. Reports are private:
 
 `page c` covers source contracts, final HTML, a real browser/axe run, and keyboard, dynamic-state, responsive viewport, and zoom checks. It creates an annotated PDF problem report while retaining an HTML view and JSON data. Screenshots include 320×800, 375×812, 768×1024, 1280×800, and 1440×900. Automation does not replace manual assistive-technology review. Production builds use `page g`; keep the full browser audit in browser-capable CI or a pre-release check so a hosting build does not wait for a browser download or startup.
 
-Do not edit generated `dist/`, `.pageskill/`, `src/runtime/`, or `wrangler.toml` by hand. The source of truth is `config.yml`, `config/`, `site/theme.yml`, `content/`, `themes/`, and `backend/`. Pageskill is MIT licensed; see [LICENSE](LICENSE).
+Do not edit generated `dist/`, `.pageskill/`, or `src/runtime/` by hand. The source of truth is `config.yml`, `config/`, `site/theme.yml`, `content/`, `themes/`, and `backend/`. Pageskill is MIT licensed; see [LICENSE](LICENSE).

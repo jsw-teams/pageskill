@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { createContext, build } from '../src/runtime/compiler.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+
+async function pathExists(file) {
+  try { await access(file); return true; } catch { return false; }
+}
 
 test('generated post metadata keeps updated separate from publication date', async () => {
   const context = await createContext(root);
@@ -52,6 +56,7 @@ test('generated post metadata keeps updated separate from publication date', asy
 
   assert.equal(manifest.version, 4);
   assert.doesNotMatch(html, /branding|attribution/i);
+  assert.equal(await pathExists(path.join(root, 'wrangler.toml')), false);
 
   const ordinaryPost = await readFile(path.join(root, 'dist', 'public', 'en', 'posts', 'first-post', 'index.html'), 'utf8');
   assert.doesNotMatch(ordinaryPost, /article:modified_time/);

@@ -47,9 +47,9 @@ npx page s
 
 - `page g [--profile]`：快速校验、生成 `dist/public` 并生成 Agent readiness 输出；不会启动浏览器，也不会执行页面级无障碍检测。
 - `page c`：启动真实浏览器执行完整的 axe、键盘、动态状态、响应式视口和缩放无障碍检测，并把私有报告与截图写入 `.pageskill/`。
-- `page s [port]` 或 `page s --port <port>`：监视源码并预览。没有 Runtime Adapter 时使用 Core 静态预览；配置适配器后才增加对应的本地运行时。
+- `page s [port]` 或 `page s --port <port>`：监视源码并预览。没有 Runtime Adapter 时使用 Core 静态预览；配置 Cloudflare 适配器时，直接在 Node 中运行生成的 Fetch Worker，不依赖 Wrangler。
 
-没有 backend、数据库、Cache、AI 或 Runtime Adapter 时，`page g` 和 `page s` 仍然完整工作；`page c` 只额外要求当前环境提供可启动的浏览器。Cloudflare Pages + Functions + D1 + Workers AI 只是官方参考 Runtime Adapter，不是 Pageskill Core 依赖。
+没有 backend、数据库、Cache、AI 或 Runtime Adapter 时，`page g` 和 `page s` 仍然完整工作；`page c` 只额外要求当前环境提供可启动的浏览器。Cloudflare Pages + Functions + D1 + Workers AI 只是官方参考 Runtime Adapter，不是 Pageskill Core 依赖。Pageskill 不生成或调用 Wrangler 配置；生产环境的 `COMMENTS_DB`、`AI` 等 binding 由 Cloudflare Pages 项目设置提供，本地 Node 预览只提供文件型 `ASSETS`，未配置的可选 binding 会返回明确的 503。
 
 ## Component 的核心原则
 
@@ -105,4 +105,4 @@ backend/                      参考 Runtime Adapter 的私有 Server Function
 
 `page c` 覆盖源码契约、最终 HTML、真实浏览器/axe，以及键盘、动态状态、响应式视口和缩放检查。它生成带标注截图的问题 PDF，同时保留 HTML 视图和 JSON 数据；截图包含 320×800、375×812、768×1024、1280×800、1440×900。自动化检查不能替代人工辅助技术审查。生产构建使用 `page g`，把完整浏览器检测放在具备浏览器的 CI 或发布前检查中，以避免托管构建因下载或启动浏览器而变慢。
 
-不要手工编辑生成的 `dist/`、`.pageskill/`、`src/runtime/` 或 `wrangler.toml`。源码来源是 `config.yml`、`config/`、`site/theme.yml`、`content/`、`themes/` 和 `backend/`。Pageskill 使用 MIT License，见 [LICENSE](LICENSE)。
+不要手工编辑生成的 `dist/`、`.pageskill/` 或 `src/runtime/`。源码来源是 `config.yml`、`config/`、`site/theme.yml`、`content/`、`themes/` 和 `backend/`。Pageskill 使用 MIT License，见 [LICENSE](LICENSE)。

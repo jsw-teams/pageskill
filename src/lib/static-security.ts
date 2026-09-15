@@ -23,8 +23,7 @@ const PRIVATE_ROOT_FILES = new Set([
   '.assetsignore',
   '_worker.js',
   'cloudflare-worker.mjs',
-  'vps-server.mjs',
-  'wrangler.toml'
+  'vps-server.mjs'
 ]);
 
 // A second decode by a hosting adapter must not turn an apparently ordinary
