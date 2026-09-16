@@ -2,6 +2,7 @@
 kind: page
 title: Privacy policy
 description: How this demo site handles data and how configured integrations participate in consent.
+integrations: []
 ---
 
 # Privacy policy
@@ -20,7 +21,11 @@ Consent purposes are derived from enabled adapters. Only purposes represented by
 
 ## Decision storage
 
-The consent decision is stored by the runtime as a small browser preference containing the schema version, current purpose choices, and update time. `privacy.consent.decisionRetentionDays` changes how long that choice is remembered; it does not control a provider's server-side data retention or policy.
+The consent Component stores the decision as a small browser preference containing the schema version, current purpose choices, and update time. `privacy.consent.decisionRetentionDays` changes how long that choice is remembered; it does not control a provider's server-side data retention or policy.
+
+## Local features and external APIs
+
+Local Search reads generated same-site indexes and does not use Cookies or a third-party service. A Component connected through a named `apis` entry contacts the configured external service directly; its client Token is public, while the service owns private credentials, server-side data handling, and its own privacy obligations.
 
 ## Contact
 

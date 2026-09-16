@@ -37,7 +37,7 @@ integrations:
     siteKey: 0x4AAAA...
 ```
 
-这里只能放公开标识。验证码 secret、签名密钥或服务端校验 token 应该放在部署环境，由 `backend/handler.ts` 读取，不能放进 YAML。
+这里只能放公开标识。验证码 secret、签名密钥或服务端校验 token 应放在独立部署的验证服务环境，不能放进 YAML。
 
 ## 2. 让 Adapter 自己拥有契约
 
@@ -96,7 +96,7 @@ Provider ID、测量 ID、site key 和 token 不会写入这个状态。站点�
 
 ## 5. 把政策和 UI 文案放在正确层级
 
-请把审核过的政策写成 `content/pages/privacy/<locale>.md`。生成的隐私信息可以根据当前配置列出 Provider 和它们登记的用途，但这不是法律意见，也不能替代该页面。同意按钮和用途说明属于主题/组件自己的 `messages.yml`，支持 `zh-sg`、`zh-tw`、`en` 以及现有 locale fallback。普通站点不需要为了使用同意 UI 再写一个私有 `copy` 对象。
+请把审核过的政策写成 `content/pages/privacy/<locale>.md`。每个活动语言都必须在 Frontmatter 中声明全部已启用 Provider ID，例如 `integrations: [google-analytics]`，并说明真实供应商、目的、数据类别、留存来源、撤回方式与联系人。声明缺失或过期时生成会失败。生成隐私信息不是法律意见，也不能替代该页面；同意按钮和简短用途说明属于 Component 的 `messages.yml`。
 
 不要在站点配置中加入第三方 URL、inline script、`onclick`、HTML 或 secret。Provider 资源由受信任代码固定，撤回同意会阻止之后的加载，但不会假装可以撤销已经发出的请求。
 

@@ -37,7 +37,7 @@ integrations:
     siteKey: 0x4AAAA...
 ```
 
-這裡只能放公開識別。驗證碼 secret、簽章金鑰或伺服器端驗證 token 應該放在部署環境，由 `backend/handler.ts` 讀取，不能放進 YAML。
+這裡只能放公開識別。驗證碼 secret、簽章金鑰或伺服器端驗證 token 應放在獨立部署的驗證服務環境，不能放進 YAML。
 
 ## 2. 讓 Adapter 自己擁有契約
 
@@ -96,7 +96,7 @@ Provider ID、測量 ID、site key 和 token 不會寫入這個狀態。網站�
 
 ## 5. 把政策和 UI 文案放在正確層級
 
-請把審核過的政策寫成 `content/pages/privacy/<locale>.md`。產生的隱私資訊可以根據目前設定列出 Provider 和它們登記的用途，但這不是法律意見，也不能替代該頁面。同意按鈕和用途說明屬於主題/元件自己的 `messages.yml`，支援 `zh-sg`、`zh-tw`、`en` 以及現有 locale fallback。普通網站不需要為了使用同意 UI 再寫一個私有 `copy` 物件。
+請把審核過的政策寫成 `content/pages/privacy/<locale>.md`。每個啟用語言都必須在 Frontmatter 中宣告全部已啟用 Provider ID，例如 `integrations: [google-analytics]`，並說明真實供應商、目的、資料類別、保留來源、撤回方式與聯絡人。宣告缺漏或過期時產生會失敗。產生隱私資訊不是法律意見，也不能取代該頁面；同意按鈕和簡短用途說明屬於 Component 的 `messages.yml`。
 
 不要在網站設定中加入第三方 URL、inline script、`onclick`、HTML 或 secret。Provider 資源由受信任程式碼固定，撤回同意會阻止之後的載入，但不會假裝可以撤銷已經發出的請求。
 

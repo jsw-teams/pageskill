@@ -55,9 +55,9 @@ export const component: ComponentDefinition = {
   implementation: 'components/reading-tip/index.ts',
   resources: {
     // The module owns the resources that the compiler fingerprints.
-    styles: ['components/reading-tip/style.css'],
-    scripts: ['components/reading-tip/script.js']
+    styles: ['components/reading-tip/style.css']
   },
+  client: { module: 'components/reading-tip/script.js', selector: 'main' },
   i18n: 'components/reading-tip/messages.yml',
   defaults: { enabled: true },
   schema: { enabled: { type: 'boolean' } }
@@ -79,12 +79,16 @@ export const components = [shell, search, toc, postMeta, privacyConsent, languag
 `script.js`:
 
 ```js
-// Use DOM APIs so the component does not become an HTML injection surface.
-const marker = document.createElement('small');
-marker.className = 'reading-tip';
-marker.textContent = 'Reading tip enabled';
-document.querySelector('main')?.prepend(marker);
+// Core discovers the root and supplies the governed lifecycle runtime.
+export function mount(root, runtime) {
+  const marker = document.createElement('small');
+  marker.className = 'reading-tip';
+  marker.textContent = 'Reading tip enabled';
+  root.prepend(marker);
+}
 ```
+
+Every browser module uses the same Runtime contract. DOM and generated assets need no API declaration. For database, cache, model, secret-backed, or write work, add `api: 'service-id'` and call `runtime.apiJson('relative/path')`. Root `config.apis.<service-id>` chooses the absolute URL, so each Component reaches only its named service. A configured token is public browser data; private credentials require a separately deployed proxy.
 
 `style.css`:
 
@@ -125,7 +129,7 @@ page s
 
 The generated pages load the component's script and style, and the main content shows the marker. Set `components.readingTip.enabled` to `false` in `site/theme.yml` and generate again to remove it; new articles need no extra HTML.
 
-Generation collects the module's resources and messages into the public theme assets. Server-side nested ESM stays inside the build/runtime boundary, and unchanged public assets keep their content-hash URL and cache identity.
+Generation collects the module's resources and messages into public theme assets, and unchanged assets keep their content-hash URL and cache identity.
 
 ## 6. Use the Cookie selector as a reference
 

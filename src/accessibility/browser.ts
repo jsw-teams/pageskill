@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { browserHtmlAuditScript } from './html.ts';
 import { diagnosticsForRule } from './diagnostics.ts';
-import type { AccessibilityDiagnostic } from './types.ts';
+import type { AccessibilityDetailScreenshot, AccessibilityDiagnostic } from './types.ts';
 import type { BuildContext } from '../compiler/types.ts';
 import { archiveRouteFor, routeFor } from '../compiler/routes.ts';
 
@@ -17,6 +17,7 @@ type BrowserAuditResult = {
   browser: string;
   viewports: string[];
   screenshots: Array<{ route: string; viewport: string; path: string; annotatedPath?: string }>;
+  detailScreenshots: AccessibilityDetailScreenshot[];
 };
 
 type AxeResult = {
@@ -94,6 +95,11 @@ function safeFile(root: string, pathname: string): string | undefined {
 async function startStaticServer(root: string): Promise<{ url: string; close: () => Promise<void> }> {
   const server = createServer(async (request: any, response: any) => {
     const requestUrl = new URL(request.url || '/', 'http://127.0.0.1');
+    if (requestUrl.pathname.startsWith('/api/')) {
+      response.writeHead(503, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      response.end(JSON.stringify({ error: 'External API capabilities are not invoked by the local browser accessibility audit.', capability: 'unavailable' }));
+      return;
+    }
     const direct = safeFile(root, requestUrl.pathname);
     const candidates = direct && requestUrl.pathname.endsWith('/')
       ? [path.join(direct, 'index.html')]
@@ -623,9 +629,158 @@ async function captureScreenshots(
   return artifacts;
 }
 
+async function captureDetailScreenshots(
+  page: Page,
+  baseUrl: string,
+  root: string,
+  routes: string[],
+  ctx: BuildContext
+): Promise<AccessibilityDetailScreenshot[]> {
+  const screenshotRoot = path.join(root, '.pageskill', 'reports', 'accessibility', 'screenshots');
+  const available = new Set(routes);
+  const locale = String(ctx.config.defaultLocale || 'en');
+  const routeForId = (id: string) => {
+    const document = ctx.docs.find(doc => doc.locale === locale && doc.id === id);
+    const route = document ? routeFor(ctx, document) : undefined;
+    return route && available.has(route) ? route : undefined;
+  };
+  const artifacts: AccessibilityDetailScreenshot[] = [];
+  const capture = async (definition: {
+    id: string;
+    title: string;
+    description: string;
+    route?: string;
+    viewport: { width: number; height: number };
+    selector: string;
+    prepare?: () => Promise<void>;
+  }) => {
+    if (!definition.route) return;
+    await page.setViewportSize(definition.viewport);
+    await page.goto(`${baseUrl}${definition.route}`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(120);
+    await definition.prepare?.();
+    const locator = page.locator(definition.selector).first();
+    if (!(await locator.isVisible().catch(() => false))) return;
+    await locator.scrollIntoViewIfNeeded().catch(() => {});
+    const file = path.join(screenshotRoot, `detail-${definition.id}.png`);
+    await locator.screenshot({ path: file, animations: 'disabled' }).catch(() => undefined);
+    try { await fs.access(file); } catch { return; }
+    artifacts.push({
+      id: definition.id,
+      title: definition.title,
+      description: definition.description,
+      route: definition.route,
+      viewport: `${definition.viewport.width}x${definition.viewport.height}`,
+      path: reportRelative(root, file)
+    });
+  };
+
+  await capture({
+    id: 'search-results',
+    title: 'Search results state',
+    description: 'Local search after keyboard input, including the live results region.',
+    route: routeForId('search') || routes.find(route => route.includes('/posts/search/')),
+    viewport: { width: 1280, height: 800 },
+    selector: '[data-local-search]',
+    prepare: async () => {
+      const input = page.locator('[data-search-input]').first();
+      if (await input.isVisible().catch(() => false)) {
+        await input.fill('API');
+        await page.waitForFunction(() => {
+          const root = document.querySelector('[data-local-search]');
+          return root && !['idle', 'loading'].includes(root.getAttribute('data-search-state') || 'idle');
+        }, undefined, { timeout: 5000 }).catch(() => {});
+        await page.locator('[data-local-search]').first().evaluate(element => {
+          const root = element as HTMLElement;
+          root.style.width = '520px';
+          root.style.maxWidth = '520px';
+          const results = root.querySelector<HTMLElement>('[data-search-results]');
+          if (results) results.style.position = 'static';
+        }).catch(() => {});
+        await page.waitForTimeout(80);
+      }
+    }
+  });
+  await capture({
+    id: 'toc-mobile',
+    title: 'Mobile table of contents',
+    description: 'Expanded disclosure at a 375 CSS pixel viewport.',
+    route: routeForId('components') || routes.find(route => route.includes('/posts/')),
+    viewport: { width: 375, height: 812 },
+    selector: '.toc-drawer',
+    prepare: async () => page.locator('.toc-drawer').first().evaluate(element => element.setAttribute('open', '')).catch(() => {})
+  });
+  await capture({
+    id: 'code-copy',
+    title: 'Code copy control',
+    description: 'Component-owned code toolbar and copy interaction state.',
+    route: routeForId('components') || routes.find(route => route.includes('/posts/')),
+    viewport: { width: 1280, height: 800 },
+    selector: '[data-code-block]',
+    prepare: async () => {
+      const button = page.locator('[data-code-copy]').first();
+      if (await button.isVisible().catch(() => false)) {
+        await button.click().catch(() => {});
+        await page.waitForTimeout(120);
+      }
+    }
+  });
+  await capture({
+    id: 'api-configuration',
+    title: 'Named API configuration',
+    description: 'Deployment documentation showing how a Component selects an external API by configuration id.',
+    route: routeForId('deploy') || routes.find(route => route.includes('/posts/deploy/')),
+    viewport: { width: 1280, height: 800 },
+    selector: '[data-pageskill-detail="api"]',
+    prepare: async () => {
+      const heading = page.getByRole('heading', { name: /external API|API/i }).first();
+      if (await heading.isVisible().catch(() => false)) {
+        await heading.evaluate(element => {
+          const wrapper = document.createElement('section');
+          wrapper.dataset.pageskillDetail = 'api';
+          wrapper.style.cssText = 'background:#fff;border:2px solid #cbd8d2;border-radius:12px;padding:20px;max-width:960px';
+          element.parentNode?.insertBefore(wrapper, element);
+          let current: Element | null = element;
+          while (current && (current === element || current.tagName !== 'H2')) {
+            const next: Element | null = current.nextElementSibling;
+            wrapper.append(current);
+            current = next;
+          }
+        });
+        await page.locator('[data-pageskill-detail="api"]').scrollIntoViewIfNeeded().catch(() => {});
+      }
+    }
+  });
+  await capture({
+    id: 'provider-privacy',
+    title: 'Provider consent and privacy revision',
+    description: 'Integration documentation showing the trusted Adapter boundary and mandatory localized privacy-policy acknowledgement.',
+    route: routeForId('cookies') || routes.find(route => route.includes('/posts/cookies/')),
+    viewport: { width: 1280, height: 800 },
+    selector: '[data-pageskill-detail="privacy"]',
+    prepare: async () => {
+      const heading = page.getByRole('heading', { level: 2, name: /policy|政策/i }).first();
+      if (await heading.isVisible().catch(() => false)) {
+        await heading.evaluate(element => {
+          const wrapper = document.createElement('section');
+          wrapper.dataset.pageskillDetail = 'privacy';
+          wrapper.style.cssText = 'background:#fff;border:2px solid #cbd8d2;border-radius:12px;padding:20px;max-width:960px';
+          element.parentNode?.insertBefore(wrapper, element);
+          let current: Element | null = element;
+          while (current && (current === element || current.tagName !== 'H2')) {
+            const next: Element | null = current.nextElementSibling;
+            wrapper.append(current);
+            current = next;
+          }
+        });
+      }
+    }
+  });
+  return artifacts;
+}
+
 export async function auditBrowserSite(ctx: BuildContext, requestedRoutes?: string[]): Promise<BrowserAuditResult> {
-  // Core always generates the public site at ctx.out. Runtime adapters may
-  // add host files beside it, but they do not introduce a second public root.
+  // Core always generates the public site at ctx.out; there is no host-runtime output.
   const outputRoot = path.resolve(ctx.out);
   const files = (await filesUnder(outputRoot)).filter(file => file.toLowerCase().endsWith('.html')).sort();
   if (!files.length) throw new Error('browser accessibility audit found no generated HTML files in the public output');
@@ -640,10 +795,16 @@ export async function auditBrowserSite(ctx: BuildContext, requestedRoutes?: stri
     const launched = await launchBrowser();
     browser = launched.browser;
     browserContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+    await browserContext.route('**/*', async route => {
+      let sameOrigin = false;
+      try { sameOrigin = new URL(route.request().url()).origin === new URL(server.url).origin; } catch { /* block malformed and external requests */ }
+      if (sameOrigin) await route.continue();
+      else await route.abort('blockedbyclient');
+    });
     await browserContext.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: server.url }).catch(() => {});
     const page = await browserContext.newPage();
     const diagnostics: AccessibilityDiagnostic[] = [];
-    const checks = new Set<string>();
+    const checks = new Set<string>(['same-origin browser sandbox; upstream APIs, external databases, models, provider services, and private tokens were not invoked']);
     const responsiveRoutes = new Set(representativeRoutes(routes, ctx));
     for (const route of routes) {
       const result = await auditRoute(page, server.url, route, responsiveRoutes.has(route));
@@ -651,7 +812,8 @@ export async function auditBrowserSite(ctx: BuildContext, requestedRoutes?: stri
       result.checks.forEach(check => checks.add(check));
     }
     const screenshots = await captureScreenshots(page, server.url, ctx.root, routes, diagnostics, ctx);
-    return { diagnostics, routes, checks: [...checks], browser: launched.name, viewports: SCREENSHOT_VIEWPORTS.map(viewport => `${viewport.width}x${viewport.height}`), screenshots };
+    const detailScreenshots = await captureDetailScreenshots(page, server.url, ctx.root, routes, ctx);
+    return { diagnostics, routes, checks: [...checks], browser: launched.name, viewports: SCREENSHOT_VIEWPORTS.map(viewport => `${viewport.width}x${viewport.height}`), screenshots, detailScreenshots };
   } finally {
     await browserContext?.close().catch(() => {});
     await browser?.close().catch(() => {});
@@ -669,7 +831,10 @@ export async function writeBrowserPdf(htmlFile: string, pdfFile: string): Promis
       path: pdfFile,
       format: 'A4',
       printBackground: true,
-      margin: { top: '12mm', right: '12mm', bottom: '14mm', left: '12mm' },
+      preferCSSPageSize: true,
+      tagged: true,
+      outline: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
       displayHeaderFooter: true,
       headerTemplate: '<span></span>',
       footerTemplate: '<div style="width:100%;font:9px system-ui,sans-serif;color:#66736d;text-align:center">Pageskill accessibility report - <span class="pageNumber"></span>/<span class="totalPages"></span></div>'

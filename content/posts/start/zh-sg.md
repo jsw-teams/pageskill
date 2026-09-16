@@ -26,7 +26,7 @@ npm install
 page g
 ```
 
-`page g` 会先编译运行时、主题和 backend，再校验并生成这个仓库。现在直接修改源码树即可。
+`page g` 校验项目源码并生成静态站点。开发 Pageskill 仓库本身时，`npm run g` 会先编译 Core 与 Theme，再调用同一个公开命令。独立参考 API 只由 `npm run compile-backend` 编译。
 
 发布前需要完整无障碍审查时，请在具备浏览器的环境中运行 `page c`。
 

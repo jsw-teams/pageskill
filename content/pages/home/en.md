@@ -10,7 +10,7 @@ component: page
 
 # Build content sites from Markdown and YAML
 
-Pageskill turns Markdown content and a small amount of YAML site data into a multilingual website. Reusable themes handle layout and components, while dynamic APIs stay behind a clear same-origin boundary.
+Pageskill turns Markdown content and a small amount of YAML site data into a multilingual website. Reusable Components own presentation and behavior; database, model, and write capabilities stay in named external APIs.
 
 [Get started](/en/posts/start/) [GitHub](https://github.com/jsw-teams/pageskill)
 :::
@@ -21,7 +21,7 @@ The ordinary author workflow is simple: write Markdown, edit `config.yml` and `s
 
 | Content | Theme | Multilingual | Discovery | Deployment |
 | --- | --- | --- | --- | --- |
-| Markdown pages and posts | Reusable Components | `zh-sg`, `zh-tw`, `en` | Search, feeds, Agent metadata | Static output and optional runtime APIs |
+| Markdown pages and posts | Reusable Components | `zh-sg`, `zh-tw`, `en` | Local search, feeds, Agent metadata | Static output plus optional external APIs |
 
 The tutorials below show the real source files behind this preview.
 
@@ -40,6 +40,9 @@ Add a dated post under `content/posts/`, choose an optional taxonomy category, g
 
 ### [How we build a component](/en/posts/components/)
 Learn how one reusable component owns its resources, safe rendering, and localized messages; the Cookie selector is the advanced reference.
+
+### [Develop an Agent Skill](/en/posts/skill-development/)
+Write a generated, factual Skill contract that points to real Components, content, configuration, and external services.
 
 ### [Change the style](/en/posts/customize/)
 Reuse the theme capabilities you have; when a new structure is needed, implement it once for later pages.

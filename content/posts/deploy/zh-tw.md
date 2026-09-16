@@ -31,35 +31,39 @@ page s
 建置輸出目錄：dist/public
 ```
 
-代管商會在建置時執行 Pageskill，而且只上傳 `dist/public`。不要使用私有的 `dist` 根目錄，因為其中還可能有 `_pageskill/`、`server/`、`.pageskill/`、Worker 檔案和其他產生的部署資料。
+代管商會在建置時執行 Pageskill，而且只上傳 `dist/public`。Pageskill 不產生 Worker 或 Server bundle。
 
-## 3. 選擇可選的 Runtime Adapter
+## 3. 安全連接外部 API
 
-靜態網站完全省略 `runtime`。如果網站需要官方 Cloudflare 參考執行時，才明確選擇它：
+Pageskill 永遠是靜態建置。先為每項外部服務設定根層命名 `apis` 項目，再把這個 id 寫入 Component 的可選 `client.api`：
 
 ```yaml
-runtime:
-  adapter: cloudflare-pages
-  backend: true
+apis:
+  comments:
+    url: https://api.example.com/v1/comments
+    token: public-client-token
+    auth: bearer
 ```
 
-`runtime.adapter` 只選擇真實的適配器，不會讓網站設定取得保存 Provider token 的權限。憑證和 binding 放在代管商的 secret store 或環境變數中。Cloudflare Pages + Functions + D1 + Workers AI 只是參考實作，不是 Pageskill Core 依賴；其他平台要使用自己的 Runtime Adapter，實作相同的 Web 標準 Server Function、Storage、Cache 和 AI 契約。
+```ts
+client: { module: 'components/comments/script.js', selector: '[data-comments]', api: 'comments' }
+```
 
-Pageskill 不會生成或呼叫 Wrangler。使用 Cloudflare Pages Function 時，請在 Pages 專案設定中配置 `COMMENTS_DB` D1 binding 與可選的 `AI` binding。生成的 `_worker.js` 會讀取這些代管平台 binding；缺少可選 binding 時，靜態頁面仍然可用，受影響的 API 會明確回傳 503。`migrations/` 請透過代管平台自己的資料庫管理流程執行。
+API id 用來區分 comments、search、billing 等不同服務。Client Runtime 只允許相對請求留在設定的 origin 和基礎路徑內，並加入 Bearer 或 `x-api-key` Header。第三方 URL 必須透過 CORS 允許本站來源。靜態 JS 會取得 `token`，所以它是公開資料，只能使用受限、可撤銷的客戶端 Token。若憑證必須保密，就把 `url` 指向獨立代理、刪除 `token`，把上游 URL 與 secret 留在代理環境。資料庫和模型憑證始終只留在 API 環境。
 
 ## 4. 檢查產生結果
 
-執行 `page g` 後，確認 `dist/public` 裡有首頁、多語言路由、資源、Feed、sitemap、`robots.txt` 和產生的探索檔案。選擇參考執行時後，公開快照旁邊可能有私有執行時資料；不要把它複製到公開目錄。
+執行 `page g` 後，確認 `dist/public` 裡有首頁、多語言路由、資源、Feed、sitemap、`robots.txt` 和探索檔案。設定的公開 API URL 與客戶端 Token 可能出現在其中；私密憑證、資料庫設定、Worker 程式和無障礙報告絕不能出現。
 
 Agent Discovery、Agent Skills、API Catalog、Markdown mirror 和 `llms.txt` 都由渲染器產生。如果要設定 OAuth、MCP、WebMCP 或 DNS-AID，請先閱讀[設定條件式 Agent 能力](/zh-tw/posts/agent-discovery/)，實作真實服務、瀏覽器模組或 DNS 記錄；產生的中繼資料不會建立這些服務。
 
 ## 5. 發佈後驗證
 
-使用代管商自己的建置日誌和預覽環境確認建置成功，然後從公開網域開啟本地化首頁、普通文章、帶更新資訊的文章和隱私頁面。如果啟用了 backend，呼叫文件中宣告的同源 API，確認驗證和錯誤回應仍是 API 回應，不會變成靜態 HTML。
+使用代管商自己的建置日誌和預覽環境確認建置成功，然後從公開網域開啟本地化首頁、普通文章、版本更新和隱私頁面。逐一檢查設定的 API id，驗證對應 URL 的 CORS、授權、路徑邊界與 JSON 錯誤回應。
 
 ## 常見問題
 
-公開目錄是 `dist/public`，不是專案根目錄，也不是私有的 `dist` 根目錄。不要把 access token、SSH key 或 backend secret 寫入 YAML、Markdown 或公開產生檔案。如果代管商不能執行 `page g`，就在 CI 中建置，再透過代管商文件規定的方式上傳 `dist/public` 產物。
+公開目錄是 `dist/public`，不是專案根目錄，也不是私有的 `dist` 根目錄。不要把設定中的客戶端 Token 誤當 secret，任何人都能讀取它。私密 access token、SSH key 或 backend secret 絕不能寫入 YAML、Markdown 或公開產生檔案。
 
 ## 下一步
 

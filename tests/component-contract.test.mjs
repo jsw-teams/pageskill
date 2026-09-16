@@ -4,7 +4,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { MemoryCacheProvider, SingleFlight } from '../src/runtime/runtime-contract.js';
+import { MemoryCacheProvider, SingleFlight } from '../src/runtime/api-contract.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const componentRoot = path.join(root, 'themes', 'default', 'components');

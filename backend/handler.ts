@@ -1,5 +1,5 @@
 import { Router } from '../src/fetch-router.ts';
-import { MemoryCacheProvider, SingleFlight } from '../src/runtime-contract.ts';
+import { MemoryCacheProvider, SingleFlight } from '../src/api-contract.ts';
 
 type D1Row = Record<string, unknown>;
 type D1Result<T extends D1Row = D1Row> = { results?: T[] };
@@ -22,6 +22,8 @@ export type BackendEnvironment = {
   COMMENTS_DB?: D1Database;
   AI?: WorkersAi;
   PAGESKILL_SITE?: SiteRegistry;
+  /** Private shared secret injected by the API host; never exposed to browser code. */
+  PAGESKILL_API_TOKEN?: string;
   [key: string]: unknown;
 };
 
@@ -60,7 +62,8 @@ function json(data: unknown, status = 200): Response {
 }
 
 function missingBinding(name: string): Response {
-  return json({ error: `${name === 'COMMENTS_DB' ? 'Comments' : 'Comment translation'} unavailable: runtime binding ${name} is missing.` }, 503);
+  const capability = name === 'COMMENTS_DB' ? 'comments' : 'comment-translation';
+  return json({ error: capability === 'comments' ? 'Comments are temporarily unavailable.' : 'Comment translation is temporarily unavailable.', code: 'api_capability_unavailable', capability }, 503);
 }
 
 function siteLocales(env: BackendEnvironment): string[] {
@@ -280,5 +283,29 @@ router.post('/api/comments/:id/translate', async ({ request, env, params }) => {
 router.get('/api/health', () => Response.json({
   ok: true,
   service: 'pageskill',
-  runtime: 'web-standard-fetch'
+  boundary: 'authenticated-api'
 }));
+
+async function tokenDigest(value: string): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
+}
+
+async function tokenMatches(actual: string, expected: string): Promise<boolean> {
+  const [left, right] = await Promise.all([tokenDigest(actual), tokenDigest(expected)]);
+  let difference = left.length ^ right.length;
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) difference |= (left[index] || 0) ^ (right[index] || 0);
+  return difference === 0;
+}
+
+/** Entry point for a separately deployed API. The publishing host proxies
+ * same-origin /api/ requests here and injects the private bearer token. */
+export async function handleApi(request: Request, env: BackendEnvironment, executionContext?: unknown): Promise<Response> {
+  const expected = String(env.PAGESKILL_API_TOKEN || '');
+  if (!expected) return json({ error: 'API service is not configured.', code: 'api_token_unavailable' }, 503);
+  const authorization = request.headers.get('authorization') || '';
+  const actual = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+  if (!actual || !await tokenMatches(actual, expected)) return json({ error: 'Unauthorized.', code: 'unauthorized' }, 401);
+  return await router.match(request, env, executionContext) || json({ error: 'Not found.', code: 'not_found' }, 404);
+}
+
+export default { fetch: handleApi };

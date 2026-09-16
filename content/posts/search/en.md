@@ -8,7 +8,7 @@ category: tutorial
 
 # Let visitors search pages and posts
 
-Pageskill search is generated from your pages and dated posts. The browser reads the current locale index; a search box does not require a custom API.
+Pageskill search is generated from your pages and dated posts. The browser reads the current locale's static index through `runtime.assetJson`; it does not use `config.apis`, a database, Cookies, or a third-party request.
 
 ## 1. Turn on the search settings
 
@@ -47,7 +47,7 @@ The search field returns matching titles, headings, summaries, and body text. A 
 
 ## Common trap
 
-Changing a Markdown file does not change an already generated preview until you run `page g` or let the local preview rebuild it. Do not edit a generated search JSON file under `dist/`; change the source content or the search options in `site/theme.yml` instead.
+Do not add Search under `config.apis` or classify it as an external service. Changing a Markdown file does not change an already generated preview until you run `page g` or let the local preview rebuild it. Never edit generated search JSON under `dist/`; change source content or `site/theme.yml` instead.
 
 ## Next step
 

@@ -4,10 +4,8 @@ export const component: ComponentDefinition = {
   id: 'codeCopy',
   capabilities: ['render', 'client'],
   implementation: 'components/code-copy/index.ts',
-  resources: {
-    styles: ['components/code-copy/style.css'],
-    scripts: ['components/code-copy/script.js']
-  },
+  resources: { styles: ['components/code-copy/style.css'] },
+  client: { module: 'components/code-copy/script.js', selector: '[data-code-block]' },
   i18n: 'components/code-copy/messages.yml',
   defaults: { enabled: true },
   schema: { enabled: { type: 'boolean' } },

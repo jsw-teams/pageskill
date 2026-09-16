@@ -26,7 +26,7 @@ npm install
 page g
 ```
 
-`page g` 會先編譯執行時、主題和 backend，再驗證並產生這個儲存庫。現在直接修改原始碼樹即可。
+`page g` 驗證專案原始碼並產生靜態網站。開發 Pageskill 儲存庫本身時，`npm run g` 會先編譯 Core 與 Theme，再呼叫同一個公開命令。獨立參考 API 只由 `npm run compile-backend` 編譯。
 
 發佈前需要完整無障礙審查時，請在具備瀏覽器的環境中執行 `page c`。
 

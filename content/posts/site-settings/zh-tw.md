@@ -135,7 +135,7 @@ components:
 
 ## 5. 用 Markdown 管理內容
 
-穩定頁面位於 `content/pages/<id>/<locale>.md`。教學、部落格、產品記錄和普通文章位於 `content/posts/<id>/<locale>.md`，版本說明位於獨立的 `content/updates/<id>/<locale>.md`。每篇 post 都需要 `date`；可選的 `updated` 記錄後續修改，不改變發佈日期。`content/updates/` 是真正的版本說明 collection，不是篩選 view，也不是 `updated` 時間戳。[文章中繼資料範例](/zh-tw/posts/post-meta-demo/)同時展示了兩條路徑。
+穩定頁面位於 `content/pages/<id>/<locale>.md`。教學、部落格、產品記錄和普通文章位於 `content/posts/<id>/<locale>.md`，版本說明位於獨立的 `content/updates/<id>/<locale>.md`。每篇 post 都需要 `date`；可選的 `updated` 記錄後續修改，不改變發佈日期。`content/updates/` 是真正的版本說明 collection，不是篩選 view，也不是 `updated` 時戳。
 
 ## 預期結果
 

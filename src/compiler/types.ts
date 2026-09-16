@@ -1,6 +1,5 @@
 import type { ContentMetrics } from '../lib/content-metrics.ts';
 import type { MarkdownNode, SourcePosition, DirectiveNode } from '../lib/markdown.ts';
-import type { ResolvedDeploymentConfig } from '../config/deployment.ts';
 import type { PageskillTheme, I18nSource, ComponentResources } from '../theme-api.ts';
 
 export type Locale = string;
@@ -65,7 +64,6 @@ export type CacheManifest = {
   configHash?: string;
   themeHash?: string;
   assetHash?: string;
-  backendHash?: string;
   contentRoots?: Record<string, number>;
   routeCount?: number;
   documents: Record<string, CachedDocument>;
@@ -95,7 +93,6 @@ export type BuildContext = {
   out: string;
   config: Record<string, any>;
   configFiles: string[];
-  deployment: ResolvedDeploymentConfig;
   theme: Record<string, any>;
   themeConfig: Record<string, any>;
   themeConfigFile?: string;
@@ -117,7 +114,6 @@ export type BuildContext = {
   documentPositions: Map<string, number>;
   tagIndex: Map<string, Document[]>;
   assetHash: string;
-  backendHash: string;
   outputHashes: Record<string, string>;
   contentRoots: Record<string, number>;
   stagedOutput?: { final: string; temporary: string };
@@ -128,4 +124,4 @@ export type BuildContext = {
   componentWarnings: string[];
 };
 
-export type ComponentDiscoverySource = Pick<ComponentResources, 'styles' | 'scripts'> & { implementation?: string; i18n?: I18nSource };
+export type ComponentDiscoverySource = Pick<ComponentResources, 'styles'> & { implementation?: string; i18n?: I18nSource };

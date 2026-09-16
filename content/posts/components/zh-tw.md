@@ -55,9 +55,9 @@ export const component: ComponentDefinition = {
   implementation: 'components/reading-tip/index.ts',
   resources: {
     // 讓模組擁有自己的資源，編譯器才能統一追蹤和指紋化。
-    styles: ['components/reading-tip/style.css'],
-    scripts: ['components/reading-tip/script.js']
+    styles: ['components/reading-tip/style.css']
   },
+  client: { module: 'components/reading-tip/script.js', selector: 'main' },
   i18n: 'components/reading-tip/messages.yml',
   defaults: { enabled: true },
   schema: { enabled: { type: 'boolean' } }
@@ -79,12 +79,16 @@ export const components = [shell, search, toc, postMeta, privacyConsent, languag
 `script.js`：
 
 ```js
-// 使用 DOM API，避免元件變成 HTML 注入入口。
-const marker = document.createElement('small');
-marker.className = 'reading-tip';
-marker.textContent = 'Reading tip enabled';
-document.querySelector('main')?.prepend(marker);
+// Core 尋找 root，並注入受控生命週期 runtime。
+export function mount(root, runtime) {
+  const marker = document.createElement('small');
+  marker.className = 'reading-tip';
+  marker.textContent = 'Reading tip enabled';
+  root.prepend(marker);
+}
 ```
+
+每個瀏覽器模組都使用統一 Runtime 契約。DOM 與產生資源不需要 API 宣告。需要資料庫、Cache、模型、由私密憑證支援的操作或寫入時，增加 `api: 'service-id'` 並呼叫 `runtime.apiJson('relative/path')`。根層 `config.apis.<service-id>` 決定絕對 URL，讓每個 Component 只能存取命名服務。設定 Token 是公開瀏覽器資料；私密憑證必須透過獨立部署的代理。
 
 `style.css`：
 
@@ -125,7 +129,7 @@ page s
 
 產生的頁面會載入元件腳本和樣式，主要內容區域出現標記。把 `site/theme.yml` 中的 `components.readingTip.enabled` 改為 `false` 後重新產生即可移除；新增文章不需要再寫 HTML。
 
-產生時會把模組的資源和 messages 收集到公開主題資源中。伺服器端巢狀 ESM 留在建置/執行時邊界內，未變動的公開資源繼續使用原內容 hash 路徑和快取身分。
+產生時會把模組的資源和 messages 收集到公開主題資源中，未變動的公開資源繼續使用原內容 hash 路徑和快取身分。
 
 ## 6. 以 Cookie 選擇器作為參考
 

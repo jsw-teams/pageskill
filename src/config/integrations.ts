@@ -9,7 +9,7 @@ export type ConfiguredIntegration = {
   purpose: string;
   consent: ProviderAdapter['privacy']['consent'];
   load: ProviderAdapter['privacy']['load'];
-  runtime: string;
+  loader: string;
 };
 
 function schemaValueMatches(value: unknown, schema: ComponentOptionSchema): boolean {
@@ -59,7 +59,7 @@ function adapterEntries(theme: PageskillTheme): Array<[string, ProviderAdapter]>
       if (!isRecord(adapter)) throw new Error(`theme component ${componentName} integration ${id} must be a code-owned adapter`);
       if (owners.has(id)) throw new Error(`integration adapter ${id} is registered by both ${owners.get(id)} and ${componentName}`);
       if (adapter.id !== id) throw new Error(`theme component ${componentName} integration ${id} must declare the same id`);
-      if (!adapter.runtime || typeof adapter.runtime !== 'string') throw new Error(`theme component ${componentName} integration ${id} must declare a runtime implementation`);
+      if (!adapter.loader || typeof adapter.loader !== 'string') throw new Error(`theme component ${componentName} integration ${id} must declare a browser loader`);
       if (!adapter.privacy || typeof adapter.privacy !== 'object') throw new Error(`theme component ${componentName} integration ${id} must declare privacy metadata`);
       if (!adapter.privacy.purpose || !['required', 'optional', 'none'].includes(adapter.privacy.consent)) throw new Error(`theme component ${componentName} integration ${id} has invalid privacy consent metadata`);
       if (!['immediate', 'consent', 'on-demand'].includes(adapter.privacy.load)) throw new Error(`theme component ${componentName} integration ${id} has invalid load policy`);
@@ -122,7 +122,41 @@ export function resolveConfiguredIntegrations(config: Record<string, any>, theme
       purpose: adapter.privacy.purpose,
       consent: adapter.privacy.consent,
       load: adapter.privacy.load,
-      runtime: adapter.runtime
+      loader: adapter.loader
     } satisfies ConfiguredIntegration;
   }).filter(Boolean) as ConfiguredIntegration[];
+}
+
+export type PrivacyPolicyDocument = {
+  collection: string;
+  id: string;
+  locale: string;
+  source: string;
+  data: Record<string, any>;
+};
+
+/** Every active third-party Provider must be acknowledged by every localized
+ * privacy-policy source. This makes a policy revision part of enabling the
+ * integration instead of leaving it as an unenforced documentation reminder. */
+export function integrationPrivacyPolicyDiagnostics(
+  config: Record<string, any>,
+  theme: PageskillTheme,
+  documents: PrivacyPolicyDocument[]
+): string[] {
+  const active = resolveConfiguredIntegrations(config, theme).filter(item => item.enabled).map(item => item.id).sort();
+  if (!active.length) return [];
+  const diagnostics: string[] = [];
+  for (const locale of config.activeLocales || [config.defaultLocale || 'en']) {
+    const policy = documents.find(document => document.collection === 'pages' && document.id === 'privacy' && document.locale === locale);
+    if (!policy) {
+      diagnostics.push(`content/pages/privacy/${locale}.md:1:1: a localized privacy policy is required before enabling integrations: ${active.join(', ')}`);
+      continue;
+    }
+    const declared = Array.isArray(policy.data.integrations) ? policy.data.integrations.map(String).sort() : [];
+    const missing = active.filter(id => !declared.includes(id));
+    const stale = declared.filter(id => !active.includes(id));
+    if (missing.length) diagnostics.push(`${policy.source}:1:1: privacy policy frontmatter integrations must acknowledge enabled providers: ${missing.join(', ')}`);
+    if (stale.length) diagnostics.push(`${policy.source}:1:1: privacy policy frontmatter integrations contains providers that are not enabled: ${stale.join(', ')}`);
+  }
+  return diagnostics;
 }

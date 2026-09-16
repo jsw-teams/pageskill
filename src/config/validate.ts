@@ -1,6 +1,6 @@
 import { isRecord } from './merge.ts';
-import { validateDeploymentConfig as validateFixedDeploymentConfig } from './deployment.ts';
 import { validateSiteLink } from '../lib/site-links.ts';
+import { validateClientApis } from './apis.ts';
 
 const LOCALE_TAG = /^[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*$/;
 const FORBIDDEN_SURFACE_KEYS = new Set(['css', 'style', 'styles', 'script', 'scripts', 'gatedscripts', 'html', 'rawhtml', 'unsafehtml']);
@@ -58,7 +58,8 @@ export function validateConfigLinks(config: Record<string, any>, source = 'confi
 }
 
 export function validateDeploymentConfig(config: Record<string, any>, source = 'config.yml'): void {
-  validateFixedDeploymentConfig(config, source);
+  if (Object.prototype.hasOwnProperty.call(config, 'runtime')) throw new Error(`${source}: runtime was removed; Pageskill always builds static files and dynamic capabilities must use a separately deployed /api/ service`);
+  if (Object.prototype.hasOwnProperty.call(config, 'deployment')) throw new Error(`${source}: deployment was removed; publish dist/public with the hosting provider`);
 }
 
 function validatePrivacyConfig(config: Record<string, any>, source: string): void {
@@ -131,6 +132,7 @@ export function validateConfigLayer(config: Record<string, any>, source = 'confi
   validateCollectionOwnedOutputs(config, source);
   validatePrivacyConfig(config, source);
   validateIntegrationSurface(config, source);
+  validateClientApis(config, source);
   validateConfigLinks(config, source);
   validateDeploymentConfig(config, source);
 }

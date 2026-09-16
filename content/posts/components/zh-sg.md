@@ -55,9 +55,9 @@ export const component: ComponentDefinition = {
   implementation: 'components/reading-tip/index.ts',
   resources: {
     // 让模块拥有自己的资源，编译器才能统一追踪和指纹化。
-    styles: ['components/reading-tip/style.css'],
-    scripts: ['components/reading-tip/script.js']
+    styles: ['components/reading-tip/style.css']
   },
+  client: { module: 'components/reading-tip/script.js', selector: 'main' },
   i18n: 'components/reading-tip/messages.yml',
   defaults: { enabled: true },
   schema: { enabled: { type: 'boolean' } }
@@ -79,12 +79,16 @@ export const components = [shell, search, toc, postMeta, privacyConsent, languag
 `script.js`：
 
 ```js
-// 使用 DOM API，避免组件变成 HTML 注入入口。
-const marker = document.createElement('small');
-marker.className = 'reading-tip';
-marker.textContent = 'Reading tip enabled';
-document.querySelector('main')?.prepend(marker);
+// Core 寻找 root，并注入受控生命周期 runtime。
+export function mount(root, runtime) {
+  const marker = document.createElement('small');
+  marker.className = 'reading-tip';
+  marker.textContent = 'Reading tip enabled';
+  root.prepend(marker);
+}
 ```
+
+每个浏览器模块都使用统一 Runtime 契约。DOM 与生成资源不需要 API 声明。需要数据库、Cache、模型、由私密凭据支持的操作或写入时，增加 `api: 'service-id'` 并调用 `runtime.apiJson('relative/path')`。根级 `config.apis.<service-id>` 决定绝对 URL，让每个 Component 只能访问命名服务。配置 Token 是公开浏览器数据；私密凭据必须通过独立部署的代理。
 
 `style.css`：
 
@@ -125,7 +129,7 @@ page s
 
 生成的页面会加载组件脚本和样式，主要内容区域出现标记。把 `site/theme.yml` 中的 `components.readingTip.enabled` 改为 `false` 后重新生成即可移除；新增文章不需要再写 HTML。
 
-生成时会把模块的资源和 messages 收集到公开主题资源中。服务端嵌套 ESM 留在构建/运行时边界内，未变化的公开资源继续使用原内容 hash 路径和缓存身份。
+生成时会把模块的资源和 messages 收集到公开主题资源中，未变化的公开资源继续使用原内容 hash 路径和缓存身份。
 
 ## 6. 以 Cookie 选择器作为参考
 

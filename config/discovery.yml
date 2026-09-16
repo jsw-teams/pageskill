@@ -8,12 +8,8 @@ robots:
 agentDiscovery:
   apiCatalog:
     enabled: true
-    # Only list endpoints that the backend really serves.
-    entries:
-      - endpoint: /api/health
-        title: Pageskill health API
-        description: Read-only runtime health information for this site.
-        status: /api/health
+    # Add entries only after an external API is deployed and verified.
+    entries: []
   skills:
     name: pageskill-authoring
     title: Pageskill authoring

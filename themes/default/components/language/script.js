@@ -1,6 +1,4 @@
-const root = document.querySelector('[data-language-picker]');
-
-if (root) {
+export function mount(root, runtime) {
   const parse = value => {
     try { return value ? JSON.parse(value) : null; } catch { return null; }
   };
@@ -146,7 +144,7 @@ if (root) {
   root.querySelectorAll('a[data-locale]').forEach(link => link.addEventListener('click', () => {
     const locale = resolveLocale(link.dataset.locale);
     if (locale) writeStoredLocale(locale);
-  }));
+  }, { signal: runtime.signal }));
   const storedLocale = readStoredLocale();
   const preferredLocale = storedLocale || browserLocale() || resolveLocale(config.defaultLocale) || locales[0];
   if (preferredLocale) {

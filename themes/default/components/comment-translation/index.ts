@@ -8,7 +8,7 @@ import type { ComponentDefinition } from '../../../../src/theme-api.ts';
 export const component: ComponentDefinition = {
   id: 'comment-translation',
   source: 'external',
-  capabilities: ['client', 'server', 'storage', 'cache', 'ai'],
+  capabilities: ['server', 'storage', 'cache', 'ai'],
   contexts: ['comment'],
   implementation: 'components/comment-translation/index.ts',
   i18n: 'components/comment-translation/messages.yml',

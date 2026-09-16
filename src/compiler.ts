@@ -12,11 +12,10 @@ import { resolveSiteLinks, renderSiteLink } from './lib/site-links.ts';
 import { loadConfig, loadThemeConfig } from './config/load.ts';
 import { isRecord, mergeConfig } from './config/merge.ts';
 import { configuredThemeName } from './config/validate.ts';
-import { resolveDeploymentConfig } from './config/deployment.ts';
-import { integrationAdapters, resolveConfiguredIntegrations, validateConfiguredIntegrations, type ConfiguredIntegration } from './config/integrations.ts';
+import { integrationAdapters, integrationPrivacyPolicyDiagnostics, resolveConfiguredIntegrations, validateConfiguredIntegrations, type ConfiguredIntegration } from './config/integrations.ts';
+import { resolveClientApis } from './config/apis.ts';
 import { containedPath, normalizePath, pathIsWithin, safeRelativePath } from './config/paths.ts';
 import { renderPrivacyConsent } from './lib/privacy-consent.ts';
-import { loadRuntimeAdapter } from './runtime-adapters/index.ts';
 import { contentMetricsOptions, defaultComponent, documentIdentity, documentSchemaDiagnostics, loadDocument } from './compiler/documents.ts';
 import { archiveRouteFor, blogRelationsFor, collectionContentKind, documentKey, documentOutputs, documentsForCollection, postCategory, queryDocuments, rebuildDocumentIndexes, routeFor, sourceDocuments, translationKey } from './compiler/routes.ts';
 import type { MarkdownNode, SourcePosition, DirectiveNode } from './lib/markdown.ts';
@@ -25,7 +24,7 @@ import type { BuildContext, BuildProfile, CacheManifest, CachedDocument, CachedI
 export type { BuildContext, BuildProfile, CachedDocument, CachedImage, Document, ImageDimensions, Locale } from './compiler/types.ts';
 // Increment this whenever compiler output semantics change so an existing
 // incremental cache cannot preserve a discovery file rendered by old code.
-const RENDERER_VERSION = '4.0.0-component-contract-3';
+const RENDERER_VERSION = '1.0.0-beta.0-client-api-contract-1';
 const MAX_MARKDOWN_CACHE = 32;
 const MAX_SOURCE_PARSE_CACHE = 64;
 const LOAD_CONCURRENCY = 32;
@@ -243,8 +242,7 @@ function themeResourceList(value: unknown): string[] {
 function normalizeThemeResources(value: unknown): ComponentResources {
   const record = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
   return {
-    styles: themeResourceList(record.styles),
-    scripts: themeResourceList(record.scripts)
+    styles: themeResourceList(record.styles)
   };
 }
 
@@ -415,10 +413,17 @@ function validateThemeResourcePath(themeRoot: string, value: unknown, label: str
 
 function validateThemeResources(themeRoot: string, definition: PageskillTheme): void {
   const checkResources = (resources: ComponentResources | undefined, label: string) => {
-    for (const pathValue of [...(resources?.styles || []), ...(resources?.scripts || [])]) validateThemeResourcePath(themeRoot, pathValue, label);
+    for (const pathValue of resources?.styles || []) validateThemeResourcePath(themeRoot, pathValue, label);
   };
   checkResources(definition.resources, 'theme resource path');
-  for (const [name, component] of Object.entries(definition.components || {})) checkResources(component.resources, `theme component ${name} resource path`);
+  for (const [name, component] of Object.entries(definition.components || {})) {
+    checkResources(component.resources, `theme component ${name} resource path`);
+    if (component.client) {
+      validateThemeResourcePath(themeRoot, component.client.module, `theme component ${name} client module`);
+      if (!component.client.selector.trim()) throw new Error(`theme component ${name} client selector must not be empty`);
+      if (component.capabilities?.includes('integration') && !Object.keys(component.integrations || {}).length) throw new Error(`integration Component ${name} must declare at least one trusted Provider Adapter`);
+    }
+  }
   for (const { owner, source } of themeI18nSources(definition)) {
     if (typeof source === 'string') validateThemeResourcePath(themeRoot, source, `${owner} path`);
     else if (isRecord(source) && typeof source.source === 'string') validateThemeResourcePath(themeRoot, source.source, `${owner} path`);
@@ -438,11 +443,11 @@ function themeComponent(ctx: BuildContext, name: string): (ComponentDefinition &
   return component as (ComponentDefinition & Record<string, any>) | undefined;
 }
 
-function resourcePaths(resources: ComponentResources | undefined, kind: 'styles' | 'scripts'): string[] {
-  return themeResourceList(resources?.[kind]);
+function resourcePaths(resources: ComponentResources | undefined, kind: 'styles'): string[] {
+  return themeResourceList(resources?.styles);
 }
 
-function componentResourcePaths(ctx: BuildContext, names: string[], kind: 'styles' | 'scripts'): string[] {
+function componentResourcePaths(ctx: BuildContext, names: string[], kind: 'styles'): string[] {
   for (const name of names) {
     const paths = resourcePaths(themeComponent(ctx, name)?.resources, kind);
     if (paths.length) return paths;
@@ -455,7 +460,7 @@ function componentResourcePaths(ctx: BuildContext, names: string[], kind: 'style
 // A few components own their markup and loading lifecycle (consent, search, the
 // language picker, and the table-of-contents Component), so their resources are
 // emitted by those renderers instead of this generic path.
-function genericComponentResourcePaths(ctx: BuildContext, kind: 'styles' | 'scripts'): string[] {
+function genericComponentResourcePaths(ctx: BuildContext, kind: 'styles'): string[] {
   const rendererOwned = new Set(['privacyConsent', 'consent', 'search', 'language', 'languagePicker', 'toc', 'comments']);
   const paths: string[] = [];
   for (const [name, component] of Object.entries(ctx.themeDefinition.components || {})) {
@@ -465,8 +470,18 @@ function genericComponentResourcePaths(ctx: BuildContext, kind: 'styles' | 'scri
   return [...new Set(paths)];
 }
 
-function componentResourcePathsFor(ctx: BuildContext, name: string, kind: 'styles' | 'scripts'): string[] {
+function componentResourcePathsFor(ctx: BuildContext, name: string, kind: 'styles'): string[] {
   return resourcePaths(themeComponent(ctx, name)?.resources, kind);
+}
+
+function clientComponents(ctx: BuildContext) {
+  return Object.entries(ctx.themeDefinition.components || {})
+    .filter(([name, component]) => Boolean(component.client && componentEnabled(ctx, name)))
+    .map(([name, component]) => ({ name, client: component.client! }));
+}
+
+function clientBootstrapHref(ctx: BuildContext): string {
+  return `/assets/pageskill/client.js?v=${shortHash(`${ctx.themeHash}:${RENDERER_VERSION}`).slice(0, 12)}`;
 }
 
 function themeComponentSettings(ctx: BuildContext, name: string): Record<string, any> {
@@ -825,7 +840,7 @@ function browserIntegration(integration: ConfiguredIntegration): Record<string, 
   }));
   return {
     id: integration.id,
-    runtime: integration.runtime,
+    loader: integration.loader,
     purpose: integration.purpose,
     consent: integration.consent,
     load: integration.load,
@@ -860,19 +875,16 @@ function privacyCategories(ctx: BuildContext, integrations: ConfiguredIntegratio
   }));
 }
 
-function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
+function privacyShellData(ctx: BuildContext, doc: Document) {
   const all = configuredIntegrations(ctx);
   const gated = all.filter(integration => integration.consent !== 'none');
   const settings = privacyConsentSettings(ctx);
-  const runtimeEnabled = all.length > 0;
+  const providerEnabled = all.length > 0;
   const enabled = gated.length > 0 && settings.enabled !== false && componentEnabled(ctx, 'privacyConsent');
   const text = (key: string, fallback: string) => themeText(ctx, doc.locale, `privacyConsent.${key}`, fallback);
-  const script = String(componentResourcePaths(ctx, ['privacyConsent'], 'scripts')[0] || '').trim();
-  const scriptHref = !script ? '' : script.startsWith('/') || /^https?:\/\//i.test(script) ? script : themeResourceHref(ctx, themeBase, script);
   const privacy = {
-    runtimeEnabled,
+    providerEnabled,
     enabled,
-    scriptSrc: scriptHref ? safeUrl(scriptHref) : '',
     decisionRetentionDays: decisionRetentionDays(ctx),
     policyHref: safeUrl(privacyPolicyRoute(ctx, doc.locale)),
     title: text('title', 'Privacy choices'),
@@ -898,18 +910,15 @@ function privacyShellData(ctx: BuildContext, doc: Document, themeBase: string) {
   return { privacy, privacyMarkup: rendered.markup, privacyTriggerMarkup: rendered.triggerMarkup };
 }
 
-function localSearchData(ctx: BuildContext, doc: Document, themeBase: string) {
+function localSearchData(ctx: BuildContext, doc: Document) {
   const settings = themeComponentSettings(ctx, 'search');
   const component = themeComponentFor(ctx, 'search');
   const hasComponent = Boolean(component);
   const enabled = !doc.source.startsWith('generated:') && hasComponent && settings.enabled !== false && componentEnabled(ctx, 'search');
   const text = (key: string, fallback: string) => themeComponentText(ctx, 'search', doc.locale, key) || themeText(ctx, doc.locale, `search.${key}`, fallback);
-  const script = String(componentResourcePaths(ctx, ['search'], 'scripts')[0] || 'scripts/search.js').trim();
-  const scriptHref = script.startsWith('/') || /^https?:\/\//i.test(script) ? script : themeResourceHref(ctx, themeBase, script);
   const search = {
     enabled,
     indexHref: `/assets/search-index.${doc.locale}.json`,
-    scriptSrc: safeUrl(scriptHref),
     label: text('label', 'Search this site'),
     placeholder: text('placeholder', 'Search pages and posts'),
     submitLabel: text('submitLabel', 'Search'),
@@ -925,7 +934,7 @@ function localSearchData(ctx: BuildContext, doc: Document, themeBase: string) {
     maxResults: Math.max(1, Math.min(50, numericComponentSetting(ctx, 'search', 'maxResults', 1)))
   };
   const inputId = `pageskill-search-${doc.locale.replace(/[^a-z0-9]+/gi, '-')}-${shortHash(doc.id).slice(0, 6)}`;
-  const searchMarkup = search.enabled ? `<form class="site-search" data-local-search data-search-index="${escapeHtml(search.indexHref)}" data-search-max-results="${search.maxResults}" data-search-no-results="${escapeHtml(search.noResultsLabel)}" data-search-error="${escapeHtml(search.errorLabel)}" data-search-query-hint="${escapeHtml(search.queryHint)}" data-search-hit-title="${escapeHtml(search.hitTitleLabel)}" data-search-hit-description="${escapeHtml(search.hitDescriptionLabel)}" data-search-hit-heading="${escapeHtml(search.hitHeadingLabel)}" data-search-hit-content="${escapeHtml(search.hitContentLabel)}" data-search-hit-path="${escapeHtml(search.hitPathLabel)}" role="search" aria-label="${escapeHtml(search.label)}"><label class="sr-only" for="${inputId}">${escapeHtml(search.label)}</label><div class="site-search-control"><input id="${inputId}" name="q" type="search" autocomplete="off" placeholder="${escapeHtml(search.placeholder)}" data-search-input><button type="submit" aria-label="${escapeHtml(search.submitLabel)}">⌕</button></div><div class="search-results" data-search-results hidden aria-live="polite" aria-label="${escapeHtml(search.resultLabel)}"></div><script type="module" src="${search.scriptSrc}"></script></form>` : '';
+  const searchMarkup = search.enabled ? `<form class="site-search" data-local-search data-search-index="${escapeHtml(search.indexHref)}" data-search-max-results="${search.maxResults}" data-search-no-results="${escapeHtml(search.noResultsLabel)}" data-search-error="${escapeHtml(search.errorLabel)}" data-search-query-hint="${escapeHtml(search.queryHint)}" data-search-hit-title="${escapeHtml(search.hitTitleLabel)}" data-search-hit-description="${escapeHtml(search.hitDescriptionLabel)}" data-search-hit-heading="${escapeHtml(search.hitHeadingLabel)}" data-search-hit-content="${escapeHtml(search.hitContentLabel)}" data-search-hit-path="${escapeHtml(search.hitPathLabel)}" role="search" aria-label="${escapeHtml(search.label)}"><label class="sr-only" for="${inputId}">${escapeHtml(search.label)}</label><div class="site-search-control"><input id="${inputId}" name="q" type="search" autocomplete="off" placeholder="${escapeHtml(search.placeholder)}" data-search-input><button type="submit" aria-label="${escapeHtml(search.submitLabel)}">⌕</button></div><div class="search-results" data-search-results hidden aria-live="polite" aria-label="${escapeHtml(search.resultLabel)}"></div></form>` : '';
   return { search, searchMarkup };
 }
 
@@ -965,7 +974,7 @@ function homeRouteFor(ctx: BuildContext, locale: string): string {
 
 function languagePickerCopy(ctx: BuildContext, locale: string, themeBase: string) {
   const generated = generatedDocument('home', locale, '', '', '/');
-  const privacy = privacyShellData(ctx, generated, themeBase).privacy;
+  const privacy = privacyShellData(ctx, generated).privacy;
   return {
     title: themeText(ctx, locale, 'languagePicker.title', 'Choose a site language'),
     description: themeText(ctx, locale, 'languagePicker.description', 'Choose a language to open the matching site version.'),
@@ -1000,7 +1009,7 @@ function languagePickerCopy(ctx: BuildContext, locale: string, themeBase: string
   };
 }
 
-function languagePickerMarkup(ctx: BuildContext, locale: string, scriptHref = ''): string {
+function languagePickerMarkup(ctx: BuildContext, locale: string): string {
   const locales = ctx.config.activeLocales || [ctx.config.defaultLocale || locale];
   const themeName = configuredThemeName(ctx.config);
   const themeBase = `/assets/theme/${themeName}`;
@@ -1019,8 +1028,7 @@ function languagePickerMarkup(ctx: BuildContext, locale: string, scriptHref = ''
     const name = languageDisplayName(ctx, locale, candidate);
     return `<li><a class="language-card" href="${href}" lang="${escapeHtml(candidate)}" data-locale="${escapeHtml(candidate)}"><span class="language-card-index" aria-hidden="true">${escapeHtml(String(locales.indexOf(candidate) + 1).padStart(2, '0'))}</span><strong>${escapeHtml(name)}</strong><span class="language-card-recommendation" data-language-recommended aria-hidden="true"></span><span class="language-card-arrow" aria-hidden="true">↗</span></a></li>`;
   }).join('');
-  const script = scriptHref ? `<script type="module" src="${safeUrl(scriptHref)}"></script>` : '';
-  return `<section class="language-picker" data-language-picker data-language-copy="${escapeHtml(languageData)}" aria-labelledby="language-picker-title"><h1 id="language-picker-title">${escapeHtml(title)}</h1><p class="language-picker-description">${escapeHtml(description)}</p><ul class="language-picker-list">${cards}</ul></section>${script}`;
+  return `<section class="language-picker" data-language-picker data-language-copy="${escapeHtml(languageData)}" aria-labelledby="language-picker-title"><h1 id="language-picker-title">${escapeHtml(title)}</h1><p class="language-picker-description">${escapeHtml(description)}</p><ul class="language-picker-list">${cards}</ul></section>`;
 }
 
 function notFoundMarkup(ctx: BuildContext, locale: string): string {
@@ -1036,14 +1044,10 @@ function notFoundMarkup(ctx: BuildContext, locale: string): string {
 
 async function writeGeneratedPages(ctx: BuildContext) {
   const locale = ctx.config.defaultLocale || 'en';
-  const themeName = configuredThemeName(ctx.config);
-  const themeBase = `/assets/theme/${themeName}`;
-  const languageScript = componentResourcePaths(ctx, ['language', 'languagePicker'], 'scripts')[0] || '';
-  const languageScriptHref = languageScript ? themeResourceHref(ctx, themeBase, languageScript) : '';
   const pickerTitle = themeText(ctx, locale, 'languagePicker.title', 'Choose a site language');
   const pickerDescription = themeText(ctx, locale, 'languagePicker.description', 'Choose a language to open the matching site version.');
   const picker = generatedDocument('home', locale, pickerTitle, pickerDescription, '/');
-  await writeIfChanged(ctx, 'index.html', pageShell(ctx, picker, languagePickerMarkup(ctx, locale, languageScriptHref)));
+  await writeIfChanged(ctx, 'index.html', pageShell(ctx, picker, languagePickerMarkup(ctx, locale)));
   const notFoundTitle = themeText(ctx, locale, 'notFound.title', 'This page is not here');
   const notFoundDescription = themeText(ctx, locale, 'notFound.description', 'The address may have changed. Return home or continue through the guide.');
   const notFound = generatedDocument('not-found', locale, notFoundTitle, notFoundDescription, '/404.html', 'page');
@@ -1155,16 +1159,8 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const stylesheets = styleTags.map(tag => tag.kind === 'inline'
     ? `<style>${tag.css}</style>`
     : `<link rel="stylesheet" href="${safeUrl(themeResourceHref(ctx, themeBase, tag.path, tag.path === styleBundle.styleFile ? styleBundle.fingerprint : ''))}">`).join('');
-  const searchData = localSearchData(ctx, doc, themeBase);
-  const browserScripts = themeResourcePaths([
-    ...resourcePaths(themeResources(ctx), 'scripts'),
-    ...genericComponentResourcePaths(ctx, 'scripts'),
-    ...(componentEnabled(ctx, 'toc') && (doc.component === 'post' || doc.directives.some(node => node.name === 'toc')) ? componentResourcePaths(ctx, ['toc'], 'scripts') : []),
-    ...(componentEnabled(ctx, 'comments') && isPostCollection(ctx, doc.collection) ? componentResourcePaths(ctx, ['comments'], 'scripts') : []),
-    ...componentResourcePathsFor(ctx, doc.component, 'scripts'),
-    ...doc.directives.flatMap(node => componentResourcePathsFor(ctx, node.name, 'scripts'))
-  ], 'Theme script path');
-  const scriptTags = browserScripts.map(script => `<script type="module" src="${safeUrl(themeResourceHref(ctx, themeBase, String(script)))}"></script>`).join('');
+  const searchData = localSearchData(ctx, doc);
+  const scriptTags = clientComponents(ctx).length ? `<script type="module" src="${safeUrl(clientBootstrapHref(ctx))}"></script>` : '';
   const socialImage = doc.data?.ogImage || doc.data?.cover || ctx.config.images?.social;
   const socialImageUrl = absoluteImageUrl(socialImage, String(ctx.config.siteUrl || '').replace(/\/$/, ''));
   const publishedMeta = isPostCollection(ctx, doc.collection) && doc.date && publicationTimestamp(doc.date) !== undefined ? `<meta property="article:published_time" content="${escapeHtml(new Date(publicationTimestamp(doc.date)!).toISOString())}">` : '';
@@ -1172,7 +1168,7 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const sitemapHref = String(ctx.config.routes?.sitemap || '/sitemap.xml');
   const head = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(doc.title)} · ${escapeHtml(siteName)}</title><meta name="description" content="${escapeHtml(doc.description || siteDescription)}"><meta name="theme-color" content="${escapeHtml(ctx.config.pwa?.themeColor || '#d9563b')}"><meta property="og:title" content="${escapeHtml(doc.title)}"><meta property="og:description" content="${escapeHtml(doc.description || siteDescription)}"><meta property="og:type" content="${doc.date ? 'article' : 'website'}"><meta property="og:url" content="${safeUrl(absoluteUrl)}">${publishedMeta}${modifiedMeta}${socialImageUrl ? `<meta property="og:image" content="${safeUrl(socialImageUrl)}">` : ''}<link rel="canonical" href="${safeUrl(absoluteUrl)}"><link rel="sitemap" type="application/xml" href="${safeUrl(sitemapHref)}">${headIconLinks}${alternates}${stylesheets}${scriptTags}`;
   const headWithFeed = head.replace(`<link rel="sitemap" type="application/xml" href="${safeUrl(sitemapHref)}">`, `<link rel="sitemap" type="application/xml" href="${safeUrl(sitemapHref)}">${postsFeedLink}`);
-  const privacyData = privacyShellData(ctx, doc, themeBase);
+  const privacyData = privacyShellData(ctx, doc);
   const bodyClass = `theme-${escapeHtml(configuredThemeName(ctx.config))}`;
   const localeInfo = isRecord(ctx.themeI18n.locales?.[doc.locale]) ? ctx.themeI18n.locales[doc.locale] : {};
   const shellContext = { ...themeContextFor(ctx, doc), renderedContent: content, head: headWithFeed, bodyClass, mainClass: `component-${escapeHtml(doc.component)}`, siteName, siteDescription, currentRoute, homeHref, brandIcon, navigationLinks, footerLinks, languageLinks, htmlLang: String(localeInfo.htmlLang || doc.locale), navigationLabel, languageLabel, skipLabel, headerNote, footerNote, footerKicker, chrome, ...searchData, searchMarkup: showSiteChrome ? searchData.searchMarkup : '', ...privacyData } as ComponentShellContext;
@@ -1235,12 +1231,13 @@ function agentFunctionMap(ctx: BuildContext) {
     { id: 'write-page', purpose: 'Write current site content for a page, guide, reference, or directory', paths: ['content/pages/<id>/<locale>.md'], commands: ['page g'] },
     { id: 'write-post', purpose: 'Record a dated post with kind: post; use category for ordinary taxonomy and omit it for uncategorized content', paths: ['content/posts/<id>/<locale>.md'], frontmatter: { kind: 'post', date: 'YYYY-MM-DD', updated: 'optional ISO date or datetime' }, commands: ['page g'] },
     { id: 'write-update', purpose: 'Record a release note or project update with kind: release in the dedicated updates collection', paths: ['content/updates/<version>/<locale>.md'], frontmatter: { kind: 'release', date: 'YYYY-MM-DD', updated: 'optional ISO date or datetime' }, commands: ['page g'] },
-    { id: 'configure-integration', purpose: 'Enable a registered third-party integration with its adapter-owned public identifier and privacy load policy', paths: [...configSources, 'config.yml:integrations.<provider-id>'], outputs: ['generated consent purposes and provider runtime metadata'], prerequisites: ['Choose a provider from the generated catalog', 'Keep secrets in environment variables; site YAML only contains public adapter fields'], commands: ['page g --profile'] },
+    { id: 'configure-integration', purpose: 'Enable a registered third-party integration with its adapter-owned public identifier, consent policy, and reviewed privacy disclosure', paths: [...configSources, 'config.yml:integrations.<provider-id>', 'content/pages/privacy/<locale>.md'], outputs: ['generated consent purposes and provider metadata'], prerequisites: ['Choose a provider from the generated catalog', 'Acknowledge every enabled Provider id in every active locale privacy policy', 'Keep secrets in the external service environment; site YAML only contains public adapter fields'], commands: ['page g --profile', 'page c'] },
     { id: 'change-component', purpose: 'Add, modify, or remove an existing Component or stylesheet', paths: ['themes/<name>/index.ts', 'themes/<name>/components/'], commands: ['page g --profile'] },
-    { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, discovery policy, component copy/options, or deployment settings', paths: [...configSources, themeInstance], commands: ['page g --profile'] },
+    { id: 'change-site', purpose: 'Change locales, routes, collections, SEO, privacy, discovery policy, Component copy/options, named APIs, or integrations', paths: [...configSources, themeInstance, 'content/pages/privacy/<locale>.md'], commands: ['page g --profile'] },
     { id: 'configure-component', purpose: 'Configure a declared Component from the theme instance file without editing its renderer', paths: [themeInstance, 'themes/<name>/components/<component>/index.ts'], commands: ['page g --profile'] },
     { id: 'discover-extension', purpose: 'Read active theme Components, collections, component switches, contexts, and resource dependencies', paths: ['themes/<name>/index.ts', themeInstance, ...configSources], commands: ['import { getCatalog, inspect } from "pageskill"'] },
     { id: 'discover-site', purpose: 'Read renderer-generated agent metadata, API links, Markdown negotiation, and content signals', paths: ['dist/public/.well-known/', 'dist/public/robots.txt', 'dist/public/llms.txt'], commands: ['page g'] },
+    { id: 'develop-agent-skill', purpose: 'Develop Agent instructions from implemented Components, content, configuration, privacy declarations, and external service contracts', paths: ['docs/skill-development.md', 'content/posts/skill-development/', 'src/compiler.ts:generatedAgentSkill'], prerequisites: ['Use the unified Client Runtime and keep local Search on generated static indexes', 'Acknowledge every enabled Provider in each localized privacy policy', 'Never place secrets or invented endpoints in generated instructions'], outputs: ['/.well-known/agent-skills/index.json', `/.well-known/agent-skills/${agentSkillName(ctx)}/SKILL.md`], commands: ['page g --profile', 'page c'] },
     { id: 'accessibility-audit', purpose: 'Run the complete real-browser and axe accessibility audit with private reports and responsive screenshots', paths: ['src/accessibility/', 'src/bin/page.mjs'], commands: ['page c'] },
     // Conditional discovery entries describe the implementation boundary as
     // data. The generated Skill and catalog expose these fields without a
@@ -1249,8 +1246,8 @@ function agentFunctionMap(ctx: BuildContext) {
     { id: 'configure-mcp-discovery', purpose: 'Publish an MCP server card whose endpoint and tool schemas match a real MCP transport', paths: [...configSources, 'config.yml:agentDiscovery.mcp', 'backend/handler.ts or an external MCP server'], prerequisites: ['Deploy a working MCP endpoint before enabling the card', 'Keep card tool metadata aligned with the server tools/list response'], outputs: ['/.well-known/mcp/server-card.json'], commands: ['page g --profile'] },
     { id: 'register-webmcp-tools', purpose: 'Register browser tools from a theme component only when a real WebMCP module is loaded and tested', paths: [...configSources, 'config.yml:agentDiscovery.webmcp', themeInstance, 'themes/<name>/components/<id>/'], prerequisites: ['Register tools through document.modelContext with explicit JSON schemas', 'Validate inputs and confirm consequential actions in the page'], outputs: ['/.well-known/agent.json configured state; browser tools come from the theme script'], commands: ['npm run compile-theme', 'page s', 'page g --profile'] },
     { id: 'publish-dns-aid', purpose: 'Advertise DNS-AID only after an external DNS provider has published real SVCB/TXT or TLSA records with DNSSEC as required', paths: [...configSources, 'config.yml:agentDiscovery.dnsAid', 'external authoritative DNS zone'], prerequisites: ['Deploy the advertised agent endpoint', 'Verify the public DNS records and DNSSEC chain before enabling the flag'], outputs: ['/.well-known/agent.json configured state; DNS records are never generated here'], commands: ['Resolve-DnsName', 'page g --profile'] },
-    { id: 'preview', purpose: 'Open the local static or configured runtime preview with a persistent incremental context', paths: ['src/bin/page.mjs', 'src/compiler.ts'], commands: ['page s'] },
-    { id: 'dynamic-backend', purpose: 'Add runtime business logic, secrets, writes, or webhooks', paths: ['backend/handler.ts'], commands: ['page g'] }
+    { id: 'preview', purpose: 'Open the local static preview with a persistent incremental context', paths: ['src/bin/page.mjs', 'src/compiler.ts'], commands: ['page s'] },
+    { id: 'external-api', purpose: 'Connect database, model, shared state, secrets, writes, or webhooks through a separately deployed named API', paths: [...configSources, 'config.yml:apis', 'backend/handler.ts or another external API service'], prerequisites: ['Declare client.api on the Component', 'Keep private credentials in the service environment'], commands: ['page g', 'npm run compile-backend'] }
   ];
 }
 
@@ -1582,7 +1579,7 @@ async function writeArdManifest(ctx: BuildContext, siteUrl: string): Promise<voi
   // representative queries come from config rather than embedded copy.
   if (!discoveryEnabled(ctx, 'ard')) return;
   let host = siteUrl;
-  try { host = new URL(siteUrl).host; } catch { /* siteUrl validation is handled by the site deployment */ }
+  try { host = new URL(siteUrl).host; } catch { /* siteUrl validation is handled by the publishing host */ }
   const siteName = localizedValue(ctx.config.siteName, String(ctx.config.defaultLocale || 'en'), 'Site');
   const entries: Array<Record<string, any>> = [];
   entries.push(ardEntry(host, siteUrl, '/.well-known/agent.json', 'agent', `${siteName} agent guidance`, 'application/json', ardQueries(ctx, 'agent')));
@@ -1617,8 +1614,7 @@ function catalog(ctx: BuildContext) {
       name: String(ctx.theme.name || ctx.config.theme?.name || 'default'),
       fingerprint: String(ctx.theme.__fingerprint || ctx.themeHash).slice(0, 20),
       resources: {
-        styles: resourcePaths(themeResources(ctx), 'styles'),
-        scripts: resourcePaths(themeResources(ctx), 'scripts')
+        styles: resourcePaths(themeResources(ctx), 'styles')
       },
        components: Object.fromEntries(Object.entries(ctx.themeDefinition.components || {}).map(([name, value]: [string, any]) => [name, {
          id: value.id || name,
@@ -1628,6 +1624,7 @@ function catalog(ctx: BuildContext) {
          implementation: value.implementation,
         enabled: componentEnabled(ctx, name),
         resources: value?.resources || {},
+        client: value?.client ? { selector: value.client.selector, ...(value.client.api ? { api: value.client.api } : {}) } : undefined,
         defaults: value?.defaults || {},
         schema: value?.schema || {},
         settings: themeComponentSettings(ctx, name)
@@ -1838,28 +1835,22 @@ async function copyThemeAndAssets(ctx: BuildContext) {
   const usedComponents = new Set(ctx.docs.map(doc => doc.component));
   const dependencyFiles = new Set<string>();
   for (const file of [
-    ...resourcePaths(themeResources(ctx), 'scripts'),
     ...genericComponentResourcePaths(ctx, 'styles'),
-    ...genericComponentResourcePaths(ctx, 'scripts'),
     ...(componentEnabled(ctx, 'privacyConsent') ? componentResourcePaths(ctx, ['privacyConsent'], 'styles') : []),
-    ...(componentEnabled(ctx, 'privacyConsent') ? componentResourcePaths(ctx, ['privacyConsent'], 'scripts') : []),
     ...(componentEnabled(ctx, 'search') ? componentResourcePaths(ctx, ['search'], 'styles') : []),
-    ...(componentEnabled(ctx, 'search') ? componentResourcePaths(ctx, ['search'], 'scripts') : []),
     ...(componentEnabled(ctx, 'toc') ? componentResourcePaths(ctx, ['toc'], 'styles') : []),
-    ...(componentEnabled(ctx, 'toc') ? componentResourcePaths(ctx, ['toc'], 'scripts') : []),
     ...(componentEnabled(ctx, 'comments') ? componentResourcePaths(ctx, ['comments'], 'styles') : []),
-    ...(componentEnabled(ctx, 'comments') ? componentResourcePaths(ctx, ['comments'], 'scripts') : []),
     // The root language selector is generated by the compiler itself, so its
     // small enhancement script is copied whenever the theme declares it. It
     // is not an optional site integration and has no config switch.
     ...componentResourcePaths(ctx, ['language', 'languagePicker'], 'styles'),
-    ...componentResourcePaths(ctx, ['language', 'languagePicker'], 'scripts')
+    ...clientComponents(ctx).map(({ client }) => client.module)
   ]) dependencyFiles.add(safeRelativePath(file, 'theme resource path'));
   for (const component of usedComponents) {
-    for (const file of [...componentResourcePathsFor(ctx, component, 'styles'), ...componentResourcePathsFor(ctx, component, 'scripts')]) dependencyFiles.add(safeRelativePath(file, 'Component resource path'));
+    for (const file of componentResourcePathsFor(ctx, component, 'styles')) dependencyFiles.add(safeRelativePath(file, 'Component resource path'));
   }
   for (const doc of ctx.docs) for (const component of doc.componentNames.length ? doc.componentNames : ctx.cache.documents[doc.source]?.components || []) {
-    for (const file of [...componentResourcePathsFor(ctx, component, 'styles'), ...componentResourcePathsFor(ctx, component, 'scripts')]) dependencyFiles.add(safeRelativePath(file, 'Component resource path'));
+    for (const file of componentResourcePathsFor(ctx, component, 'styles')) dependencyFiles.add(safeRelativePath(file, 'Component resource path'));
   }
   for (const relative of dependencyFiles) {
     if (styleBundle.bundled.has(relative)) continue;
@@ -1869,6 +1860,17 @@ async function copyThemeAndAssets(ctx: BuildContext) {
       : await fs.readFile(containedPath(themeRoot, relative, 'theme resource path'), 'utf8');
     const output = `${themeOutputRoot}/${versionedThemeAsset(relative, themeResourceFingerprint(ctx, relative))}`;
     await writeIfChanged(ctx, output, extension === '.css' ? minifyCss(source) : source);
+  }
+  const clients = clientComponents(ctx);
+  if (clients.length) {
+    const imports = clients.map(({ client }, index) => `import { mount as mount${index} } from ${JSON.stringify(themeResourceHref(ctx, `/assets/theme/${themeName}`, client.module))};`).join('\n');
+  const registrations = clients.map(({ name, client }, index) => `{id:${JSON.stringify(name)},selector:${JSON.stringify(client.selector)},api:${JSON.stringify(client.api || '')},mount:mount${index}}`).join(',\n');
+    const allApis = resolveClientApis(ctx.config);
+    const apiIds = new Set(clients.map(({ client }) => client.api).filter(Boolean));
+  for (const id of apiIds) if (!allApis[id!]) throw new Error(`config.yml: apis.${id} is required by an enabled Component that declares client.api`);
+    const browserApis = Object.fromEntries(Object.entries(allApis).filter(([id]) => apiIds.has(id)));
+    const bootstrap = `${imports}\n\nclass ClientRequestError extends Error { constructor(message, status = 0, code = 'request_failed') { super(message); this.name = 'ClientRequestError'; this.status = status; this.code = code; } }\nconst lifecycle = new AbortController();\nconst apiDefinitions = Object.freeze(${JSON.stringify(browserApis)});\nwindow.addEventListener('pagehide', () => lifecycle.abort(), { once: true });\nfunction sameOrigin(value) { const target = new URL(value, window.location.href); if (target.origin !== window.location.origin) throw new ClientRequestError('The local asset must use the site origin.', 0, 'cross_origin_blocked'); return target; }\nfunction apiTarget(definition, value = '') { if (!definition) throw new ClientRequestError('This Component API is not configured.', 0, 'api_not_configured'); const base = new URL(definition.url); const raw = String(value || ''); const target = raw === '' || raw.startsWith('?') ? new URL(raw || base.href, base.href) : new URL(raw.replace(/^\\/+/, ''), base.href.endsWith('/') ? base.href : base.href + '/'); const prefix = base.pathname.endsWith('/') ? base.pathname : base.pathname + '/'; if (target.origin !== base.origin || (target.pathname !== base.pathname && !target.pathname.startsWith(prefix))) throw new ClientRequestError('The API request escaped its configured URL scope.', 0, 'api_scope_blocked'); return target; }\nasync function fetchJson(target, options = {}, definition) { const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 12000); const abort = () => controller.abort(); lifecycle.signal.addEventListener('abort', abort, { once: true }); options.signal?.addEventListener?.('abort', abort, { once: true }); const headers = new Headers({ accept: 'application/json', ...(options.headers || {}) }); if (definition?.token) { if (definition.auth === 'x-api-key') headers.set('x-api-key', definition.token); else headers.set('authorization', 'Bearer ' + definition.token); } try { const response = await fetch(target, { ...options, credentials: target.origin === window.location.origin ? 'same-origin' : 'omit', signal: controller.signal, headers }); const type = response.headers.get('content-type') || ''; const data = type.includes('application/json') ? await response.json() : null; if (!response.ok) throw new ClientRequestError(data?.error || 'The API request failed.', response.status, data?.code || 'request_failed'); if (!type.includes('application/json')) throw new ClientRequestError('Expected a JSON response.', response.status, 'invalid_response'); return data; } catch (error) { if (error instanceof ClientRequestError) throw error; if (controller.signal.aborted) throw new ClientRequestError('The request timed out.', 0, 'request_timeout'); throw new ClientRequestError('The request could not be completed.'); } finally { window.clearTimeout(timeout); lifecycle.signal.removeEventListener('abort', abort); options.signal?.removeEventListener?.('abort', abort); } }\nfunction assetJson(value, options = {}) { return fetchJson(sameOrigin(value), options); }\nfunction runtimeFor(component) { const runtime = { signal: lifecycle.signal, ClientRequestError, apiId: component.api || undefined, assetJson, setBusy(element, busy) { if (!element) return; if (busy) element.setAttribute('aria-busy', 'true'); else element.removeAttribute('aria-busy'); } }; if (component.api) { const definition = apiDefinitions[component.api]; runtime.apiJson = (value, options) => fetchJson(apiTarget(definition, value), options, definition); } return Object.freeze(runtime); }\nconst components = [\n${registrations}\n];\nfor (const component of components) { for (const root of document.querySelectorAll(component.selector)) { try { component.mount(root, runtimeFor(component)); } catch (error) { root.dataset.clientState = 'failed'; console.error('Pageskill Client Component failed:', component.id, error); } } }\n`;
+    await writeIfChanged(ctx, 'assets/pageskill/client.js', bootstrap);
   }
   await writeIfChanged(ctx, 'AGENTS.md', await fs.readFile(path.join(ctx.root, 'AGENTS.md'), 'utf8').catch(() => ''));
   const locale = ctx.config.defaultLocale || 'en';
@@ -1948,7 +1950,7 @@ async function writeAgentInfo(ctx: BuildContext, siteUrl: string) {
       ...discoveryBoundaries(ctx),
       functionMap: agentFunctionMap(ctx)
     },
-    generatedBy: { name: 'Pageskill', version: '4.0.0', static: true, siteUrl }
+    generatedBy: { name: 'Pageskill', version: '1.0.0-beta.0', static: true, siteUrl }
   }, null, 2));
 }
 function feedCollections(ctx: BuildContext): string[] {
@@ -2099,33 +2101,6 @@ async function writeArchives(ctx: BuildContext): Promise<string[]> {
   return routes;
 }
 
-async function runtimeAdapter(ctx: BuildContext) {
-  return loadRuntimeAdapter(ctx.deployment.adapter);
-}
-
-async function prepareRuntimeAdapter(ctx: BuildContext): Promise<void> {
-  const adapter = await runtimeAdapter(ctx);
-  await adapter?.prepare?.({ root: ctx.root, outputDirectory: ctx.out, backend: ctx.deployment.backend });
-}
-
-async function writeRuntimeAdapter(ctx: BuildContext): Promise<void> {
-  const adapter = await runtimeAdapter(ctx);
-  if (!adapter) return;
-  if (!adapter.build) throw new Error(`runtime adapter "${adapter.id}" does not provide a build contract`);
-  const locale = String(ctx.config.defaultLocale || 'en');
-  await adapter.build({
-    root: ctx.root,
-    outputDirectory: ctx.out,
-    backendRuntimeDirectory: path.join(ctx.root, '.pageskill', 'backend-runtime'),
-    backend: ctx.deployment.backend,
-    defaultLocale: locale,
-    activeLocales: (ctx.config.activeLocales || [locale]).map(String),
-    contentKeys: [...new Set(ctx.docs.map(doc => doc.contentKey))].sort(),
-    discovery: siteDiscoveryOptions(ctx),
-    writeOutput: (relative, data) => writeIfChanged(ctx, relative, data)
-  });
-}
-
 export async function createContext(root = process.cwd()): Promise<BuildContext> {
   root = await fs.realpath(root);
   const discoverStart = performance.now();
@@ -2155,13 +2130,6 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
       const extension = path.extname(relative).toLowerCase();
       return [relative, shortHash(extension === '.css' ? minifyCss(source) : source).slice(0, 12)];
     }));
-  const backendRoot = path.join(root, 'backend');
-  const backendFiles = await walk(backendRoot, ['.ts']);
-  const backendStats = await parallelMap(backendFiles, 16, async file => {
-    const stat = await fs.stat(file);
-    return [normalizePath(path.relative(backendRoot, file)), String(stat.mtimeMs), String(stat.size)].join('\0');
-  });
-  const backendHash = shortHash(backendStats.join('\0'));
   const themeHash = shortHash(themeChunks.join('\0'));
   // The public asset fingerprint remains content based.  Theme module imports
   // use a per-context generation so a long-lived preview process cannot keep
@@ -2258,7 +2226,7 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
   profile.load = duration(loadStart);
   profile.documents = docs.length;
   const byKey = new Map(docs.map(doc => [`${doc.collection}:${doc.id}:${doc.locale}`, doc]));
-  return { root, out: path.join(root, 'dist', 'public'), config, configFiles: loadedConfig.configFiles, deployment: resolveDeploymentConfig(config), theme: runtimeTheme, themeConfig, themeConfigFile: loadedThemeConfig.file, themeI18n, themeDefinition, docs, byKey, routes: new Map(), cache, profile, outputs: new Set(), diagnostics: [], configHash: loadedConfig.configHash, themeHash, assetHash, backendHash, contentRoots, imageCache: {}, imageDimensions: {}, outputHashes: {}, collectionIndex: new Map(), translationIndex: new Map(), documentPositions: new Map(), tagIndex: new Map(), markdownCache: new Map(), sourceParseCache, themeStyleSources, themeAssetHashes, componentWarnings: [] };
+  return { root, out: path.join(root, 'dist', 'public'), config, configFiles: loadedConfig.configFiles, theme: runtimeTheme, themeConfig, themeConfigFile: loadedThemeConfig.file, themeI18n, themeDefinition, docs, byKey, routes: new Map(), cache, profile, outputs: new Set(), diagnostics: [], configHash: loadedConfig.configHash, themeHash, assetHash, contentRoots, imageCache: {}, imageDimensions: {}, outputHashes: {}, collectionIndex: new Map(), translationIndex: new Map(), documentPositions: new Map(), tagIndex: new Map(), markdownCache: new Map(), sourceParseCache, themeStyleSources, themeAssetHashes, componentWarnings: [] };
 }
 
 export async function refreshContext(ctx: BuildContext, changedFiles: string[] = []): Promise<BuildContext> {
@@ -2277,10 +2245,9 @@ export async function refreshContext(ctx: BuildContext, changedFiles: string[] =
   const themePrefix = `${normalizedRoot}/themes/`;
   const contentPrefix = `${normalizedRoot}/content/`;
   const agentPath = `${normalizedRoot}/agents.md`;
-  const backendPrefix = normalizedRoot + '/backend/';
   const requiresGlobalReload = absoluteChanges.some(file => {
     const normalized = normalizePath(file).toLocaleLowerCase();
-    return normalized === configPath || configFiles.has(normalized) || normalized.startsWith(configPrefix) || normalized === themeConfigPath || normalized === agentPath || normalized.startsWith(themePrefix) || normalized.startsWith(backendPrefix) || (normalized.startsWith(contentPrefix) && path.extname(normalized) !== '.md');
+    return normalized === configPath || configFiles.has(normalized) || normalized.startsWith(configPrefix) || normalized === themeConfigPath || normalized === agentPath || normalized.startsWith(themePrefix) || (normalized.startsWith(contentPrefix) && path.extname(normalized) !== '.md');
   });
   if (requiresGlobalReload) {
     const fresh = await createContext(ctx.root);
@@ -2333,7 +2300,6 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   ctx.profile.write = 0;
   // Runtime preparation is adapter-owned. Static Core builds have no host
   // configuration or runtime files to emit.
-  await prepareRuntimeAdapter(ctx);
   if (!outputDirectoryExists) {
     const stageRoot = path.join(ctx.root, '.pageskill');
     await fs.mkdir(stageRoot, { recursive: true });
@@ -2346,7 +2312,7 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
     ctx.out = temporary;
   }
 
-  const globalChanged = !outputDirectoryExists || ctx.cache.rendererVersion !== RENDERER_VERSION || ctx.cache.configHash !== ctx.configHash || ctx.cache.themeHash !== ctx.themeHash || ctx.cache.backendHash !== ctx.backendHash;
+  const globalChanged = !outputDirectoryExists || ctx.cache.rendererVersion !== RENDERER_VERSION || ctx.cache.configHash !== ctx.configHash || ctx.cache.themeHash !== ctx.themeHash;
   const assetChanged = ctx.cache.assetHash !== ctx.assetHash;
   ctx.imageDimensions = await readImageDimensions(path.join(ctx.root, 'content', 'assets'));
   const currentSources = new Set(ctx.docs.map(doc => doc.source));
@@ -2389,6 +2355,7 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
     const component = ctx.themeDefinition.components[doc.component];
     if (!component?.renderDocument) ctx.diagnostics.push(`${doc.source}:1:1: Component "${doc.component}" cannot render a document; choose a Component with renderDocument`);
   }
+  ctx.diagnostics.push(...integrationPrivacyPolicyDiagnostics(ctx.config, ctx.themeDefinition, ctx.docs));
   if (ctx.diagnostics.length) throw new Error(ctx.diagnostics.join('\n'));
   ctx.profile.validate = duration(validateStart);
 
@@ -2492,7 +2459,7 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
   await writeAgentSkills(ctx);
   await writeArdManifest(ctx, siteUrl);
   await writeAgentInfo(ctx, siteUrl);
-  await writeIfChanged(ctx, '.pageskill/catalog.json', JSON.stringify(catalog(ctx), null, 2)); await writeRuntimeAdapter(ctx); await copyThemeAndAssets(ctx); ctx.profile.assets = duration(assetStart);
+  await writeIfChanged(ctx, '.pageskill/catalog.json', JSON.stringify(catalog(ctx), null, 2)); await copyThemeAndAssets(ctx); ctx.profile.assets = duration(assetStart);
   const previousOutputs = new Set(ctx.cache.outputs || []); const writeStart = performance.now();
   for (const old of previousOutputs) {
     const { normalized, target } = outputTarget(ctx, old);
@@ -2500,7 +2467,7 @@ export async function build(ctx: BuildContext): Promise<BuildContext> {
     try { await fs.rm(target); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
   }
   ctx.profile.write = duration(writeStart);
-  const manifest: CacheManifest = { version: 4, rendererVersion: RENDERER_VERSION, configHash: ctx.configHash, themeHash: ctx.themeHash, assetHash: ctx.assetHash, backendHash: ctx.backendHash, contentRoots: ctx.contentRoots, routeCount: ctx.routes.size, documents: Object.fromEntries(ctx.docs.map(doc => {
+  const manifest: CacheManifest = { version: 4, rendererVersion: RENDERER_VERSION, configHash: ctx.configHash, themeHash: ctx.themeHash, assetHash: ctx.assetHash, contentRoots: ctx.contentRoots, routeCount: ctx.routes.size, documents: Object.fromEntries(ctx.docs.map(doc => {
     const dependencies = doc.dependencyKeys.length ? doc.dependencyKeys : ctx.cache.documents[doc.source]?.dependencies || [];
     const components = doc.componentNames.length ? doc.componentNames : ctx.cache.documents[doc.source]?.components || [];
     return [doc.source, { hash: doc.hash, outputs: documentOutputs(ctx, doc), dependencies, components, mtimeMs: doc.stat.mtimeMs, size: doc.stat.size, collection: doc.collection, id: doc.id, contentKey: doc.contentKey, locale: doc.locale, title: doc.title, description: doc.description, component: doc.component, date: doc.date, updated: doc.updated, author: doc.author, cover: doc.cover, data: doc.data, markdown: doc.markdown, excerpt: doc.excerpt, bodyLine: doc.bodyLine || 1, metrics: doc.metrics }];
@@ -2544,6 +2511,7 @@ export async function check(ctx: BuildContext) {
   for (const doc of ctx.docs) if (!doc.nodes.length && doc.markdown) { doc.nodes = parseMarkdown(doc.markdown, doc.source, doc.bodyLine || 1); doc.directives = flattenDirectives(doc.nodes); }
   ctx.diagnostics.length = 0;
   for (const doc of ctx.docs) ctx.diagnostics.push(...documentSchemaDiagnostics(ctx.config, doc));
+  ctx.diagnostics.push(...integrationPrivacyPolicyDiagnostics(ctx.config, ctx.themeDefinition, ctx.docs));
   const errors = [...ctx.diagnostics];
   for (const doc of ctx.docs) {
     const layout = ctx.themeDefinition.components[doc.component];

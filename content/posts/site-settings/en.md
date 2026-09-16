@@ -127,7 +127,7 @@ The advanced `components.shell.navigation.before/after` and `components.shell.fo
 
 ## 5. Put content in Markdown
 
-Stable pages live at `content/pages/<id>/<locale>.md`. Tutorials, blogs, product notes, and ordinary posts live at `content/posts/<id>/<locale>.md` and release notes live at `content/updates/<id>/<locale>.md`. Every post needs `date`; an optional `updated` records a later modification without changing publication date. The `updates` collection is a real release-note collection, not a filtered view. The [post metadata example](/en/posts/post-meta-demo/) shows both behaviors.
+Stable pages live at `content/pages/<id>/<locale>.md`. Tutorials, blogs, product notes, and ordinary posts live at `content/posts/<id>/<locale>.md` and release notes live at `content/updates/<id>/<locale>.md`. Every post needs `date`; an optional `updated` records a later modification without changing publication date. The `updates` collection is a real release-note collection, not a filtered view.
 
 ## Expected result
 

@@ -37,7 +37,7 @@ integrations:
     siteKey: 0x4AAAA...
 ```
 
-Only public identifiers belong here. A CAPTCHA secret, signing key, or server-side verification token belongs in the deployment environment and is read by `backend/handler.ts`; it must not be placed in YAML.
+Only public identifiers belong here. A CAPTCHA secret, signing key, or server-side verification token belongs in the separately deployed verification service environment; it must not be placed in YAML.
 
 ## 2. Let the adapter own the contract
 
@@ -96,7 +96,7 @@ Provider IDs, measurement IDs, site keys, and tokens are not copied into this st
 
 ## 5. Keep policy and UI copy in the right layer
 
-Write the reviewed policy as `content/pages/privacy/<locale>.md`. Generated privacy information can identify the configured providers and their adapter purposes, but it is not legal advice or a substitute for that page. The consent labels and purpose descriptions belong to the theme/component `messages.yml`, which supplies `zh-sg`, `zh-tw`, `en`, and the normal locale fallback chain. A site does not need a private `copy` object just to use the consent UI.
+Write the reviewed policy as `content/pages/privacy/<locale>.md`. Every active locale must declare the exact enabled Provider IDs in Frontmatter, for example `integrations: [google-analytics]`, and explain the real provider, purpose, data categories, retention source, withdrawal behavior, and contact. Generation fails when a declaration is missing or stale. Generated privacy information is not legal advice or a substitute for that page. Consent labels and short purpose descriptions belong to Component `messages.yml`.
 
 Do not add a third-party URL, inline script, `onclick`, HTML, or a secret to site configuration. Provider resources are fixed by trusted code, and browser withdrawal prevents later loads without pretending that it can undo a request already made.
 

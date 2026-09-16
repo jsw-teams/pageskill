@@ -10,7 +10,7 @@ component: page
 
 # 用 Markdown 和 YAML 搭建内容网站
 
-Pageskill 把 Markdown 内容和少量 YAML 站点数据编译成多语言网站。可复用主题负责布局和组件，动态 API 则保持在清楚的同源边界之后。
+Pageskill 把 Markdown 内容和少量 YAML 站点数据编译成多语言网站。可复用 Component 负责表现与行为；数据库、模型和写操作只留在命名外部 API 中。
 
 [开始使用](/zh-sg/posts/start/) [GitHub](https://github.com/jsw-teams/pageskill)
 :::
@@ -21,7 +21,7 @@ Pageskill 把 Markdown 内容和少量 YAML 站点数据编译成多语言网站
 
 | 内容 | 主题 | 多语言 | 发现能力 | 部署 |
 | --- | --- | --- | --- | --- |
-| Markdown 页面和文章 | 可复用 Component | `zh-sg`、`zh-tw`、`en` | 搜索、Feed、Agent 元数据 | 静态输出和可选 Runtime API |
+| Markdown 页面和文章 | 可复用 Component | `zh-sg`、`zh-tw`、`en` | 本地搜索、Feed、Agent 元数据 | 静态输出和可选外部 API |
 
 下面的教程会展示这个预览站实际使用的源文件。
 
@@ -40,6 +40,9 @@ Pageskill 把 Markdown 内容和少量 YAML 站点数据编译成多语言网站
 
 ### [我们如何构建组件](/zh-sg/posts/components/)
 学习一个可复用组件如何拥有自己的资源、安全渲染和本地化文案；Consent 组件是更高级的参考实现。
+
+### [开发 Agent Skill](/zh-sg/posts/skill-development/)
+编写由生成器产出、只描述真实 Component、内容、配置与外部服务的 Skill 契约。
 
 ### [换样式](/zh-sg/posts/customize/)
 先复用主题已有能力；需要新结构时实现一次，让之后的页面继续使用。

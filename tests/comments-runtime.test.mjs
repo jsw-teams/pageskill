@@ -126,3 +126,23 @@ test('Comments capability discovery reflects bindings and accepts arbitrary gene
   const response = await module.router.match(new Request('https://example.com/api/comments/capabilities'), env, undefined);
   assert.deepEqual(await response.json(), { comments: false, translation: false });
 });
+
+test('missing providers stay behind a stable public API error', async () => {
+  const module = await import(pathToFileURL(path.join(root, '.pageskill', 'backend-runtime', 'backend', 'handler.js')).href);
+  const env = { PAGESKILL_SITE: { activeLocales: ['en'], contentKeys: ['posts:first'] } };
+  const response = await module.router.match(new Request('https://example.com/api/comments?content=posts%3Afirst&locale=en'), env, undefined);
+  assert.equal(response.status, 503);
+  const body = await response.json();
+  assert.deepEqual(body, { error: 'Comments are temporarily unavailable.', code: 'api_capability_unavailable', capability: 'comments' });
+  assert.doesNotMatch(JSON.stringify(body), /COMMENTS_DB|\bD1\b|\bAI\b|\bmodel\b/i);
+});
+
+test('the external API requires a host-injected bearer token', async () => {
+  const module = await import(pathToFileURL(path.join(root, '.pageskill', 'backend-runtime', 'backend', 'handler.js')).href);
+  const request = token => new Request('https://api.example.com/api/health', { headers: token ? { authorization: `Bearer ${token}` } : {} });
+  assert.equal((await module.handleApi(request(), {})).status, 503);
+  assert.equal((await module.handleApi(request('wrong'), { PAGESKILL_API_TOKEN: 'secret' })).status, 401);
+  const response = await module.handleApi(request('secret'), { PAGESKILL_API_TOKEN: 'secret' });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true, service: 'pageskill', boundary: 'authenticated-api' });
+});

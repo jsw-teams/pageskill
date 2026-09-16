@@ -1,8 +1,6 @@
 // Provider resources are controlled by the trusted adapter metadata emitted
 // by the compiler. Site YAML never supplies a URL or an executable script.
-const root = document.querySelector('[data-cookie-consent]');
-
-if (root) {
+export function mount(root, runtime) {
   const banner = root.querySelector('[data-cookie-banner]');
   const dialog = root.querySelector('[data-cookie-dialog]');
   const hasConsentUi = root.dataset.cookieUi === 'true';
@@ -330,7 +328,7 @@ if (root) {
 
   document.querySelectorAll('[data-pageskill-allow-purpose]').forEach(button => button.addEventListener('click', () => {
     grantPurpose(String(button.dataset.pageskillAllowPurpose || ''));
-  }));
+  }, { signal: runtime.signal }));
 
   if (hasConsentUi) {
     document.querySelectorAll('[data-cookie-action]').forEach(button => button.addEventListener('click', () => {
@@ -340,9 +338,9 @@ if (root) {
       else if (action === 'reject-optional') save(false);
       else if (action === 'save') save();
       else if (action === 'close') closeDialog();
-    }));
-    dialog?.addEventListener('cancel', event => { event.preventDefault(); closeDialog(); });
-    dialog?.addEventListener('click', event => { if (event.target === dialog) closeDialog(); });
+    }, { signal: runtime.signal }));
+    dialog?.addEventListener('cancel', event => { event.preventDefault(); closeDialog(); }, { signal: runtime.signal });
+    dialog?.addEventListener('click', event => { if (event.target === dialog) closeDialog(); }, { signal: runtime.signal });
   }
 
   const existing = read();

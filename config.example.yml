@@ -47,10 +47,15 @@ footer:
 #   consent:
 #     decisionRetentionDays: 180
 
-# Runtime is optional. A static site can omit this block entirely. Cloudflare
-# Pages is the bundled reference adapter; its D1 and optional AI bindings are
-# configured by the host, not by Core. Pageskill does not generate or invoke
-# Wrangler; configure production bindings in the hosting project's settings.
-# runtime:
-#   adapter: cloudflare-pages
-#   backend: true
+# Pageskill always emits static files. A Component that declares client.api
+# selects one named entry. Third-party URLs are allowed.
+# Any token written here is compiled into public browser JavaScript, so use
+# only a restricted, revocable client token. Private credentials require a
+# separately deployed proxy; point the URL at that proxy and omit token.
+# apis:
+#   comments:
+#     url: https://api.example.com/v1/comments
+#     token: public-client-token
+#     auth: bearer
+# Local search does not belong here: it reads the generated static search
+# index through the unified Client Runtime and never calls an external API.

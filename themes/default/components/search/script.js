@@ -1,6 +1,5 @@
 // Search stays client-side and inserts result data with text/DOM APIs only.
-const root = document.querySelector('[data-local-search]');
-if (root) {
+export function mount(root, runtime) {
   const input = root.querySelector('[data-search-input]');
   const results = root.querySelector('[data-search-results]');
   const indexUrl = root.dataset.searchIndex;
@@ -90,15 +89,12 @@ if (root) {
   let inputTimer = 0;
   const load = () => {
     if (!entriesPromise) {
-      entriesPromise = fetch(indexUrl, { headers: { accept: 'application/json' } })
-        .then(response => { if (!response.ok) throw new Error(`Search index request failed: ${response.status}`); return response.json(); })
+      entriesPromise = runtime.assetJson(indexUrl, { signal: runtime.signal })
         .then(async data => {
           if (Array.isArray(data)) return data;
           if (!Array.isArray(data?.shards)) return [];
           const shards = await Promise.all(data.shards.map(async shard => {
-            const response = await fetch(shard, { headers: { accept: 'application/json' } });
-            if (!response.ok) throw new Error(`Search shard request failed: ${response.status}`);
-            return response.json();
+            return runtime.assetJson(shard, { signal: runtime.signal });
           }));
           return shards.flatMap(shard => Array.isArray(shard) ? shard : []);
         });
@@ -177,9 +173,10 @@ if (root) {
       showMessage(root.dataset.searchError || 'Search is temporarily unavailable.', 'error');
     }
   };
-  root.addEventListener('submit', event => { event.preventDefault(); show(input?.value || ''); });
-  input?.addEventListener('input', () => { window.clearTimeout(inputTimer); inputTimer = window.setTimeout(() => show(input.value), 90); });
-  input?.addEventListener('keydown', event => { if (event.key !== 'Escape') return; input.value = ''; show(''); input.focus(); });
-  document.addEventListener('click', event => { if (root.contains(event.target)) return; results.hidden = true; });
+  root.addEventListener('submit', event => { event.preventDefault(); show(input?.value || ''); }, { signal: runtime.signal });
+  input?.addEventListener('input', () => { window.clearTimeout(inputTimer); inputTimer = window.setTimeout(() => show(input.value), 90); }, { signal: runtime.signal });
+  input?.addEventListener('keydown', event => { if (event.key !== 'Escape') return; input.value = ''; show(''); input.focus(); }, { signal: runtime.signal });
+  document.addEventListener('click', event => { if (root.contains(event.target)) return; results.hidden = true; }, { signal: runtime.signal });
+  runtime.signal.addEventListener('abort', () => window.clearTimeout(inputTimer), { once: true });
   setState('idle', 0);
 }

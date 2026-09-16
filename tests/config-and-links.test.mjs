@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { loadConfig, loadThemeConfig } from '../src/runtime/config/load.js';
-import { resolveDeploymentConfig } from '../src/runtime/config/deployment.js';
+import { validateDeploymentConfig } from '../src/runtime/config/validate.js';
+import { resolveClientApis, validateClientApis } from '../src/runtime/config/apis.js';
 import { resolveSiteLink, renderSiteLink } from '../src/runtime/lib/site-links.js';
 
 const tempRoots = new Set();
@@ -121,14 +122,26 @@ test('explicit theme.config is the only theme instance source', async () => {
   await assert.rejects(() => loadThemeConfig(root, { theme: { name: 'default', config: './site/unsafe.yml' } }), /copy.*not supported/);
 });
 
-test('deployment normalization is optional and adapter-neutral', () => {
-  const resolved = resolveDeploymentConfig({});
-  assert.deepEqual(resolved, { enabled: false, staticDirectory: 'public', publicDirectory: 'public', backend: false });
-  assert.deepEqual(resolveDeploymentConfig({ runtime: { adapter: 'cloudflare-pages', backend: true } }), { adapter: 'cloudflare-pages', enabled: true, staticDirectory: 'public', publicDirectory: 'public', backend: true });
-  assert.deepEqual(resolveDeploymentConfig({ runtime: { adapter: 'custom-runtime', backend: false } }), { adapter: 'custom-runtime', enabled: true, staticDirectory: 'public', publicDirectory: 'public', backend: false });
-  assert.throws(() => resolveDeploymentConfig({ deployment: { targets: ['github-pages'] } }), /deployment was removed/);
-  assert.throws(() => resolveDeploymentConfig({ runtime: { staticDirectory: 'site-public' } }), /fixed to "public"/);
-  assert.throws(() => resolveDeploymentConfig({ runtime: { adapter: '../outside' } }), /safe adapter id/);
+test('Core is static-only and rejects retired deployment/runtime configuration', () => {
+  assert.doesNotThrow(() => validateDeploymentConfig({}));
+  assert.throws(() => validateDeploymentConfig({ runtime: { adapter: 'cloudflare-pages', backend: true } }), /runtime was removed/);
+  assert.throws(() => validateDeploymentConfig({ deployment: { targets: ['github-pages'] } }), /deployment was removed/);
+});
+
+test('named browser APIs allow explicit third-party URLs and scoped public credentials', () => {
+  const config = { apis: {
+    comments: { url: 'https://api.example.com/v1/comments', token: 'public-client-token', auth: 'bearer' },
+    contentService: { url: 'https://content.example.net/query', token: 'public-key', auth: 'x-api-key' }
+  } };
+  assert.doesNotThrow(() => validateClientApis(config));
+  assert.deepEqual(resolveClientApis(config), {
+    comments: { id: 'comments', url: 'https://api.example.com/v1/comments', token: 'public-client-token', auth: 'bearer' },
+    contentService: { id: 'contentService', url: 'https://content.example.net/query', token: 'public-key', auth: 'x-api-key' }
+  });
+  assert.throws(() => validateClientApis({ apis: { bad: { url: 'file:///tmp/data' } } }), /HTTP\(S\)/);
+  assert.throws(() => validateClientApis({ apis: { bad: { url: 'https://user:pass@example.com/#secret' } } }), /without credentials or a fragment/);
+  assert.throws(() => validateClientApis({ apis: { bad: { url: 'https://example.com', token: 'line\nbreak' } } }), /single-line client token/);
+  assert.throws(() => validateClientApis({ apis: { bad: { url: 'https://example.com', secret: 'no' } } }), /not supported/);
 });
 
 test('site links resolve locale, labels, current state, and external target security', () => {

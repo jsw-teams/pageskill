@@ -16,7 +16,7 @@ export const integrationAdapters: Record<string, ProviderAdapter> = {
     schema: { measurementId: { type: 'string', required: true, pattern: '^G-[A-Z0-9_-]+$' } },
     privacy: { purpose: 'measurement', consent: 'required', load: 'consent' },
     labelKey: 'privacyConsent.providers.google-analytics',
-    runtime: 'google-analytics',
+    loader: 'google-analytics',
     publicFields: ['measurementId']
   },
   'google-ads': {
@@ -24,7 +24,7 @@ export const integrationAdapters: Record<string, ProviderAdapter> = {
     schema: { tagId: { type: 'string', required: true, pattern: '^(AW|GT)-[A-Z0-9_-]+$' } },
     privacy: { purpose: 'advertising', consent: 'required', load: 'consent' },
     labelKey: 'privacyConsent.providers.google-ads',
-    runtime: 'google-ads',
+    loader: 'google-ads',
     publicFields: ['tagId']
   },
   'cloudflare-web-analytics': {
@@ -32,7 +32,7 @@ export const integrationAdapters: Record<string, ProviderAdapter> = {
     schema: { token: publicIdentifier },
     privacy: { purpose: 'measurement', consent: 'required', load: 'consent' },
     labelKey: 'privacyConsent.providers.cloudflare-web-analytics',
-    runtime: 'cloudflare-web-analytics',
+    loader: 'cloudflare-web-analytics',
     publicFields: ['token']
   },
   'baidu-tongji': {
@@ -40,7 +40,7 @@ export const integrationAdapters: Record<string, ProviderAdapter> = {
     schema: { siteSignature: publicIdentifier },
     privacy: { purpose: 'measurement', consent: 'required', load: 'consent' },
     labelKey: 'privacyConsent.providers.baidu-tongji',
-    runtime: 'baidu-tongji',
+    loader: 'baidu-tongji',
     publicFields: ['siteSignature']
   },
   recaptcha: {
@@ -48,7 +48,7 @@ export const integrationAdapters: Record<string, ProviderAdapter> = {
     schema: { siteKey: publicIdentifier },
     privacy: { purpose: 'fraud-prevention', consent: 'required', load: 'on-demand' },
     labelKey: 'privacyConsent.providers.recaptcha',
-    runtime: 'recaptcha',
+    loader: 'recaptcha',
     publicFields: ['siteKey']
   },
   hcaptcha: {
@@ -56,7 +56,7 @@ export const integrationAdapters: Record<string, ProviderAdapter> = {
     schema: { siteKey: publicIdentifier },
     privacy: { purpose: 'fraud-prevention', consent: 'required', load: 'on-demand' },
     labelKey: 'privacyConsent.providers.hcaptcha',
-    runtime: 'hcaptcha',
+    loader: 'hcaptcha',
     publicFields: ['siteKey']
   },
   turnstile: {
@@ -67,7 +67,7 @@ export const integrationAdapters: Record<string, ProviderAdapter> = {
     // from analytics and embeds, without making a legal determination.
     privacy: { purpose: 'fraud-prevention', consent: 'none', load: 'on-demand' },
     labelKey: 'privacyConsent.providers.turnstile',
-    runtime: 'turnstile',
+    loader: 'turnstile',
     publicFields: ['siteKey']
   },
   'x-for-websites': {
@@ -75,7 +75,7 @@ export const integrationAdapters: Record<string, ProviderAdapter> = {
     schema: {},
     privacy: { purpose: 'social-embedding', consent: 'required', load: 'on-demand' },
     labelKey: 'privacyConsent.providers.x-for-websites',
-    runtime: 'x-for-websites',
+    loader: 'x-for-websites',
     publicFields: [],
     placeholder: true
   }

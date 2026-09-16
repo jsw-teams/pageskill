@@ -31,35 +31,39 @@ page s
 构建输出目录：dist/public
 ```
 
-主机会在构建时运行 Pageskill，并且只上传 `dist/public`。不要使用私有的 `dist` 根目录，因为其中还可能有 `_pageskill/`、`server/`、`.pageskill/`、Worker 文件和其他生成的部署资料。
+主机会在构建时运行 Pageskill，并且只上传 `dist/public`。Pageskill 不生成 Worker 或 Server bundle。
 
-## 3. 选择可选的 Runtime Adapter
+## 3. 安全连接外部 API
 
-静态网站完全省略 `runtime`。如果网站需要官方 Cloudflare 参考运行时，才明确选择它：
+Pageskill 永远是静态构建。先为每项外部服务配置根级命名 `apis` 项，再把这个 id 写入 Component 的可选 `client.api`：
 
 ```yaml
-runtime:
-  adapter: cloudflare-pages
-  backend: true
+apis:
+  comments:
+    url: https://api.example.com/v1/comments
+    token: public-client-token
+    auth: bearer
 ```
 
-`runtime.adapter` 只选择真实的适配器，不会让站点配置获得保存 Provider token 的权限。凭证和 binding 放在主机的 secret store 或环境变量中。Cloudflare Pages + Functions + D1 + Workers AI 只是一个参考实现，不是 Pageskill Core 依赖；其他平台要使用自己的 Runtime Adapter，实现相同的 Web 标准 Server Function、Storage、Cache 和 AI 契约。
+```ts
+client: { module: 'components/comments/script.js', selector: '[data-comments]', api: 'comments' }
+```
 
-Pageskill 不会生成或调用 Wrangler。使用 Cloudflare Pages Function 时，在 Pages 项目设置中配置 `COMMENTS_DB` D1 binding 和可选的 `AI` binding。生成的 `_worker.js` 会读取这些主机 binding；缺少可选 binding 时，静态页面仍然可用，受影响的 API 会明确返回 503。`migrations/` 请通过主机自己的数据库管理流程执行。
+API id 用于区分 comments、search、billing 等不同服务。Client Runtime 只允许相对请求留在配置的 origin 和基础路径内，并添加 Bearer 或 `x-api-key` Header。第三方 URL 必须通过 CORS 允许本站来源。静态 JS 会收到 `token`，所以它是公开数据，只能使用受限、可撤销的客户端 Token。若凭据必须私密，就把 `url` 指向独立代理、删除 `token`，把上游 URL 与 secret 放在代理环境中。数据库和模型凭据始终只留在 API 环境。
 
 ## 4. 检查生成结果
 
-运行 `page g` 后，确认 `dist/public` 里有首页、多语言路由、资源、Feed、sitemap、`robots.txt` 和生成的发现文件。选择参考运行时后，公开快照旁边可能有私有运行时资料；不要把它复制到公开目录。
+运行 `page g` 后，确认 `dist/public` 里有首页、多语言路由、资源、Feed、sitemap、`robots.txt` 和发现文件。配置的公开 API URL 与客户端 Token 可能出现在其中；私密凭据、数据库配置、Worker 代码和无障碍报告绝不能出现。
 
 Agent Discovery、Agent Skills、API Catalog、Markdown mirror 和 `llms.txt` 都由渲染器生成。如果要配置 OAuth、MCP、WebMCP 或 DNS-AID，请先阅读[配置条件 Agent 能力](/zh-sg/posts/agent-discovery/)，实现真实服务、浏览器模块或 DNS 记录；生成的元数据不会创建这些服务。
 
 ## 5. 发布后验证
 
-使用主机自己的构建日志和预览环境确认构建成功，然后从公开域名打开本地化首页、普通文章、带更新信息的文章和隐私页面。如果启用了 backend，调用文档中声明的同源 API，确认鉴权和错误响应仍是 API 响应，不会变成静态 HTML。
+使用主机自己的构建日志和预览环境确认构建成功，然后从公开域名打开本地化首页、普通文章、版本更新和隐私页面。逐个检查配置的 API id，验证对应 URL 的 CORS、鉴权、路径边界与 JSON 错误响应。
 
 ## 常见问题
 
-公开目录是 `dist/public`，不是项目根目录，也不是私有的 `dist` 根目录。不要把 access token、SSH key 或 backend secret 写入 YAML、Markdown 或公开生成文件。如果主机不能运行 `page g`，就在 CI 中构建，再通过主机文档规定的方式上传 `dist/public` 产物。
+公开目录是 `dist/public`，不是项目根目录，也不是私有的 `dist` 根目录。不要把配置中的客户端 Token 误当 secret，任何人都可以读取它。私密 access token、SSH key 或 backend secret 绝不能写入 YAML、Markdown 或公开生成文件。
 
 ## 下一步
 

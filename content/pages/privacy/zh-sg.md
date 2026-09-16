@@ -2,6 +2,7 @@
 kind: page
 title: 隐私说明
 description: 说明本站如何处理数据，以及已配置的 Integration 如何参与同意流程。
+integrations: []
 ---
 
 # 隐私说明
@@ -20,7 +21,11 @@ Pageskill Demo 没有配置第三方 Integration，因此不会显示同意横�
 
 ## 选择保存
 
-运行时会把同意选择保存为小型浏览器偏好，内容只有 schema 版本、当前用途选择和更新时间。`privacy.consent.decisionRetentionDays` 只控制浏览器记住选择多久，不代表 Provider 服务端的数据保存期限或隐私政策。
+同意 Component 会把选择保存为小型浏览器偏好，内容只有 schema 版本、当前用途选择和更新时间。`privacy.consent.decisionRetentionDays` 只控制浏览器记住选择多久，不代表 Provider 服务端的数据保存期限或隐私政策。
+
+## 本地功能与外部 API
+
+本地 Search 读取同站生成索引，不使用 Cookie 或第三方服务。通过命名 `apis` 项连接的 Component 会直接访问已配置外部服务；其客户端 Token 是公开数据，服务端则负责私密凭据、数据处理与自身隐私义务。
 
 ## 联系我们
 

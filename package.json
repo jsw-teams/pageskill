@@ -1,7 +1,7 @@
 {
   "name": "pageskill",
-  "version": "4.0.0",
-  "description": "Pageskill: a Markdown-first content system with reusable Components, static generation, accessibility audits, and optional runtime adapters.",
+  "version": "1.0.0-beta.0",
+  "description": "Pageskill: a Markdown-first static site generator with reusable Components, a governed Client Runtime, and accessibility audits.",
   "license": "MIT",
   "type": "module",
   "packageManager": "npm@10.9.8",
@@ -12,7 +12,7 @@
     ".": "./src/runtime/compiler.js",
     "./theme-api": "./src/runtime/theme-api.js",
     "./fetch-router": "./src/runtime/fetch-router.js",
-    "./runtime-contract": "./src/runtime/runtime-contract.js"
+    "./api-contract": "./src/runtime/api-contract.js"
   },
   "files": [
     "AGENTS.md",
@@ -28,6 +28,7 @@
     "site/",
     "backend/",
     "content/",
+    "docs/",
     "src/",
     "themes/",
     "tests/",
@@ -54,11 +55,11 @@
     "access": "public"
   },
   "scripts": {
-    "g": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/page.mjs g",
-    "c": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/page.mjs c",
-    "s": "npm run compile-runtime && npm run compile-theme && npm run compile-backend && node src/bin/page.mjs s",
+    "g": "npm run compile-runtime && npm run compile-theme && node src/bin/page.mjs g",
+    "c": "npm run compile-runtime && npm run compile-theme && node src/bin/page.mjs c",
+    "s": "npm run compile-runtime && npm run compile-theme && node src/bin/page.mjs s",
     "test": "npm run g && node src/bin/page.mjs c && node --test",
-    "compile-runtime": "tsc -p tsconfig.emit.json",
+    "compile-runtime": "node scripts/clean-runtime.mjs && tsc -p tsconfig.emit.json",
     "compile-backend": "tsc -p tsconfig.backend.json",
     "compile-theme": "tsc -p tsconfig.theme.json"
   },

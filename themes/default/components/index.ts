@@ -28,7 +28,7 @@ export const components: ComponentDefinition[] = [
   { ...postMeta, id: 'postMeta' },
   { ...codeCopy, id: 'codeCopy' },
   { ...comments, id: 'comments', source: 'external', capabilities: ['render', 'client', 'server', 'storage', 'cache'] },
-  { ...commentTranslation, id: 'comment-translation', source: 'external', capabilities: ['client', 'server', 'storage', 'cache', 'ai'] },
+  { ...commentTranslation, id: 'comment-translation', source: 'external', capabilities: ['server', 'storage', 'cache', 'ai'] },
   { ...hero, id: 'hero' },
   { ...featureGrid, id: 'feature-grid' },
   { ...learningPath, id: 'learning-path' },

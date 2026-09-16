@@ -13,7 +13,8 @@ export const component: ComponentDefinition = {
   id: 'privacyConsent',
   capabilities: ['render', 'client', 'integration'],
   implementation: 'components/consent/index.ts',
-  resources: { styles: ['components/consent/style.css', 'components/consent/placeholder.css'], scripts: ['components/consent/script.js'] },
+  resources: { styles: ['components/consent/style.css', 'components/consent/placeholder.css'] },
+  client: { module: 'components/consent/script.js', selector: '[data-cookie-consent]' },
   i18n: 'components/consent/messages.yml',
   // Consent presentation has no mandatory instance settings. Provider
   // capabilities live in the trusted registry above; site integrations live

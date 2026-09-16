@@ -26,7 +26,7 @@ npm install
 page g
 ```
 
-`page g` compiles the runtime, theme, and backend, then validates and generates this repository. The source tree is now the site you edit.
+`page g` validates project source and generates the static site. When developing this repository itself, `npm run g` first compiles Core and Theme source, then invokes the same public command. The independent reference API is compiled only with `npm run compile-backend`.
 
 Run `page c` in a browser-capable environment when you want the complete accessibility audit before release.
 

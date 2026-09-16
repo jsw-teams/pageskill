@@ -2,6 +2,7 @@
 kind: page
 title: 隱私說明
 description: 說明本站如何處理資料，以及已設定的 Integration 如何參與同意流程。
+integrations: []
 ---
 
 # 隱私說明
@@ -20,7 +21,11 @@ Pageskill Demo 沒有設定第三方 Integration，因此不會顯示同意橫�
 
 ## 選擇保存
 
-執行階段會把同意選擇保存為小型瀏覽器偏好，內容只有 schema 版本、目前用途選擇和更新時間。`privacy.consent.decisionRetentionDays` 只控制瀏覽器記住選擇多久，不代表 Provider 服務端的資料保存期限或隱私政策。
+同意 Component 會把選擇保存為小型瀏覽器偏好，內容只有 schema 版本、目前用途選擇和更新時間。`privacy.consent.decisionRetentionDays` 只控制瀏覽器記住選擇多久，不代表 Provider 服務端的資料保存期限或隱私政策。
+
+## 本機功能與外部 API
+
+本機 Search 讀取同站產生索引，不使用 Cookie 或第三方服務。透過命名 `apis` 項目連接的 Component 會直接存取已設定外部服務；其用戶端 Token 是公開資料，服務端則負責私密憑證、資料處理與自身隱私義務。
 
 ## 聯絡我們
 

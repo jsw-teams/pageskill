@@ -9,6 +9,7 @@ export const component: ComponentDefinition = {
   id: 'language',
   capabilities: ['render', 'client'],
   implementation: 'components/language/index.ts',
-  resources: { styles: ['components/language/style.css'], scripts: ['components/language/script.js'] },
+  resources: { styles: ['components/language/style.css'] },
+  client: { module: 'components/language/script.js', selector: '[data-language-picker]' },
   i18n: 'components/language/messages.yml'
 };

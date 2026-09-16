@@ -105,10 +105,9 @@ export type ComponentRenderContext = {
 };
 
 export type ComponentPrivacyContext = {
-  /** A trusted adapter runtime is present, even when no consent UI is needed. */
-  runtimeEnabled: boolean;
+  /** At least one trusted browser Provider is configured. */
+  providerEnabled: boolean;
   enabled: boolean;
-  scriptSrc: string;
   decisionRetentionDays: number;
   policyHref: string;
   title: string;
@@ -156,7 +155,6 @@ export type ComponentShellContext = ComponentRenderContext & {
   search: {
     enabled: boolean;
     indexHref: string;
-    scriptSrc: string;
     label: string;
     placeholder: string;
     submitLabel: string;
@@ -197,7 +195,15 @@ export type ComponentChromeConfig = {
 };
 
 export type ComponentResource = string | { path: string; id?: string };
-export type ComponentResources = { styles?: ComponentResource[]; scripts?: ComponentResource[] };
+export type ComponentResources = { styles?: ComponentResource[] };
+export type ComponentClientDefinition = {
+  /** Theme-relative ES module exporting `mount(root, runtime)`. */
+  module: string;
+  /** The Component root selected by the Core-generated bootstrap. */
+  selector: string;
+  /** Optional config `apis` id. Omit it for DOM and generated-asset behavior. */
+  api?: string;
+};
 
 export type ComponentOptionSchema = {
   type: 'boolean' | 'string' | 'number' | 'object' | 'array';
@@ -225,7 +231,7 @@ export type ProviderAdapter = {
     load: IntegrationLoadPolicy;
   };
   labelKey?: string;
-  runtime: string;
+  loader: string;
   publicFields?: string[];
   placeholder?: boolean;
 };
@@ -244,6 +250,7 @@ export type ComponentDefinition = {
   contexts?: string[];
   implementation?: string;
   resources?: ComponentResources;
+  client?: ComponentClientDefinition;
   i18n?: I18nSource | I18nSource[];
   defaults?: Record<string, any>;
   schema?: Record<string, ComponentOptionSchema>;
@@ -286,13 +293,12 @@ function mergeResourceList(left: ComponentResource[] = [], right: ComponentResou
 
 function mergeResources(left: ComponentResources | undefined, right: ComponentResources | undefined): ComponentResources {
   return {
-    styles: mergeResourceList(left?.styles, right?.styles),
-    scripts: mergeResourceList(left?.scripts, right?.scripts)
+    styles: mergeResourceList(left?.styles, right?.styles)
   };
 }
 
 function withModuleResources<T extends { resources?: ComponentResources }>(definition: T, resources: ComponentResources | undefined): T {
-  if (!resources || (!resources.styles?.length && !resources.scripts?.length)) return definition;
+  if (!resources || !resources.styles?.length) return definition;
   return { ...definition, resources: mergeResources(resources, definition.resources) };
 }
 

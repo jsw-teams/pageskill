@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateConfigLayer } from '../src/runtime/config/validate.js';
-import { resolveConfiguredIntegrations, validateConfiguredIntegrations } from '../src/runtime/config/integrations.js';
+import { integrationPrivacyPolicyDiagnostics, resolveConfiguredIntegrations, validateConfiguredIntegrations } from '../src/runtime/config/integrations.js';
 import { renderPrivacyConsent } from '../src/runtime/lib/privacy-consent.js';
 import { integrationAdapters } from '../.pageskill/theme-runtime/themes/default/components/consent/integrations.js';
 
@@ -37,18 +37,32 @@ test('adapter schema rejects site purpose, arbitrary scripts, and secrets', () =
   }
 });
 
+test('enabled third-party integrations require every localized privacy policy revision', () => {
+  const config = { defaultLocale: 'en', activeLocales: ['en', 'zh-sg'], integrations: { 'google-analytics': { measurementId: 'G-AAA' } } };
+  const base = { collection: 'pages', id: 'privacy' };
+  const incomplete = [
+    { ...base, locale: 'en', source: 'content/pages/privacy/en.md', data: { integrations: ['google-analytics'] } },
+    { ...base, locale: 'zh-sg', source: 'content/pages/privacy/zh-sg.md', data: {} }
+  ];
+  assert.deepEqual(integrationPrivacyPolicyDiagnostics(config, theme, incomplete), [
+    'content/pages/privacy/zh-sg.md:1:1: privacy policy frontmatter integrations must acknowledge enabled providers: google-analytics'
+  ]);
+  const complete = incomplete.map(document => ({ ...document, data: { integrations: ['google-analytics'] } }));
+  assert.deepEqual(integrationPrivacyPolicyDiagnostics(config, theme, complete), []);
+});
+
 test('consent markup is absent without integrations and only lists configured purposes', () => {
   const tools = { escapeHtml: value => String(value), safeUrl: value => value, translate: (_key, fallback) => fallback };
-  const empty = renderPrivacyConsent({ runtimeEnabled: false, enabled: false, scriptSrc: '', decisionRetentionDays: 365, policyHref: '/en/privacy/', title: 'Privacy choices', description: 'Choose', bannerLabel: 'Purposes', settingsLabel: 'Settings', acceptLabel: 'Accept all', rejectLabel: 'Essential only', saveLabel: 'Save', closeLabel: 'Close', policyLabel: 'Privacy', categories: [], integrations: [] }, tools);
+  const empty = renderPrivacyConsent({ providerEnabled: false, enabled: false, decisionRetentionDays: 365, policyHref: '/en/privacy/', title: 'Privacy choices', description: 'Choose', bannerLabel: 'Purposes', settingsLabel: 'Settings', acceptLabel: 'Accept all', rejectLabel: 'Essential only', saveLabel: 'Save', closeLabel: 'Close', policyLabel: 'Privacy', categories: [], integrations: [] }, tools);
   assert.equal(empty.markup, '');
   assert.equal(empty.triggerMarkup, '');
 
-  const rendered = renderPrivacyConsent({ runtimeEnabled: true, enabled: true, scriptSrc: '/assets/cookie.js', decisionRetentionDays: 365, policyHref: '/en/privacy/', title: 'Privacy choices', description: 'Choose', bannerLabel: 'Purposes', settingsLabel: 'Settings', acceptLabel: 'Accept all', rejectLabel: 'Essential only', saveLabel: 'Save', closeLabel: 'Close', policyLabel: 'Privacy', categories: [{ purpose: 'measurement', label: 'Measurement', description: 'Only analytics', providers: ['Google Analytics'] }], integrations: [{ id: 'google-analytics', runtime: 'google-analytics', purpose: 'measurement', consent: 'required', load: 'consent', enabled: true, measurementId: 'G-AAA' }] }, tools);
+  const rendered = renderPrivacyConsent({ providerEnabled: true, enabled: true, decisionRetentionDays: 365, policyHref: '/en/privacy/', title: 'Privacy choices', description: 'Choose', bannerLabel: 'Purposes', settingsLabel: 'Settings', acceptLabel: 'Accept all', rejectLabel: 'Essential only', saveLabel: 'Save', closeLabel: 'Close', policyLabel: 'Privacy', categories: [{ purpose: 'measurement', label: 'Measurement', description: 'Only analytics', providers: ['Google Analytics'] }], integrations: [{ id: 'google-analytics', loader: 'google-analytics', purpose: 'measurement', consent: 'required', load: 'consent', enabled: true, measurementId: 'G-AAA' }] }, tools);
   assert.match(rendered.markup, /data-cookie-ui="true"/);
   assert.match(rendered.markup, /Measurement/);
   assert.doesNotMatch(rendered.markup, /data-cookie-storage|data-cookie-retention-days|gatedScripts|retentionSession/);
 
-  const direct = renderPrivacyConsent({ runtimeEnabled: true, enabled: false, scriptSrc: '/assets/cookie.js', decisionRetentionDays: 365, policyHref: '/en/privacy/', title: 'Privacy choices', description: 'Choose', bannerLabel: 'Purposes', settingsLabel: 'Settings', acceptLabel: 'Accept all', rejectLabel: 'Essential only', saveLabel: 'Save', closeLabel: 'Close', policyLabel: 'Privacy', categories: [], integrations: [{ id: 'turnstile', runtime: 'turnstile', purpose: 'fraud-prevention', consent: 'none', load: 'on-demand', enabled: true, siteKey: 'x' }] }, tools);
+  const direct = renderPrivacyConsent({ providerEnabled: true, enabled: false, decisionRetentionDays: 365, policyHref: '/en/privacy/', title: 'Privacy choices', description: 'Choose', bannerLabel: 'Purposes', settingsLabel: 'Settings', acceptLabel: 'Accept all', rejectLabel: 'Essential only', saveLabel: 'Save', closeLabel: 'Close', policyLabel: 'Privacy', categories: [], integrations: [{ id: 'turnstile', loader: 'turnstile', purpose: 'fraud-prevention', consent: 'none', load: 'on-demand', enabled: true, siteKey: 'x' }] }, tools);
   assert.match(direct.markup, /data-cookie-ui="false"/);
   assert.doesNotMatch(direct.markup, /cookie-banner|cookie-dialog/);
 });
@@ -57,9 +71,8 @@ test('on-demand social adapters provide a safe purpose-scoped placeholder', () =
   assert.equal(integrationAdapters['x-for-websites'].placeholder, true);
   const tools = { escapeHtml: value => String(value), safeUrl: value => value, translate: (_key, fallback) => fallback };
   const rendered = renderPrivacyConsent({
-    runtimeEnabled: true,
+    providerEnabled: true,
     enabled: true,
-    scriptSrc: '/assets/cookie.js',
     decisionRetentionDays: 365,
     policyHref: '/en/privacy/',
     title: 'Privacy choices',
@@ -75,7 +88,7 @@ test('on-demand social adapters provide a safe purpose-scoped placeholder', () =
     socialPlaceholderDescription: 'Allow social content to load this embed.',
     socialPlaceholderAllowLabel: 'Allow social content',
     categories: [{ purpose: 'social-embedding', label: 'Social content', description: 'Configured embeds', providers: ['X for Websites'] }],
-    integrations: [{ id: 'x-for-websites', runtime: 'x-for-websites', purpose: 'social-embedding', consent: 'required', load: 'on-demand', enabled: true, placeholder: true }]
+    integrations: [{ id: 'x-for-websites', loader: 'x-for-websites', purpose: 'social-embedding', consent: 'required', load: 'on-demand', enabled: true, placeholder: true }]
   }, tools);
   assert.match(rendered.markup, /data-cookie-social-placeholder-title="Social content is paused"/);
   assert.match(rendered.markup, /data-cookie-social-placeholder-allow="Allow social content"/);

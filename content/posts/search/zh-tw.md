@@ -8,7 +8,7 @@ category: tutorial
 
 # 讓訪客搜到頁面和內容
 
-Pageskill 搜尋會從頁面和帶日期的 post 產生。瀏覽器讀取目前語言的索引，搜尋框不需要自訂 API。
+Pageskill 搜尋會從頁面和帶日期的 post 產生。瀏覽器透過 `runtime.assetJson` 讀取目前語言的靜態索引；它不使用 `config.apis`、資料庫、Cookie 或第三方請求。
 
 ## 1. 開啟搜尋設定
 
@@ -47,7 +47,7 @@ page s
 
 ## 常見問題
 
-修改 Markdown 後，已有預覽不會在沒有產生或重建時更新。不要直接改 `dist/` 下產生的搜尋 JSON；應修改來源內容或 `site/theme.yml` 中的搜尋選項。
+不要把 Search 寫進 `config.apis`，也不要把它當成外部服務。修改 Markdown 後，已有預覽不會在沒有產生或重建時更新。不要直接改 `dist/` 下產生的搜尋 JSON；應修改來源內容或 `site/theme.yml` 中的搜尋選項。
 
 ## 下一步
 
