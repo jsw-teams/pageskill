@@ -1,32 +1,47 @@
 ---
 kind: page
-title: 隐私说明
-description: 说明本站如何处理数据，以及已配置的 Integration 如何参与同意流程。
+title: 隐私政策
+description: 说明 Pageskill 演示站处理什么、什么只留在浏览器，以及启用外部 Provider 后需要怎样更新政策。
+toc: false
 integrations: []
 ---
 
-# 隐私说明
+# 隐私政策
 
-这是一份固定的隐私政策页面，说明本站如何处理运行页面所需的信息，以及访客如何管理可选 Integration。
+本政策适用于 `pageskill.openjsu.com` 的 Pageskill 演示站，描述的是本站当前配置，而不是替所有使用 Pageskill 构建的网站作出承诺。
 
-## 本 Demo 当前状态
+## 当前处理情况
 
-Pageskill Demo 没有配置第三方 Integration，因此不会显示同意横幅，也不会加载分析、广告、验证码或社交嵌入服务。
+| 功能 | 涉及信息 | 信息去向 | 当前状态 |
+| --- | --- | --- | --- |
+| 静态页面传输 | 提供 Web 请求通常需要的网络信息 | 托管服务商 | 打开网站所必需 |
+| 本地 Search | 输入的关键词与已生成搜索索引 | 仅在浏览器中 | 已启用 |
+| 语言偏好 | 选择的语言 | 本设备浏览器存储 | 已启用 |
+| 可选 Provider | 同意前说明的 Provider 专属事件 | 对应 Provider | 本演示未配置 |
+| 命名外部 API | 已连接 Component 明确发送的数据 | 配置的 API URL | 本演示未配置 |
 
-站点负责人在 `config.yml` 的 `integrations` 下加入服务后，活动主题的受信任 Provider Adapter 会提供公开字段、处理用途、同意要求和加载策略。站点 YAML 不能提供脚本 URL，也不能自行选择 purpose。
+Pageskill Core 不创建访客账户，不写入生产数据库，不调用 AI 模型，也不保存评论。这些能力必须由独立部署的 API 服务提供，并由启用它们的网站另行说明。
 
-## 同意选择
+## 浏览器存储与 Cookie
 
-同意用途由已启用的 Adapter 自动推导。对话框只显示本站实际配置的 Integration 所对应的用途；Pageskill 自身的必要运行能力由系统处理，不作为站点级分类。需要同意的 Provider 在访客允许对应用途前不会加载。撤回同意会阻止之后的加载，但不能撤销 Provider 已经完成的工作。
+语言选择器可能在本设备保存语言偏好。如果网站启用了需要同意的 Provider Adapter，Consent Component 还会保存所选用途、schema 版本和更新时间。这项偏好不包含用户画像、指纹、IP 地址或浏览记录。
 
-## 选择保存
+本站当前没有分析、广告、验证码或社交嵌入 Provider，因此没有需要请求的可选用途。只有配置启用了确实需要同意的受信任 Adapter 时，才会显示同意界面。
 
-同意 Component 会把选择保存为小型浏览器偏好，内容只有 schema 版本、当前用途选择和更新时间。`privacy.consent.decisionRetentionDays` 只控制浏览器记住选择多久，不代表 Provider 服务端的数据保存期限或隐私政策。
+## 本地 Search 与外部 API
 
-## 本地功能与外部 API
+Search 在浏览器中读取同站生成索引，搜索词不会发送给 Pageskill 或第三方搜索服务。
 
-本地 Search 读取同站生成索引，不使用 Cookie 或第三方服务。通过命名 `apis` 项连接的 Component 会直接访问已配置外部服务；其客户端 Token 是公开数据，服务端则负责私密凭据、数据处理与自身隐私义务。
+浏览器 Component 只能调用 `config.yml` 中分配给它的命名 API；该 origin 可以属于第三方。写入浏览器配置的 Token 按设计属于公开信息，私密凭据必须保存在外部服务或其 Secret Store。外部服务负责鉴权、保存、删除及自身隐私说明。
 
-## 联系我们
+## Provider 变更与政策修订
 
-隐私问题请通过 [Pageskill GitHub](https://github.com/jsw-teams/pageskill) 联系 toewpq。启用 Integration 的站点必须在这份经过审核的政策中补充真实的数据处理和联系人信息。
+启用可选 Provider 前，站点运营者必须审查其用途、数据类别、接收方、保存期限、跨境传输、撤回行为和政策链接。Provider Adapter 负责控制加载，但仍必须修订本页，让访问者理解真实处理流程。配置开关不能替代隐私政策审查。
+
+## 你的选择
+
+如果存在可选用途，你可以拒绝，通过“隐私设置”稍后修改，或清除本站的浏览器存储。撤回选择会阻止之后加载 Provider，但无法撤销已经完成的请求。对于外部 API 保存的数据，应联系该服务标明的运营者。
+
+## 联系与修订
+
+本演示站的数据控制者是 toewpq。隐私问题和更正请求可通过 [Pageskill 仓库](https://github.com/jsw-teams/pageskill) 提出。启用的 Provider 或数据流发生实质变化时，必须在部署前复核并更新本政策。

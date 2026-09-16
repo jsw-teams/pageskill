@@ -1,71 +1,70 @@
 ---
 kind: page
 title: Pageskill：用 Markdown 搭建内容网站
-description: 用 Markdown、YAML 和可复用主题搭建清晰的多语言内容网站。
-component: page
+description: 用 Markdown、YAML 和可复用 Component 搭建清晰的多语言内容网站。
+component: home
+toc: false
 ---
 
-:::hero{tone="brand" align="left"}
-*Pageskill · 用 Markdown 搭站*
+:::hero{tone="brand" align="left" media="/assets/hero-telescope.png" mediaAlt="代表清晰站点发现能力的小型望远镜" mediaWidth="300" mediaHeight="300"}
+*Pageskill · 静态优先*
 
-# 用 Markdown 和 YAML 搭建内容网站
+# 从内容出发，发布一个认真打磨的网站
 
-Pageskill 把 Markdown 内容和少量 YAML 站点数据编译成多语言网站。可复用 Component 负责表现与行为；数据库、模型和写操作只留在命名外部 API 中。
+用 Markdown 写内容，用 YAML 保存站点决策，让可移植 Component 负责表现。本地 Search 留在静态站点中；数据库、模型、密钥和写操作通过命名外部 API 提供。
 
-[开始使用](/zh-sg/posts/start/) [GitHub](https://github.com/jsw-teams/pageskill)
+[开始搭建](/zh-sg/posts/start/) [查看源码](https://github.com/jsw-teams/pageskill)
 :::
 
-普通作者只需要写 Markdown，需要时修改 `config.yml` 和 `site/theme.yml`，再生成网站。只有站点需要真正新增能力时，才修改主题或 backend 代码。
+Pageskill 把日常编辑的内容与静态站点不应承担的基础设施分开。这样的网站更容易审阅和迁移，也能如实说明每一项已启用能力。
 
-## Pageskill 组合了什么
+## 边界清晰，不增加额外模式
 
-| 内容 | 主题 | 多语言 | 发现能力 | 部署 |
-| --- | --- | --- | --- | --- |
-| Markdown 页面和文章 | 可复用 Component | `zh-sg`、`zh-tw`、`en` | 本地搜索、Feed、Agent 元数据 | 静态输出和可选外部 API |
+:::feature-grid{columns="3"}
+### 内容保持可读
+页面、教程、发布说明、导航和政策文本放在 Markdown 或配置中，而不是藏进 Theme TypeScript。
 
-下面的教程会展示这个预览站实际使用的源文件。
+### Component 保持可移植
+Component 负责布局、交互、无障碍和简短界面文案，不硬编码本站的介绍、路由或演示数据。
+
+### 服务保持外置
+命名 API 通过已配置 URL 连接可选数据或 AI 服务。私密凭据只保存在独立部署的服务中，绝不进入生成的 JavaScript。
+:::
+
+## 沿着真实项目学习
+
+下面每一篇指南都对应本站构建时真正使用的文件和契约。
 
 :::learning-path
 ### [开始](/zh-sg/posts/start/)
-克隆源码仓库，运行 `npm install` 和 `page g`，再直接修改第一个首页。
+安装项目、运行生成器，并修改 `content/pages/` 下的稳定首页。
 
-### [站点设置](/zh-sg/posts/site-settings/)
-改站点名称、语言和导航；设置文件只放数据，不放代码。
+### [编写 Markdown](/zh-sg/posts/markdown/)
+使用标题、列表、链接、表格和简短 Component 指令，不把页面写成配置语言。
 
-### [Markdown](/zh-sg/posts/markdown/)
-用标题、段落、列表和代码围栏写文章，先做出一个最小页面。
+### [配置站点](/zh-sg/posts/site-settings/)
+在可审阅的 YAML 中设置站点身份、语言、路由、导航、隐私数据和命名 API。
 
-### [第一篇教程](/zh-sg/posts/first-post/)
-在 `content/posts/` 新建带日期的 post，可选择 taxonomy 分类，生成后从 post 列表打开它。
+### [构建 Component](/zh-sg/posts/components/)
+通过唯一的 `ComponentDefinition` 扩展契约添加可复用表现或行为。
 
-### [我们如何构建组件](/zh-sg/posts/components/)
-学习一个可复用组件如何拥有自己的资源、安全渲染和本地化文案；Consent 组件是更高级的参考实现。
+### [连接发现能力](/zh-sg/posts/agent-discovery/)
+生成基于事实的 Agent 元数据，让条件能力始终对应真实实现。
 
 ### [开发 Agent Skill](/zh-sg/posts/skill-development/)
-编写由生成器产出、只描述真实 Component、内容、配置与外部服务的 Skill 契约。
-
-### [换样式](/zh-sg/posts/customize/)
-先复用主题已有能力；需要新结构时实现一次，让之后的页面继续使用。
+向 Agent 描述站点真实的内容、配置、Component 与外部服务边界。
 :::
 
-需要接入真实的鉴权、MCP、WebMCP 或 DNS-AID 时，阅读[配置条件 Agent 能力](/zh-sg/posts/agent-discovery/)，按 backend、主题组件和外部 DNS 的实际边界逐项实现。
+## 三个命令，三个清晰职责
 
-## 只记住三个命令
-
-| 命令 | 作用 |
+| 命令 | 职责 |
 | --- | --- |
-| `page g` | 自动校验并生成公开静态文件到 `dist/public`。 |
-| `page c` | 启动真实浏览器执行完整的 axe 无障碍审查，并写入私有报告。 |
-| `page s` | 启动持续预览；按 `Ctrl+C` 停止，也可以在另一个终端继续编辑。 |
+| `page g` | 校验并把静态站点生成到 `dist/public`。 |
+| `page c` | 运行完整浏览器无障碍审查，并把报告留在私有目录。 |
+| `page s` | 开发时监听、重建并预览同一份静态输出。 |
 
-:::post-list{limit="6"}
-:::
+:::cta{href="/zh-sg/updates/1.0.0-beta.0/" label="阅读 1.0.0 beta 说明"}
+## 只保留一套当前契约
 
-:::post-list{collection="updates" limit="3"}
-:::
-
-:::cta{href="/zh-sg/posts/start/" label="开始阅读"}
-## 现在就开始
-
-先完成 [十分钟开始你的站点](/zh-sg/posts/start/)，再按站点设置、Markdown 和第一个 post 继续。每篇教程都给出最小例子、成功结果和一个常见坑。
+1.0.0 beta 移除了历史运行模式和扩展别名，只保留一套 Component 模型、统一 Client Runtime 和外部 API 边界。
 :::

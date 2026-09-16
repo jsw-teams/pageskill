@@ -102,10 +102,21 @@ export function mount(root, runtime) {
     if (skip && copy.skipToContent) skip.textContent = String(copy.skipToContent);
     const footerTools = document.querySelector('.footer-tools');
     if (footerTools && copy.siteMap) footerTools.setAttribute('aria-label', String(copy.siteMap));
+    document.querySelectorAll('.primary-nav').forEach(nav => {
+      if (copy.navigationLabel) nav.setAttribute('aria-label', String(copy.navigationLabel));
+    });
     const policyHref = copy.privacy?.policyHref || `${localePath}/privacy/`;
     document.querySelectorAll('.privacy-links a').forEach(link => link.setAttribute('href', policyHref));
     document.querySelectorAll('.footer-tools .footer-tool-link').forEach(link => {
       if (String(link.getAttribute('href') || '').includes('/privacy/')) link.setAttribute('href', policyHref);
+    });
+    (Array.isArray(copy.links) ? copy.links : []).forEach(item => {
+      if (!item?.key) return;
+      document.querySelectorAll(`[data-link-key="${CSS.escape(String(item.key))}"]`).forEach(link => {
+        if (item.label) link.textContent = String(item.label);
+        if (item.href) link.setAttribute('href', String(item.href));
+        link.removeAttribute('aria-current');
+      });
     });
   };
   const applyCopy = locale => {
@@ -123,7 +134,29 @@ export function mount(root, runtime) {
     setText('.language-picker-description', copy.description);
     setText('.brand-copy strong', copy.siteName);
     setText('.brand-copy small', copy.headerNote);
+    setText('.language-switcher summary span', copy.languageName);
+    setText('.footer-brand', copy.siteName);
+    setText('.footer-kicker', copy.footerKicker);
+    setText('.footer-note', copy.footerNote);
     updateLocaleLinks(locale, copy);
+    if (root.matches('[data-not-found-localized]') && copy.notFound) {
+      setText('.error-kicker', copy.notFound.kicker);
+      setText('#not-found-title', copy.notFound.title);
+      setText('.error-description', copy.notFound.description);
+      const home = root.querySelector('[data-not-found-home]');
+      const guide = root.querySelector('[data-not-found-guide]');
+      if (home) {
+        home.textContent = String(copy.notFound.home || 'Back to home');
+        home.setAttribute('href', String(copy.notFound.homeHref || `/${locale}/`));
+      }
+      if (guide) {
+        guide.textContent = String(copy.notFound.guide || 'Open the guide');
+        guide.setAttribute('href', String(copy.notFound.guideHref || `/${locale}/`));
+      }
+      document.querySelectorAll('.languages [data-locale]').forEach(link => link.toggleAttribute('aria-current', resolveLocale(link.dataset.locale) === locale));
+      const languageNav = document.querySelector('.languages');
+      if (languageNav && copy.languageLabel) languageNav.setAttribute('aria-label', String(copy.languageLabel));
+    }
     setFooterLabel(document.querySelector('.site-footer [data-site-map]'), copy.siteMap);
     if (copy.privacy) {
       setFooterLabel(document.querySelector('.site-footer [data-privacy-policy]'), copy.privacy.policyLabel);
@@ -141,12 +174,13 @@ export function mount(root, runtime) {
     }
     updatePrivacy(copy);
   };
-  root.querySelectorAll('a[data-locale]').forEach(link => link.addEventListener('click', () => {
+  document.querySelectorAll('a[data-locale]').forEach(link => link.addEventListener('click', () => {
     const locale = resolveLocale(link.dataset.locale);
     if (locale) writeStoredLocale(locale);
   }, { signal: runtime.signal }));
+  const pathLocale = root.matches('[data-not-found-localized]') ? resolveLocale(window.location.pathname.split('/').filter(Boolean)[0]) : null;
   const storedLocale = readStoredLocale();
-  const preferredLocale = storedLocale || browserLocale() || resolveLocale(config.defaultLocale) || locales[0];
+  const preferredLocale = pathLocale || storedLocale || browserLocale() || resolveLocale(config.defaultLocale) || locales[0];
   if (preferredLocale) {
     applyCopy(preferredLocale);
   }

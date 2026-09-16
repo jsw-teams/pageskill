@@ -92,9 +92,10 @@ export function resolveSiteLinks(value: unknown, options: { locale: string; fall
   return value.slice(0, 64).map(link => resolveSiteLink(link, options));
 }
 
-export function renderSiteLink(link: { label: string; href: string; target?: '_self' | '_blank'; current?: boolean }, className: string, escape = escapeHtml): string {
+export function renderSiteLink(link: { key?: string; label: string; href: string; target?: '_self' | '_blank'; current?: boolean }, className: string, escape = escapeHtml): string {
   const classes = className ? ` class="${escape(className)}"` : '';
   const current = link.current ? ' aria-current="page"' : '';
   const target = link.target === '_blank' ? ' target="_blank" rel="noopener noreferrer"' : '';
-  return `<a${classes} href="${escape(link.href)}"${target}${current}>${escape(link.label)}</a>`;
+  const key = link.key ? ` data-link-key="${escape(link.key)}"` : '';
+  return `<a${classes}${key} href="${escape(link.href)}"${target}${current}>${escape(link.label)}</a>`;
 }

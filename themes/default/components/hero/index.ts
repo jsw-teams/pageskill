@@ -6,7 +6,7 @@ export const component: ComponentDefinition = {
   id: 'hero',
   capabilities: ['render'],
   contexts: ['page'],
-  schema: { tone: { type: 'string' }, align: { type: 'string' }, media: { type: 'string' }, mediaAlt: { type: 'string' } },
+  schema: { tone: { type: 'string' }, align: { type: 'string' }, media: { type: 'string' }, mediaAlt: { type: 'string' }, mediaWidth: { type: 'number' }, mediaHeight: { type: 'number' } },
   defaults: { tone: 'default', align: 'left' },
   render: (input, context) => {
     if (input.node) validateAttrs(input.node, component);
@@ -18,10 +18,12 @@ export const component: ComponentDefinition = {
       .join('');
     const copy = namedCopy ? `${namedCopy}${input.renderedChildren}` : input.renderedChildren;
     const namedMedia = input.slots.media?.length ? context.renderNodes(input.slots.media) : '';
+    const width = /^\d+$/.test(input.attrs.mediaWidth || '') ? ` width="${context.escapeHtml(input.attrs.mediaWidth)}"` : '';
+    const height = /^\d+$/.test(input.attrs.mediaHeight || '') ? ` height="${context.escapeHtml(input.attrs.mediaHeight)}"` : '';
     const media = namedMedia
       ? `<div class="hero-media">${namedMedia}</div>`
       : input.attrs.media
-        ? `<div class="hero-media"><img src="${context.safeUrl(input.attrs.media)}" alt="${context.escapeHtml(input.attrs.mediaAlt || '')}" loading="eager" decoding="async"></div>`
+        ? `<div class="hero-media"><img src="${context.safeUrl(input.attrs.media)}" alt="${context.escapeHtml(input.attrs.mediaAlt || '')}"${width}${height} loading="eager" decoding="async"></div>`
         : '';
     return `<section class="component hero tone-${context.escapeHtml(tone)} align-${context.escapeHtml(align)}"><div class="hero-copy">${copy}</div>${media}</section>`;
   },

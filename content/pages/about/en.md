@@ -1,5 +1,6 @@
 ---
 kind: page
+toc: false
 title: About Pageskill
 description: Pageskill is a tool for building a site from articles and settings.
 ---

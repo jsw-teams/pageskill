@@ -11,11 +11,12 @@ export const component: ComponentDefinition = {
   contexts: ['post', 'release'],
   renderDocument: (input, context) => {
     const content = input.slots.content || input.renderedContent;
+    const toc = context.doc.data?.toc === false ? '' : automaticToc(context);
     const comments = input.slots.comments ?? (context.theme?.components?.comments ? context.renderComponent('comments') : '');
     const relations = input.slots.relations || postRelations(context);
     const header = input.slots.header || '';
     const footer = input.slots.footer || '';
-    return `<div class="document-layout post-layout">${automaticToc(context)}${header}<article class="post">${postCoverImage(context.doc, context)}${renderPostUpdateNotice(context)}${content}${comments}${relations}</article>${footer}</div>`;
+    return `<div class="document-layout post-layout">${toc}${header}<article class="post">${postCoverImage(context.doc, context)}${renderPostUpdateNotice(context)}${content}${comments}${relations}</article>${footer}</div>`;
   },
   i18n: 'components/post/messages.yml'
 };

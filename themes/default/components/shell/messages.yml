@@ -39,6 +39,7 @@ messages:
     continue: 阅读内容
     siteMap: 站点地图
     notFound:
+      kicker: 页面未找到
       title: 这页没有找到
       description: 地址可能已更新。返回首页，或从开始使用继续查找内容。
       home: 返回首页
@@ -83,6 +84,7 @@ messages:
     continue: 閱讀內容
     siteMap: 網站地圖
     notFound:
+      kicker: 找不到頁面
       title: 找不到這個頁面
       description: 網址可能已更新。返回首頁，或從開始使用繼續尋找內容。
       home: 返回首頁
@@ -127,6 +129,7 @@ messages:
     continue: Read post
     siteMap: Site map
     notFound:
+      kicker: Page not found
       title: This page is not here
       description: The address may have changed. Return home or continue through the getting-started articles.
       home: Back to home

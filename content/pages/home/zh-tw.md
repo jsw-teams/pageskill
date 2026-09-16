@@ -1,71 +1,70 @@
 ---
 kind: page
 title: Pageskill：用 Markdown 建立內容網站
-description: 用 Markdown、YAML 和可重用主題建立清楚的多語言內容網站。
-component: page
+description: 用 Markdown、YAML 和可重用 Component 建立清楚的多語言內容網站。
+component: home
+toc: false
 ---
 
-:::hero{tone="brand" align="left"}
-*Pageskill · 用 Markdown 搭站*
+:::hero{tone="brand" align="left" media="/assets/hero-telescope.png" mediaAlt="代表清楚網站探索能力的小型望遠鏡" mediaWidth="300" mediaHeight="300"}
+*Pageskill · 靜態優先*
 
-# 用 Markdown 和 YAML 建立內容網站
+# 從內容出發，發布一個用心打磨的網站
 
-Pageskill 把 Markdown 內容和少量 YAML 網站資料編譯成多語言網站。可重用 Component 負責呈現與行為；資料庫、模型和寫入操作只留在命名外部 API 中。
+用 Markdown 寫內容，用 YAML 保存網站決策，讓可移植 Component 負責呈現。本機 Search 留在靜態網站中；資料庫、模型、密鑰和寫入操作透過命名外部 API 提供。
 
-[開始使用](/zh-tw/posts/start/) [GitHub](https://github.com/jsw-teams/pageskill)
+[開始建立](/zh-tw/posts/start/) [查看原始碼](https://github.com/jsw-teams/pageskill)
 :::
 
-普通作者只需要撰寫 Markdown，需要時修改 `config.yml` 和 `site/theme.yml`，再產生網站。只有網站需要真正新增能力時，才修改主題或 backend 程式碼。
+Pageskill 把日常編輯的內容與靜態網站不應承擔的基礎設施分開。這樣的網站更容易審閱和遷移，也能如實說明每一項已啟用能力。
 
-## Pageskill 組合了什麼
+## 邊界清楚，不增加額外模式
 
-| 內容 | 主題 | 多語言 | 發現能力 | 部署 |
-| --- | --- | --- | --- | --- |
-| Markdown 頁面和文章 | 可重用 Component | `zh-sg`、`zh-tw`、`en` | 本機搜尋、Feed、Agent 中繼資料 | 靜態輸出和可選外部 API |
+:::feature-grid{columns="3"}
+### 內容保持可讀
+頁面、教學、發布說明、導覽和政策文字放在 Markdown 或設定中，而不是藏進 Theme TypeScript。
 
-下面的教學會展示這個預覽站實際使用的原始檔案。
+### Component 保持可移植
+Component 負責版面、互動、無障礙和簡短介面文字，不硬編碼本站的介紹、路由或示範資料。
+
+### 服務保持外置
+命名 API 透過已設定 URL 連接可選資料或 AI 服務。私密憑證只保存在獨立部署的服務中，絕不進入產生的 JavaScript。
+:::
+
+## 沿著真實專案學習
+
+下面每一篇指南都對應本站建置時真正使用的檔案和契約。
 
 :::learning-path
 ### [開始](/zh-tw/posts/start/)
-複製原始碼儲存庫，執行 `npm install` 和 `page g`，再直接修改第一個首頁。
+安裝專案、執行產生器，並修改 `content/pages/` 下的穩定首頁。
 
-### [網站設定](/zh-tw/posts/site-settings/)
-修改網站名稱、語言和導覽；設定檔只放資料，不放程式碼。
+### [編寫 Markdown](/zh-tw/posts/markdown/)
+使用標題、清單、連結、表格和簡短 Component 指令，不把頁面寫成設定語言。
 
-### [Markdown](/zh-tw/posts/markdown/)
-用標題、段落、清單和程式碼圍欄寫文章，先做出最小頁面。
+### [設定網站](/zh-tw/posts/site-settings/)
+在可審閱的 YAML 中設定網站識別、語言、路由、導覽、隱私資料和命名 API。
 
-### [第一篇教學](/zh-tw/posts/first-post/)
-在 `content/posts/` 新增帶日期的 post，可選擇 taxonomy 分類，產生後從 post 列表開啟它。
+### [建立 Component](/zh-tw/posts/components/)
+透過唯一的 `ComponentDefinition` 擴充契約加入可重用呈現或行為。
 
-### [我們如何構建元件](/zh-tw/posts/components/)
-學習一個可重用元件如何擁有自己的資源、安全渲染和本地化文案；Consent 元件是更進階的參考實作。
+### [連接探索能力](/zh-tw/posts/agent-discovery/)
+產生基於事實的 Agent 中繼資料，讓條件能力始終對應真實實作。
 
 ### [開發 Agent Skill](/zh-tw/posts/skill-development/)
-撰寫由產生器輸出、只描述真實 Component、內容、設定與外部服務的 Skill 契約。
-
-### [更換樣式](/zh-tw/posts/customize/)
-先重用主題已有能力；需要新結構時實作一次，讓之後的頁面繼續使用。
+向 Agent 描述網站真實的內容、設定、Component 與外部服務邊界。
 :::
 
-需要接入真實的驗證、MCP、WebMCP 或 DNS-AID 時，閱讀[設定條件式 Agent 能力](/zh-tw/posts/agent-discovery/)，依照 backend、主題元件和外部 DNS 的實際邊界逐項實作。
+## 三個指令，三個清楚職責
 
-## 只要記住三個指令
-
-| 指令 | 用途 |
+| 指令 | 職責 |
 | --- | --- |
-| `page g` | 自動驗證並產生公開靜態檔案到 `dist/public`。 |
-| `page c` | 啟動真實瀏覽器執行完整的 axe 無障礙審查，並寫入私有報告。 |
-| `page s` | 啟動持續預覽；按 `Ctrl+C` 停止，也可以在另一個終端機繼續編輯。 |
+| `page g` | 驗證並把靜態網站產生到 `dist/public`。 |
+| `page c` | 執行完整瀏覽器無障礙審查，並把報告留在私有目錄。 |
+| `page s` | 開發時監看、重建並預覽同一份靜態輸出。 |
 
-:::post-list{limit="6"}
-:::
+:::cta{href="/zh-tw/updates/1.0.0-beta.0/" label="閱讀 1.0.0 beta 說明"}
+## 只保留一套目前契約
 
-:::post-list{collection="updates" limit="3"}
-:::
-
-:::cta{href="/zh-tw/posts/start/" label="開始閱讀"}
-## 現在就開始
-
-先完成 [十分鐘開始你的網站](/zh-tw/posts/start/)，再依序閱讀網站設定、Markdown 和第一個 post。每篇教學都提供最小範例、成功結果和一個常見問題。
+1.0.0 beta 移除了歷史執行模式和擴充別名，只保留一套 Component 模型、統一 Client Runtime 和外部 API 邊界。
 :::

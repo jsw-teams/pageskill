@@ -34,10 +34,6 @@ navigation:
       href: /:locale/posts/start/
     - key: posts
       href: /:locale/posts/
-    - key: customize
-      href: /:locale/posts/customize/
-    - key: configuration
-      href: /:locale/posts/site-settings/
     - key: updates
       href: /:locale/updates/
     - label: GitHub
@@ -46,13 +42,13 @@ navigation:
 
 footer:
   kicker:
-    zh-sg: 内容网站
-    zh-tw: 內容網站
-    en: Content website
+    zh-sg: 静态内容工具
+    zh-tw: 靜態內容工具
+    en: Static content tooling
   note:
-    zh-sg: 用清晰步骤把 Markdown 变成网站。
-    zh-tw: 用清楚步驟把 Markdown 變成網站。
-    en: Turn Markdown into a site with clear structure.
+    zh-sg: 让内容保持可读，让动态能力留在明确的外部边界。
+    zh-tw: 讓內容保持可讀，讓動態能力留在明確的外部邊界。
+    en: Keep content readable and dynamic capabilities behind explicit external boundaries.
   links:
     - key: privacy
       href: /:locale/privacy/
@@ -70,8 +66,8 @@ icons:
   manifest: /site.webmanifest
 
 pwa:
-  backgroundColor: "#faf8f3"
-  themeColor: "#244b3d"
+  backgroundColor: "#f7f5f0"
+  themeColor: "#14213d"
 
 privacy:
   controller:

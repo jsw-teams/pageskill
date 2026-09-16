@@ -1,5 +1,6 @@
 ---
 kind: page
+toc: false
 title: 关于 Pageskill
 description: Pageskill 是一个用文章和设置搭建网站的工具。
 ---

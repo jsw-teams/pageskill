@@ -1,32 +1,47 @@
 ---
 kind: page
 title: Privacy policy
-description: How this demo site handles data and how configured integrations participate in consent.
+description: What this Pageskill demonstration processes, what stays in the browser, and what changes when an external provider is enabled.
+toc: false
 integrations: []
 ---
 
 # Privacy policy
 
-This fixed policy page explains how the site handles information needed to serve pages and how visitors manage optional integrations.
+This policy describes the Pageskill demonstration at `pageskill.openjsu.com`. It is written for the site's current configuration, not as a promise about every site built with Pageskill.
 
-## This demo's current state
+## Current processing at a glance
 
-The Pageskill demo does not configure a third-party integration. It therefore does not show a consent banner and does not load analytics, advertising, CAPTCHA, or social-embed services.
+| Feature | Information involved | Where it goes | Current state |
+| --- | --- | --- | --- |
+| Static page delivery | The network information normally required to deliver a web request | Hosting provider | Required to open the site |
+| Local Search | Words entered into Search and the generated search index | Your browser only | Enabled |
+| Language preference | Chosen locale | Browser storage on this device | Enabled |
+| Optional providers | Provider-specific events described before consent | The named provider | Not configured on this demo |
+| Named external APIs | Data explicitly sent by a connected Component | The configured API URL | Not configured on this demo |
 
-When a site owner adds an integration under `config.yml`, the active theme's trusted Provider Adapter supplies its public fields, processing purpose, consent requirement, and load policy. Site YAML does not supply a script URL or choose a purpose.
+Pageskill Core does not create visitor accounts, write production databases, call an AI model, or store comments. Those capabilities require a separately deployed API service and must be documented by the site that enables them.
 
-## Consent choices
+## Browser storage and Cookies
 
-Consent purposes are derived from enabled adapters. Only purposes represented by the site's configured integrations appear in the dialog; essential operation is handled by Pageskill and is not a site-level category. A gated provider remains unloaded until the visitor grants its purpose. Withdrawing consent prevents later loads but cannot undo work a provider already performed.
+The language selector may remember a locale on this device. If a site enables a consent-requiring Provider Adapter, the consent Component also stores the selected purposes, schema version, and update time. This preference does not contain a profile, fingerprint, IP address, or page history.
 
-## Decision storage
+This demonstration currently has no analytics, advertising, CAPTCHA, or social-embed provider. It therefore has no optional provider purpose to request. A consent interface appears only when the configuration enables a trusted adapter that requires it.
 
-The consent Component stores the decision as a small browser preference containing the schema version, current purpose choices, and update time. `privacy.consent.decisionRetentionDays` changes how long that choice is remembered; it does not control a provider's server-side data retention or policy.
+## Local Search and external APIs
 
-## Local features and external APIs
+Search reads a generated same-site index in the browser. Search terms are not sent to Pageskill or to a search provider.
 
-Local Search reads generated same-site indexes and does not use Cookies or a third-party service. A Component connected through a named `apis` entry contacts the configured external service directly; its client Token is public, while the service owns private credentials, server-side data handling, and its own privacy obligations.
+A browser Component may call only the named API assigned to it in `config.yml`. The configured origin may be a third-party origin. Any Token placed in browser configuration is public by design; private credentials belong in the external service or its secret store. That service is responsible for authentication, retention, deletion, and its own privacy notice.
 
-## Contact
+## Provider changes and policy revision
 
-For privacy questions, contact toewpq through [Pageskill GitHub](https://github.com/jsw-teams/pageskill). A site that enables an integration must add its real processing details and contact information to this reviewed policy.
+Before enabling an optional provider, the site operator must review its purpose, data categories, recipients, retention, cross-border transfer, withdrawal behavior, and policy link. The Provider Adapter controls loading, but this page must still be revised so a visitor can understand the real processing. A configuration switch is not a substitute for a policy review.
+
+## Your choices
+
+Where optional purposes exist, you may reject them, change them later through Privacy settings, or clear this site's browser storage. Withdrawing a choice blocks future provider loads; it cannot reverse a request that was already completed. Requests about data held by an external API must be directed to the operator identified by that service.
+
+## Contact and revisions
+
+The controller for this demonstration is toewpq. Privacy questions and correction requests can be raised through [the Pageskill repository](https://github.com/jsw-teams/pageskill). Material changes to enabled providers or data flows require this policy to be reviewed and updated before deployment.

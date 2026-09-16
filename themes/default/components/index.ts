@@ -16,6 +16,7 @@ import { component as hero } from './hero/index.ts';
 import { component as learningPath } from './learning-path/index.ts';
 import { component as postList } from './post-list/index.ts';
 import { component as page } from './page/index.ts';
+import { component as home } from './home/index.ts';
 import { component as post } from './post/index.ts';
 
 /** The default theme has one public extension vocabulary: Components. */
@@ -34,6 +35,7 @@ export const components: ComponentDefinition[] = [
   { ...learningPath, id: 'learning-path' },
   { ...postList, id: 'post-list' },
   { ...cta, id: 'cta' },
+  { ...home, id: 'home' },
   { ...page, id: 'page' },
   { ...post, id: 'post' },
   { ...archive, id: 'archive' }

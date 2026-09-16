@@ -67,6 +67,9 @@ function themeResourceHref(ctx: BuildContext, themeBase: string, relative: strin
 function minifyCss(source: string) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').replace(/\s*([{}:;,>+~])\s*/g, '$1').replace(/;}\s*/g, '}').trim();
 }
+function singleLineJs(source: string) {
+  return source.replaceAll('\r', '').split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('//')).join(' ');
+}
 function diagnostic(position: SourcePosition, message: string) { return `${position.file}:${position.line}:${position.column}: ${message}`; }
 function localizedValue(value: unknown, locale: string, fallback: string): string {
   if (value && typeof value === 'object') {
@@ -753,18 +756,18 @@ function renderChromeLinks(context: ComponentShellContext, links: ComponentChrom
 
 function fallbackShell(context: ComponentShellContext): string {
   const chrome = context.chrome || { navigation: { enabled: true, before: [], after: [] }, footer: { enabled: true, before: [], after: [] } };
-  const pageLanguages = isPostCollectionConfig(context.config, context.doc.collection) ? context.languageLinks : '';
-  const languageNav = pageLanguages ? `<nav class="languages" aria-label="${context.escapeHtml(context.languageLabel)}"><span class="languages-heading" aria-hidden="true">${context.escapeHtml(context.languageLabel)}</span><div class="languages-list">${pageLanguages}</div></nav>` : '';
+  const languageNav = context.languageLinks ? `<div class="language-switcher"><details><summary>${context.escapeHtml(context.languageLabel)}</summary><nav class="languages" aria-label="${context.escapeHtml(context.languageLabel)}"><div class="languages-list">${context.languageLinks}</div></nav></details></div>` : '';
   const collectionKeyName = context.doc.collection === 'archive' ? String(context.doc.data?.archiveCollection || 'posts') : context.doc.collection;
   const collectionLabel = context.translate(`collections.${collectionKeyName}`, collectionKeyName);
-  const pageHeader = context.doc.source.startsWith('generated:') ? '' : `<header class="page-header"><p class="eyebrow">${context.escapeHtml(collectionLabel)}</p><h1>${context.escapeHtml(context.doc.title)}</h1>${context.doc.description ? `<p>${context.escapeHtml(context.doc.description)}</p>` : ''}${languageNav}</header>`;
+  const pageHeader = context.doc.source.startsWith('generated:') ? '' : `<header class="page-header"><p class="eyebrow">${context.escapeHtml(collectionLabel)}</p><h1>${context.escapeHtml(context.doc.title)}</h1>${context.doc.description ? `<p>${context.escapeHtml(context.doc.description)}</p>` : ''}</header>`;
   const navLinks = `${renderChromeLinks(context, chrome.navigation.before, 'primary-nav-link')}${context.navigationLinks}${renderChromeLinks(context, chrome.navigation.after, 'primary-nav-link')}`;
   const primaryNav = navLinks ? `<nav class="primary-nav" aria-label="${context.escapeHtml(context.navigationLabel)}">${navLinks}</nav>` : '';
-  const headerActions = `${context.searchMarkup}${primaryNav}`;
+  const headerActions = `${context.searchMarkup}${primaryNav}${languageNav}`;
   const siteMapLabel = context.translate('siteMap', 'Site map');
   const privacyPolicy = context.privacy.enabled ? `<a class="footer-tool-link" data-privacy-policy href="${context.safeUrl(context.privacy.policyHref)}">${context.escapeHtml(context.privacy.policyLabel)}</a>` : '';
   const footerTools = `<nav class="footer-tools" aria-label="${context.escapeHtml(siteMapLabel)}">${renderChromeLinks(context, chrome.footer.before, 'footer-tool-link')}${context.footerLinks}<a class="footer-tool-link" href="${context.safeUrl(context.url.sitemap)}" data-site-map>${context.escapeHtml(siteMapLabel)}</a>${privacyPolicy}${context.privacyTriggerMarkup || ''}${renderChromeLinks(context, chrome.footer.after, 'footer-tool-link')}</nav>`;
-  return `<!doctype html><html lang="${context.escapeHtml(context.htmlLang || context.doc.locale)}"><head>${context.head}</head><body class="${context.bodyClass}" data-component="${context.escapeHtml(context.doc.component)}">${context.privacyMarkup}<a class="skip" href="#main">${context.escapeHtml(context.skipLabel)}</a><header class="site-header"><div class="header-inner"><a class="brand" href="${context.homeHref}"><img class="brand-mark" src="${context.brandIcon}" alt="" width="32" height="32"><span class="brand-copy"><strong>${context.escapeHtml(context.siteName)}</strong><small>${context.escapeHtml(context.headerNote)}</small></span></a>${headerActions ? `<div class="header-actions">${headerActions}</div>` : ''}</div></header><main id="main" tabindex="-1" class="${context.mainClass}">${pageHeader}${context.renderedContent}</main><footer class="site-footer"><div class="footer-grid">${footerTools}</div></footer></body></html>`;
+  const footerIdentity = `<div class="footer-identity"><a class="footer-brand" href="${context.homeHref}">${context.escapeHtml(context.siteName)}</a>${context.footerKicker ? `<p class="footer-kicker">${context.escapeHtml(context.footerKicker)}</p>` : ''}${context.footerNote ? `<p class="footer-note">${context.escapeHtml(context.footerNote)}</p>` : ''}</div>`;
+  return `<!doctype html><html lang="${context.escapeHtml(context.htmlLang || context.doc.locale)}"><head>${context.head}</head><body class="${context.bodyClass}" data-component="${context.escapeHtml(context.doc.component)}">${context.privacyMarkup}<a class="skip" href="#main">${context.escapeHtml(context.skipLabel)}</a><header class="site-header"><div class="header-inner"><a class="brand" href="${context.homeHref}"><img class="brand-mark" src="${context.brandIcon}" alt="" width="32" height="32"><span class="brand-copy"><strong>${context.escapeHtml(context.siteName)}</strong><small>${context.escapeHtml(context.headerNote)}</small></span></a>${headerActions ? `<div class="header-actions">${headerActions}</div>` : ''}</div></header><main id="main" tabindex="-1" class="${context.mainClass}">${pageHeader}${context.renderedContent}</main><footer class="site-footer"><div class="footer-grid">${footerIdentity}<div class="footer-navigation-group">${footerTools}</div></div></footer></body></html>`;
 }
 
 function componentEnabled(ctx: BuildContext, name: string): boolean {
@@ -975,6 +978,19 @@ function homeRouteFor(ctx: BuildContext, locale: string): string {
 function languagePickerCopy(ctx: BuildContext, locale: string, themeBase: string) {
   const generated = generatedDocument('home', locale, '', '', '/');
   const privacy = privacyShellData(ctx, generated).privacy;
+  const start = ctx.docs.find(doc => doc.collection === 'posts' && doc.id === 'start' && doc.locale === locale);
+  const navigation = resolveSiteLinks(configuredNavigation(ctx.config).links || [], {
+    locale,
+    fallbackLocale: fallbackLocaleFor(ctx),
+    namespace: 'navigation',
+    translate: (key, fallback) => themeText(ctx, locale, key, fallback)
+  }).filter(link => link.key).map(link => ({ key: link.key, label: link.label, href: link.href }));
+  const footer = resolveSiteLinks(ctx.config.footer?.links || [], {
+    locale,
+    fallbackLocale: fallbackLocaleFor(ctx),
+    namespace: 'footer',
+    translate: (key, fallback) => themeText(ctx, locale, key, fallback)
+  }).filter(link => link.key).map(link => ({ key: link.key, label: link.label, href: link.href }));
   return {
     title: themeText(ctx, locale, 'languagePicker.title', 'Choose a site language'),
     description: themeText(ctx, locale, 'languagePicker.description', 'Choose a language to open the matching site version.'),
@@ -982,9 +998,24 @@ function languagePickerCopy(ctx: BuildContext, locale: string, themeBase: string
     siteName: localizedValue(ctx.config.siteName, locale, 'Site'),
     siteDescription: localizedValue(ctx.config.description, locale, ''),
     htmlLang: String(ctx.themeI18n.locales?.[locale]?.htmlLang || locale),
+    languageName: languageDisplayName(ctx, locale, locale),
     headerNote: themeText(ctx, locale, 'shell.headerNote', 'Markdown-native · static-first'),
     skipToContent: themeText(ctx, locale, 'shell.skipToContent', 'Skip to content'),
+    navigationLabel: themeText(ctx, locale, 'shell.navigation', 'Primary navigation'),
+    languageLabel: themeText(ctx, locale, 'shell.languages', 'Languages'),
+    footerKicker: localizedValue(ctx.config.footer?.kicker, locale, ''),
+    footerNote: localizedValue(ctx.config.footer?.note, locale, ''),
     siteMap: themeText(ctx, locale, 'siteMap', 'Site map'),
+    links: [...navigation, ...footer],
+    notFound: {
+      kicker: themeText(ctx, locale, 'notFound.kicker', 'Page not found'),
+      title: themeText(ctx, locale, 'notFound.title', 'This page is not here'),
+      description: themeText(ctx, locale, 'notFound.description', 'The address may have changed. Return home or continue through the guide.'),
+      home: themeText(ctx, locale, 'notFound.home', 'Back to home'),
+      guide: themeText(ctx, locale, 'notFound.guide', 'Open the guide'),
+      homeHref: homeRouteFor(ctx, locale),
+      guideHref: start ? routeFor(ctx, start) : homeRouteFor(ctx, locale)
+    },
     privacy: {
       title: privacy.title,
       description: privacy.description,
@@ -1037,9 +1068,19 @@ function notFoundMarkup(ctx: BuildContext, locale: string): string {
   const homeLabel = themeText(ctx, locale, 'notFound.home', 'Back to home');
   const guideLabel = themeText(ctx, locale, 'notFound.guide', 'Open the guide');
   const homeHref = safeUrl(homeRouteFor(ctx, locale));
-  const guide = queryDocuments(ctx, { kind: 'post', locale, limit: 1, orderBy: 'date:desc' })[0];
+  const guide = ctx.docs.find(doc => doc.collection === 'posts' && doc.id === 'start' && doc.locale === locale);
   const guideLink = guide ? `<a class="button-secondary" href="${safeUrl(routeFor(ctx, guide))}">${escapeHtml(guideLabel)}</a>` : '';
-  return `<section class="error-page" aria-labelledby="not-found-title"><p class="error-code" aria-hidden="true">404</p><h1 id="not-found-title">${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p><div class="error-actions"><a class="button-primary" href="${homeHref}">${escapeHtml(homeLabel)}</a>${guideLink}</div></section>`;
+  const locales = ctx.config.activeLocales || [ctx.config.defaultLocale || locale];
+  const themeName = configuredThemeName(ctx.config);
+  const copy = Object.fromEntries(locales.map((candidate: string) => [candidate, languagePickerCopy(ctx, candidate, `/assets/theme/${themeName}`)]));
+  const languageData = JSON.stringify({
+    defaultLocale: ctx.config.defaultLocale || locale,
+    locales,
+    localeAliases: Object.fromEntries(locales.map((candidate: string) => [candidate, Array.isArray(ctx.themeI18n.locales?.[candidate]?.aliases) ? ctx.themeI18n.locales[candidate].aliases : [candidate]])),
+    storageKey: 'pageskill-locale',
+    copy
+  });
+  return `<section class="error-page" data-not-found-localized data-language-copy="${escapeHtml(languageData)}" aria-labelledby="not-found-title"><p class="error-code" aria-hidden="true">404</p><p class="error-kicker">${escapeHtml(themeText(ctx, locale, 'notFound.kicker', 'Page not found'))}</p><h1 id="not-found-title">${escapeHtml(title)}</h1><p class="error-description">${escapeHtml(description)}</p><div class="error-actions"><a class="button-primary" data-not-found-home href="${homeHref}">${escapeHtml(homeLabel)}</a>${guideLink.replace('class="button-secondary"', 'class="button-secondary" data-not-found-guide')}</div></section>`;
 }
 
 async function writeGeneratedPages(ctx: BuildContext) {
@@ -1083,7 +1124,7 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const footerNote = localizedValue(ctx.config.footer?.note, doc.locale, '');
   const footerKicker = localizedValue(ctx.config.footer?.kicker, doc.locale, '');
   const generatedPage = doc.source.startsWith('generated:');
-  const showSiteChrome = !generatedPage || doc.collection === 'archive';
+  const showSiteChrome = !generatedPage || doc.collection === 'archive' || doc.id === 'not-found';
   const navigationConfig = configuredNavigation(ctx.config);
   const navigation = Array.isArray(navigationConfig.links) ? navigationConfig.links : [];
   const footerConfig = isRecord(ctx.config.footer) ? ctx.config.footer : {};
@@ -1093,10 +1134,11 @@ function pageShell(ctx: BuildContext, doc: Document, content: string): string {
   const translatedDocuments = doc.collection === 'archive' && doc.data?.archiveCollection
     ? (ctx.config.activeLocales || [ctx.config.defaultLocale || doc.locale]).map((locale: string) => ({ ...doc, locale, data: { ...doc.data, route: String(doc.data.route || '').replace(`/${doc.locale}/`, `/${locale}/`) } }))
     : [...availableTranslations, ...(doc.source.startsWith('fallback:') ? [doc] : [])].sort((left, right) => left.locale.localeCompare(right.locale));
-  const languageLinks = translatedDocuments.map((candidate: Document) => {
-    const candidateRoute = routeFor(ctx, candidate);
+  const languageLinks = (doc.id === 'not-found'
+    ? (ctx.config.activeLocales || [ctx.config.defaultLocale || doc.locale]).map((candidate: string) => ({ locale: candidate, route: homeRouteFor(ctx, candidate) }))
+    : translatedDocuments.map((candidate: Document) => ({ locale: candidate.locale, route: routeFor(ctx, candidate) }))).map((candidate: { locale: string; route: string }) => {
     const current = candidate.locale === doc.locale ? ' aria-current="page"' : '';
-    return `<a href="${safeUrl(candidateRoute)}" lang="${escapeHtml(candidate.locale)}" data-locale="${escapeHtml(candidate.locale)}"${current}>${escapeHtml(languageDisplayName(ctx, doc.locale, candidate.locale))}</a>`;
+    return `<a href="${safeUrl(candidate.route)}" lang="${escapeHtml(candidate.locale)}" data-locale="${escapeHtml(candidate.locale)}"${current}>${escapeHtml(languageDisplayName(ctx, doc.locale, candidate.locale))}</a>`;
   }).join('');
   const defaultTranslation = availableTranslations.find((candidate: Document) => candidate.locale === (ctx.config.defaultLocale || 'en'));
   const alternates = `${availableTranslations.map((candidate: Document) => `<link rel="alternate" hreflang="${escapeHtml(candidate.locale)}" href="${safeUrl(`${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${routeFor(ctx, candidate)}`)}">`).join('')}${defaultTranslation ? `<link rel="alternate" hreflang="x-default" href="${safeUrl(`${String(ctx.config.siteUrl || '').replace(/\/$/, '')}${routeFor(ctx, defaultTranslation)}`)}">` : ''}`;
@@ -1859,7 +1901,7 @@ async function copyThemeAndAssets(ctx: BuildContext) {
       ? (ctx.themeStyleSources.get(relative) ?? await fs.readFile(containedPath(themeRoot, relative, 'theme resource path'), 'utf8'))
       : await fs.readFile(containedPath(themeRoot, relative, 'theme resource path'), 'utf8');
     const output = `${themeOutputRoot}/${versionedThemeAsset(relative, themeResourceFingerprint(ctx, relative))}`;
-    await writeIfChanged(ctx, output, extension === '.css' ? minifyCss(source) : source);
+    await writeIfChanged(ctx, output, extension === '.css' ? minifyCss(source) : extension === '.js' || extension === '.mjs' ? singleLineJs(source) : source);
   }
   const clients = clientComponents(ctx);
   if (clients.length) {
@@ -1870,7 +1912,7 @@ async function copyThemeAndAssets(ctx: BuildContext) {
   for (const id of apiIds) if (!allApis[id!]) throw new Error(`config.yml: apis.${id} is required by an enabled Component that declares client.api`);
     const browserApis = Object.fromEntries(Object.entries(allApis).filter(([id]) => apiIds.has(id)));
     const bootstrap = `${imports}\n\nclass ClientRequestError extends Error { constructor(message, status = 0, code = 'request_failed') { super(message); this.name = 'ClientRequestError'; this.status = status; this.code = code; } }\nconst lifecycle = new AbortController();\nconst apiDefinitions = Object.freeze(${JSON.stringify(browserApis)});\nwindow.addEventListener('pagehide', () => lifecycle.abort(), { once: true });\nfunction sameOrigin(value) { const target = new URL(value, window.location.href); if (target.origin !== window.location.origin) throw new ClientRequestError('The local asset must use the site origin.', 0, 'cross_origin_blocked'); return target; }\nfunction apiTarget(definition, value = '') { if (!definition) throw new ClientRequestError('This Component API is not configured.', 0, 'api_not_configured'); const base = new URL(definition.url); const raw = String(value || ''); const target = raw === '' || raw.startsWith('?') ? new URL(raw || base.href, base.href) : new URL(raw.replace(/^\\/+/, ''), base.href.endsWith('/') ? base.href : base.href + '/'); const prefix = base.pathname.endsWith('/') ? base.pathname : base.pathname + '/'; if (target.origin !== base.origin || (target.pathname !== base.pathname && !target.pathname.startsWith(prefix))) throw new ClientRequestError('The API request escaped its configured URL scope.', 0, 'api_scope_blocked'); return target; }\nasync function fetchJson(target, options = {}, definition) { const controller = new AbortController(); const timeout = window.setTimeout(() => controller.abort(), 12000); const abort = () => controller.abort(); lifecycle.signal.addEventListener('abort', abort, { once: true }); options.signal?.addEventListener?.('abort', abort, { once: true }); const headers = new Headers({ accept: 'application/json', ...(options.headers || {}) }); if (definition?.token) { if (definition.auth === 'x-api-key') headers.set('x-api-key', definition.token); else headers.set('authorization', 'Bearer ' + definition.token); } try { const response = await fetch(target, { ...options, credentials: target.origin === window.location.origin ? 'same-origin' : 'omit', signal: controller.signal, headers }); const type = response.headers.get('content-type') || ''; const data = type.includes('application/json') ? await response.json() : null; if (!response.ok) throw new ClientRequestError(data?.error || 'The API request failed.', response.status, data?.code || 'request_failed'); if (!type.includes('application/json')) throw new ClientRequestError('Expected a JSON response.', response.status, 'invalid_response'); return data; } catch (error) { if (error instanceof ClientRequestError) throw error; if (controller.signal.aborted) throw new ClientRequestError('The request timed out.', 0, 'request_timeout'); throw new ClientRequestError('The request could not be completed.'); } finally { window.clearTimeout(timeout); lifecycle.signal.removeEventListener('abort', abort); options.signal?.removeEventListener?.('abort', abort); } }\nfunction assetJson(value, options = {}) { return fetchJson(sameOrigin(value), options); }\nfunction runtimeFor(component) { const runtime = { signal: lifecycle.signal, ClientRequestError, apiId: component.api || undefined, assetJson, setBusy(element, busy) { if (!element) return; if (busy) element.setAttribute('aria-busy', 'true'); else element.removeAttribute('aria-busy'); } }; if (component.api) { const definition = apiDefinitions[component.api]; runtime.apiJson = (value, options) => fetchJson(apiTarget(definition, value), options, definition); } return Object.freeze(runtime); }\nconst components = [\n${registrations}\n];\nfor (const component of components) { for (const root of document.querySelectorAll(component.selector)) { try { component.mount(root, runtimeFor(component)); } catch (error) { root.dataset.clientState = 'failed'; console.error('Pageskill Client Component failed:', component.id, error); } } }\n`;
-    await writeIfChanged(ctx, 'assets/pageskill/client.js', bootstrap);
+    await writeIfChanged(ctx, 'assets/pageskill/client.js', singleLineJs(bootstrap));
   }
   await writeIfChanged(ctx, 'AGENTS.md', await fs.readFile(path.join(ctx.root, 'AGENTS.md'), 'utf8').catch(() => ''));
   const locale = ctx.config.defaultLocale || 'en';
@@ -2128,7 +2170,7 @@ export async function createContext(root = process.cwd()): Promise<BuildContext>
     .filter(({ relative }) => ['.css', '.js', '.mjs'].includes(path.extname(relative).toLowerCase()))
     .map(({ relative, source }) => {
       const extension = path.extname(relative).toLowerCase();
-      return [relative, shortHash(extension === '.css' ? minifyCss(source) : source).slice(0, 12)];
+      return [relative, shortHash(extension === '.css' ? minifyCss(source) : extension === '.js' || extension === '.mjs' ? singleLineJs(source) : source).slice(0, 12)];
     }));
   const themeHash = shortHash(themeChunks.join('\0'));
   // The public asset fingerprint remains content based.  Theme module imports
